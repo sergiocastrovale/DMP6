@@ -1,10 +1,11 @@
 //! Single-line progress display.
 //!
 //! A dedicated printer thread on a fixed tick, rather than printing from the worker threads: with
-//! 16 rayon workers all calling `eprint!`, the escape sequences interleave and the line becomes
-//! unreadable. Workers only bump atomics.
+//! 16 rayon workers all calling `Reporter::transient`, the escape sequences interleave and the line
+//! becomes unreadable. Workers only bump atomics.
 
-use std::io::{IsTerminal, Write};
+use common::progress::Reporter;
+use std::io::IsTerminal;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -32,7 +33,12 @@ impl Progress {
     ///
     /// Auto-disables when stderr is not a terminal: a six-hour run redirected to a log file would
     /// otherwise write megabytes of carriage returns and clear-line escapes.
-    pub fn start(counters: Arc<Counters>, total_artists: u64, force_off: bool) -> Self {
+    pub fn start(
+        counters: Arc<Counters>,
+        total_artists: u64,
+        force_off: bool,
+        reporter: Reporter,
+    ) -> Self {
         let enabled = !force_off && std::io::stderr().is_terminal();
         let label = Arc::new(Mutex::new(String::new()));
         let stop = Arc::new(AtomicBool::new(false));
@@ -42,9 +48,10 @@ impl Progress {
             std::thread::spawn(move || {
                 let started = Instant::now();
                 while !stop.load(Ordering::Relaxed) {
-                    render(&counters, &label, total_artists, started);
+                    render(&counters, &label, total_artists, started, &reporter);
                     std::thread::sleep(Duration::from_millis(250));
                 }
+                reporter.clear_transient();
             })
         });
 
@@ -71,14 +78,16 @@ impl Progress {
         if let Some(h) = self.handle.take() {
             let _ = h.join();
         }
-        if self.enabled {
-            eprint!("\r\x1b[K");
-            let _ = std::io::stderr().flush();
-        }
     }
 }
 
-fn render(counters: &Counters, label: &Mutex<String>, total_artists: u64, started: Instant) {
+fn render(
+    counters: &Counters,
+    label: &Mutex<String>,
+    total_artists: u64,
+    started: Instant,
+    reporter: &Reporter,
+) {
     let files = counters.files.load(Ordering::Relaxed);
     let problems = counters.problem_files.load(Ordering::Relaxed);
     let done = counters.artists_done.load(Ordering::Relaxed);
@@ -88,9 +97,8 @@ fn render(counters: &Counters, label: &Mutex<String>, total_artists: u64, starte
     let rate = files as f64 / secs;
     let eta = eta_string(done, total_artists, started);
 
-    // \r returns to column 0, \x1b[K clears to end of line - the same pair the other scripts use.
-    eprint!(
-        "\r\x1b[K  [{}/{}] {} | {} files | {} flagged | {:.0}/s | ETA {}",
+    reporter.transient(&format!(
+        "[{}/{}] {} | {} files | {} flagged | {:.0}/s | ETA {}",
         done,
         total_artists,
         truncate(&name, 40),
@@ -98,8 +106,7 @@ fn render(counters: &Counters, label: &Mutex<String>, total_artists: u64, starte
         problems,
         rate,
         eta
-    );
-    let _ = std::io::stderr().flush();
+    ));
 }
 
 /// ETA from artists completed, not files: folder sizes vary so wildly that a file-based estimate
@@ -161,7 +168,7 @@ mod tests {
     #[test]
     fn a_disabled_progress_is_inert_and_joins_cleanly() {
         let c = Arc::new(Counters::default());
-        let p = Progress::start(c.clone(), 10, true);
+        let p = Progress::start(c.clone(), 10, true, Reporter::new(false));
         p.set_label("Radiohead");
         c.files.fetch_add(5, Ordering::Relaxed);
         p.finish();

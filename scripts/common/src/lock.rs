@@ -132,7 +132,7 @@ pub async fn expect_or_release<T, E: std::fmt::Display>(
         Ok(v) => v,
         Err(e) => {
             crate::error_log::log_error(&format!("{}: {}", context, e));
-            eprintln!("{}: {}", context, e);
+            crate::progress::early_err(&format!("{}: {}", context, e));
             release_lock(pool, binary, pid).await;
             std::process::exit(1);
         }

@@ -118,11 +118,7 @@ async fn main() {
 
     let running = common::app::spawn_shutdown_handlers(&pool, "tidy", "phase", 1);
 
-    reporter.header(if args.web {
-        "DMP Tidy"
-    } else {
-        "DMP Tidy - Library Repair"
-    });
+    reporter.header("DMP Tidy");
     let start = Utc::now().naive_utc();
     let start_time = std::time::Instant::now();
     let mut had_error = false;
@@ -273,8 +269,7 @@ async fn main() {
                 .expect("HTTP client");
             let mut limiter = RateLimiter::new();
 
-            reporter.blank();
-            reporter.header("Box sets");
+            reporter.section("Box sets");
             match boxset::run_repair(&pool, &http_client, &mut limiter, &reporter, scope).await {
                 Ok(s) => {
                     summary.box_groups_seen = s.groups_seen;
@@ -341,15 +336,18 @@ async fn main() {
     }
 
     // ---- Phase 5: DB-only re-score ----
-    reporter.blank();
-    reporter.header("Re-score");
+    reporter.section("Re-score");
     match db::get_rescore_targets(&pool, scope, &touched_ids, args.rescore_only).await {
         Ok(targets) => {
             let total = targets.len();
             for (idx, target) in targets.iter().enumerate() {
                 reporter.tidy_progress("Re-scoring", idx + 1, total);
                 if args.verbose {
-                    reporter.item("Release", &target.local_release_id, idx + 1, total);
+                    reporter.item(
+                        &format!("Release {}", target.local_release_id),
+                        idx + 1,
+                        total,
+                    );
                 }
                 match db::rescore_bound_release(&pool, target).await {
                     Ok(RescoreOutcome::Scored(status)) => {
@@ -399,8 +397,7 @@ async fn main() {
 
     if !args.rescore_only {
         // ---- Phase 7: artist identity repair (global, pure SQL) ----
-        reporter.blank();
-        reporter.header("Artist identities");
+        reporter.section("Artist identities");
         match db::repair_all_empty_primaries(&pool, false).await {
             Ok(done) => {
                 summary.identity_pass_a = done.len();
@@ -543,10 +540,7 @@ async fn main() {
     let m = (elapsed.as_secs() % 3600) / 60;
     let s = elapsed.as_secs() % 60;
 
-    reporter.blank();
-    reporter.info(&"═".repeat(60));
-    reporter.blank();
-    reporter.done(&format!("Tidy complete. ({}h:{:02}m:{:02}s)", h, m, s));
+    reporter.section("Summary");
     reporter.kv("Elapsed", &format!("{:02}:{:02}:{:02}", h, m, s));
     reporter.kv(
         "Empty releases removed",
@@ -655,5 +649,14 @@ async fn main() {
                 if had_error { "errors" } else { "interrupted" }
             ),
         );
+    }
+
+    // Last line, on purpose - the web app's auto-scan reads a run's final log line as its summary
+    // (`web/server/utils/autoScan.ts`), so nothing may print after this.
+    let elapsed_label = format!("{}h:{:02}m:{:02}s", h, m, s);
+    if had_error {
+        reporter.failed(&format!("Tidy finished with errors ({})", elapsed_label));
+    } else {
+        reporter.done(&format!("Tidy complete ({})", elapsed_label));
     }
 }

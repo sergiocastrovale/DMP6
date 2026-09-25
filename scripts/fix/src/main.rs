@@ -9,12 +9,12 @@ use std::collections::HashSet;
 use std::process::Command;
 
 use clap::{Parser, ValueEnum};
-use colored::Colorize;
 use common::{
     config::{apply_db_overrides, load_config},
     db::create_pool_or_exit,
     error_log,
     lock::{acquire_lock, clear_stale_lock_minutes, release_lock},
+    progress::Reporter,
 };
 
 #[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
@@ -55,32 +55,38 @@ struct Args {
 async fn main() {
     let args = Args::parse();
     common::error_log::init("fix");
+    let reporter = Reporter::new(false);
     let mut config = load_config(None);
     let pool = create_pool_or_exit(&config.database_url, "fix").await;
     apply_db_overrides(&mut config, &pool).await;
 
+    reporter.header("DMP Fix");
+    if args.dry_run {
+        reporter.kv("Mode", "dry run");
+    }
+    reporter.blank();
+
     if !args.corrupted && !args.orphans && !args.duplicates && !args.missing {
-        eprintln!(
-            "{}",
-            "Specify at least one fix type: --corrupted, --orphans, --duplicates, --missing".red()
+        reporter.failed(
+            "Specify at least one fix type: --corrupted, --orphans, --duplicates, --missing",
         );
         std::process::exit(1);
     }
 
     if args.dry_run && args.revert {
-        eprintln!("{}", "--dry-run is not supported with --revert.".red());
+        reporter.failed("--dry-run is not supported with --revert.");
         std::process::exit(1);
     }
 
     // Same DB scan lock index/sync use - fix rewrites tags and merges/deletes artists, so it must
     // not run concurrently with an index/sync pass touching the same rows.
     if clear_stale_lock_minutes(&pool, common::lock::STALE_LOCK_MINUTES).await {
-        eprintln!("{}", "Cleared a stale lock.".yellow());
+        reporter.warn("Cleared a stale lock.");
     }
     let _lock_guard = match acquire_lock(&pool, "fix", std::process::id()).await {
         Ok(g) => g,
         Err(e) => {
-            eprintln!("{}: {}", "Cannot start".red(), e);
+            reporter.failed(&format!("Cannot start: {}", e));
             std::process::exit(1);
         }
     };
@@ -91,14 +97,12 @@ async fn main() {
 
     if args.revert {
         if args.corrupted {
-            println!("{}", "↩ Reverting corrupted TPE2 fixes...".cyan().bold());
-            match revert::revert(&pool, &music_dir, "corrupted", args.mode).await {
+            reporter.step("Reverting corrupted TPE2 fixes...");
+            match revert::revert(&pool, &music_dir, "corrupted", args.mode, &reporter).await {
                 Ok((ok, fail, artists)) => {
-                    println!(
-                        "  {} reverted, {} failed",
-                        ok.to_string().green(),
-                        fail.to_string().red()
-                    );
+                    reporter
+                        .nested()
+                        .ok(&format!("{} reverted, {} failed", ok, fail));
                     affected_folders.extend(artists);
                     if ok > 0 {
                         had_file_writes = true;
@@ -106,19 +110,17 @@ async fn main() {
                 }
                 Err(e) => {
                     error_log::log_error(&e.to_string());
-                    eprintln!("  {}: {}", "ERROR".red(), e);
+                    reporter.nested().warn(&e.to_string());
                 }
             }
         }
         if args.missing {
-            println!("{}", "↩ Reverting missing metadata fixes...".cyan().bold());
-            match revert::revert(&pool, &music_dir, "missing", args.mode).await {
+            reporter.step("Reverting missing metadata fixes...");
+            match revert::revert(&pool, &music_dir, "missing", args.mode, &reporter).await {
                 Ok((ok, fail, artists)) => {
-                    println!(
-                        "  {} reverted, {} failed",
-                        ok.to_string().green(),
-                        fail.to_string().red()
-                    );
+                    reporter
+                        .nested()
+                        .ok(&format!("{} reverted, {} failed", ok, fail));
                     affected_folders.extend(artists);
                     if ok > 0 {
                         had_file_writes = true;
@@ -126,27 +128,21 @@ async fn main() {
                 }
                 Err(e) => {
                     error_log::log_error(&e.to_string());
-                    eprintln!("  {}: {}", "ERROR".red(), e);
+                    reporter.nested().warn(&e.to_string());
                 }
             }
         }
         if args.orphans || args.duplicates {
-            error_log::log_warn("Revert not supported for orphans or duplicates.");
-            eprintln!(
-                "{}",
-                "Revert not supported for orphans or duplicates.".yellow()
-            );
+            reporter.warn("Revert not supported for orphans or duplicates.");
         }
     } else {
         if args.corrupted {
-            println!("{}", "→ Fixing corrupted TPE2 issues...".cyan().bold());
-            match corrupted::fix(&pool, &music_dir, args.dry_run).await {
+            reporter.step("Fixing corrupted TPE2 issues...");
+            match corrupted::fix(&pool, &music_dir, args.dry_run, &reporter).await {
                 Ok((ok, fail, artists)) => {
-                    println!(
-                        "  {} resolved, {} failed",
-                        ok.to_string().green(),
-                        fail.to_string().red()
-                    );
+                    reporter
+                        .nested()
+                        .ok(&format!("{} resolved, {} failed", ok, fail));
                     affected_folders.extend(artists);
                     if ok > 0 {
                         had_file_writes = true;
@@ -154,35 +150,31 @@ async fn main() {
                 }
                 Err(e) => {
                     error_log::log_error(&e.to_string());
-                    eprintln!("  {}: {}", "ERROR".red(), e);
+                    reporter.nested().warn(&e.to_string());
                 }
             }
         }
 
         if args.orphans {
-            println!("{}", "→ Fixing orphan artist issues...".cyan().bold());
-            match orphans::fix(&pool, &config, args.dry_run).await {
-                Ok((ok, fail)) => println!(
-                    "  {} resolved, {} failed",
-                    ok.to_string().green(),
-                    fail.to_string().red()
-                ),
+            reporter.step("Fixing orphan artist issues...");
+            match orphans::fix(&pool, &config, args.dry_run, &reporter).await {
+                Ok((ok, fail)) => reporter
+                    .nested()
+                    .ok(&format!("{} resolved, {} failed", ok, fail)),
                 Err(e) => {
                     error_log::log_error(&e.to_string());
-                    eprintln!("  {}: {}", "ERROR".red(), e);
+                    reporter.nested().warn(&e.to_string());
                 }
             }
         }
 
         if args.duplicates {
-            println!("{}", "→ Fixing duplicate artist issues...".cyan().bold());
-            match duplicates::fix(&pool, &config, &music_dir, args.dry_run).await {
+            reporter.step("Fixing duplicate artist issues...");
+            match duplicates::fix(&pool, &config, &music_dir, args.dry_run, &reporter).await {
                 Ok((ok, fail, artists)) => {
-                    println!(
-                        "  {} resolved, {} failed",
-                        ok.to_string().green(),
-                        fail.to_string().red()
-                    );
+                    reporter
+                        .nested()
+                        .ok(&format!("{} resolved, {} failed", ok, fail));
                     affected_folders.extend(artists);
                     if ok > 0 {
                         had_file_writes = true;
@@ -190,20 +182,18 @@ async fn main() {
                 }
                 Err(e) => {
                     error_log::log_error(&e.to_string());
-                    eprintln!("  {}: {}", "ERROR".red(), e);
+                    reporter.nested().warn(&e.to_string());
                 }
             }
         }
 
         if args.missing {
-            println!("{}", "→ Fixing missing metadata issues...".cyan().bold());
-            match missing::fix(&pool, &music_dir, args.dry_run).await {
+            reporter.step("Fixing missing metadata issues...");
+            match missing::fix(&pool, &music_dir, args.dry_run, &reporter).await {
                 Ok((ok, fail, artists)) => {
-                    println!(
-                        "  {} resolved, {} failed",
-                        ok.to_string().green(),
-                        fail.to_string().red()
-                    );
+                    reporter
+                        .nested()
+                        .ok(&format!("{} resolved, {} failed", ok, fail));
                     affected_folders.extend(artists);
                     if ok > 0 {
                         had_file_writes = true;
@@ -211,7 +201,7 @@ async fn main() {
                 }
                 Err(e) => {
                     error_log::log_error(&e.to_string());
-                    eprintln!("  {}: {}", "ERROR".red(), e);
+                    reporter.nested().warn(&e.to_string());
                 }
             }
         }
@@ -223,8 +213,9 @@ async fn main() {
 
     if had_file_writes && !affected_folders.is_empty() {
         let folders = affected_folders.into_iter().collect::<Vec<_>>().join(";");
-        println!("\n{}", "→ Re-indexing affected folders...".cyan().bold());
-        println!("  Folders: {}", folders);
+        reporter.blank();
+        reporter.step("Re-indexing affected folders...");
+        reporter.nested().kv("Folders", &folders);
 
         let exe = std::env::current_exe()
             .ok()
@@ -237,21 +228,19 @@ async fn main() {
             .status();
 
         match status {
-            Ok(s) if s.success() => println!("  {}", "Re-index complete.".green()),
+            Ok(s) if s.success() => reporter.nested().ok("Re-index complete."),
             Ok(s) => {
-                error_log::log_warn(&format!(
-                    "index exited with code {}",
-                    s.code().unwrap_or(-1)
-                ));
-                eprintln!(
-                    "  {} index exited with code {}",
-                    "⚠".yellow(),
-                    s.code().unwrap_or(-1)
-                );
+                let code = s.code().unwrap_or(-1);
+                error_log::log_warn(&format!("index exited with code {}", code));
+                reporter
+                    .nested()
+                    .warn(&format!("index exited with code {}", code));
             }
             Err(e) => {
                 error_log::log_error(&format!("Failed to run index: {}", e));
-                eprintln!("  {} Failed to run index: {}", "✗".red(), e);
+                reporter
+                    .nested()
+                    .warn(&format!("Failed to run index: {}", e));
             }
         }
     }
@@ -259,11 +248,11 @@ async fn main() {
     if !args.dry_run {
         if let Err(e) = common::statistics::update_statistics(&pool).await {
             error_log::log_warn(&format!("failed to update statistics: {}", e));
-            eprintln!("Warning: failed to update statistics: {}", e);
+            reporter.warn(&format!("failed to update statistics: {}", e));
         }
     }
 
-    println!("{}", "Done.".green().bold());
+    reporter.done("Done.");
 }
 
 pub fn folder_from_path(file_path: &str) -> Option<String> {

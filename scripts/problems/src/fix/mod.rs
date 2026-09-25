@@ -15,7 +15,7 @@ mod years;
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use colored::*;
+use common::progress::Reporter;
 
 use crate::checks::{self, ReasonCode};
 use crate::fixed::{self, FixOutcome};
@@ -112,6 +112,7 @@ pub fn run_fix(
     threads: usize,
     panic_strategy: &'static str,
     dry_run: bool,
+    reporter: &Reporter,
 ) {
     let paths = Paths::in_dir(work_dir);
 
@@ -121,60 +122,49 @@ pub fn run_fix(
     // `--report-only` already relies on), so a hand-deleted `problems.xlsx` alone does not block a
     // fix; only a missing spool does.
     if !paths.spool.exists() {
-        eprintln!(
-            "{}",
-            format!(
-                "No scan found at {} - run ./problems --audit first.",
-                paths.spool.display()
-            )
-            .bright_red()
-        );
+        reporter.failed(&format!(
+            "No scan found at {} - run ./problems --audit first.",
+            paths.spool.display()
+        ));
         std::process::exit(2);
     }
 
     let list = match worklist(&paths.spool, kind.codes()) {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("{}", e.bright_red());
+            reporter.failed(&e);
             std::process::exit(1);
         }
     };
     if list.is_empty() {
-        println!(
-            "{}",
-            format!("No {} rows in the spool.", kind.name()).green()
-        );
+        reporter.done(&format!("No {} rows in the spool.", kind.name()));
         return;
     }
 
     let total_files: usize = list.values().map(|v| v.len()).sum();
-    println!(
-        "{}",
-        format!(
-            "{} release folder(s), {} file(s) to process{}",
-            list.len(),
-            total_files,
-            if dry_run {
-                " (dry run - no writes)"
-            } else {
-                ""
-            }
-        )
-        .bright_cyan()
-    );
+    reporter.info(&format!(
+        "{} release folder(s), {} file(s) to process{}",
+        list.len(),
+        total_files,
+        if dry_run {
+            " (dry run - no writes)"
+        } else {
+            ""
+        }
+    ));
 
     let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
     let result = rt.block_on(async {
         match kind {
-            FixKind::Year => years::run(root, &list, dry_run).await,
+            FixKind::Year => years::run(root, &list, dry_run, reporter).await,
             FixKind::Artist => {
-                let missing = artist_missing::run(root, &list, dry_run).await?;
-                let normalized = text_normalize::run(root, &list, dry_run).await?;
+                let missing = artist_missing::run(root, &list, dry_run, reporter).await?;
+                let normalized = text_normalize::run(root, &list, dry_run, reporter).await?;
                 Ok(merge(missing, normalized))
             }
             FixKind::AlbumArtist => {
-                let missing = albumartist_missing::run(root, &list, dry_run).await?;
-                let normalized = text_normalize::run(root, &list, dry_run).await?;
+                let missing = albumartist_missing::run(root, &list, dry_run, reporter).await?;
+                let normalized = text_normalize::run(root, &list, dry_run, reporter).await?;
                 Ok(merge(missing, normalized))
             }
         }
@@ -182,59 +172,51 @@ pub fn run_fix(
     let result = match result {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("{}", e.bright_red());
+            reporter.failed(&e);
             std::process::exit(1);
         }
     };
 
     if !result.errors.is_empty() {
-        println!();
-        println!(
-            "{}",
-            format!("{} file(s) left untouched:", result.errors.len()).yellow()
-        );
+        reporter.warn(&format!("{} file(s) left untouched:", result.errors.len()));
         for e in &result.errors {
-            println!(
-                "  {} {}/{}: {}",
-                "!".bright_red(),
-                e.path,
-                e.file,
-                e.message
-            );
+            reporter
+                .nested()
+                .warn(&format!("{}/{}: {}", e.path, e.file, e.message));
         }
     }
 
-    println!();
-    println!(
-        "{}",
-        format!(
-            "{} resolved ({} set, {} cleared), {} error(s)",
-            result.outcomes.len(),
-            result.outcomes.iter().filter(|o| o.action == "set").count(),
-            result
-                .outcomes
-                .iter()
-                .filter(|o| o.action == "cleared")
-                .count(),
-            result.errors.len(),
-        )
-        .bold()
-    );
+    reporter.info(&format!(
+        "{} resolved ({} set, {} cleared), {} error(s)",
+        result.outcomes.len(),
+        result.outcomes.iter().filter(|o| o.action == "set").count(),
+        result
+            .outcomes
+            .iter()
+            .filter(|o| o.action == "cleared")
+            .count(),
+        result.errors.len(),
+    ));
 
     if dry_run {
-        println!(
-            "{}",
-            "Dry run - nothing written, no ledger update, no report regenerated.".bright_black()
-        );
+        reporter.done("Dry run - nothing written, no ledger update, no report regenerated.");
         return;
     }
 
     if let Err(e) = fixed::append(&paths.fixed, &result.outcomes) {
-        eprintln!("{}", format!("Cannot write fixed ledger: {e}").bright_red());
+        reporter.failed(&format!("Cannot write fixed ledger: {e}"));
         std::process::exit(1);
     }
 
     // Regenerate problems.xlsx from the spool + updated ledger - green rows and the Summary sheet's
     // Fixed column now reflect this run, via the same path --report-only uses.
-    crate::regenerate_report(&paths, output, root, filters, threads, panic_strategy);
+    crate::regenerate_report(
+        &paths,
+        output,
+        root,
+        filters,
+        threads,
+        panic_strategy,
+        reporter,
+    );
 }

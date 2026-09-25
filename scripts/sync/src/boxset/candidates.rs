@@ -75,13 +75,11 @@ fn build_candidate(release_id: &str, media: &Option<Vec<MbMedia>>) -> Option<Box
     })
 }
 
-/// A MusicBrainz lookup that failed: logged, not swallowed. `reporter.sub_step` alone put this in a
-/// run log nobody keeps, so a 503 during a six-hour pass was indistinguishable in the summary from a
-/// group that genuinely has no box release (docs/specs/spec_tidy_observations.md).
+/// A MusicBrainz lookup that failed: a real warning (stderr + `errors.log`), not swallowed into a
+/// plain progress line a run log nobody keeps - a 503 during a six-hour pass was indistinguishable in
+/// the summary from a group that genuinely has no box release (docs/specs/spec_tidy_observations.md).
 fn note_fetch_error(reporter: &Reporter, what: &str, err: &str) {
-    let msg = format!("box candidate lookup failed ({what}): {err}");
-    reporter.sub_step(&format!("  -> {msg}"));
-    common::error_log::log_warn(&msg);
+    reporter.warn(&format!("box candidate lookup failed ({what}): {err}"));
 }
 
 /// Tier (a): the siblings' own majority embedded MB release ids, looked up directly. Catches a box
@@ -94,12 +92,12 @@ pub(crate) async fn candidates_from_embedded_ids(
 ) -> CandidateFetch {
     let mut out = CandidateFetch::default();
     for id in ids {
-        reporter.sub_step(&format!("tier (a): looking up embedded id {id}..."));
+        reporter.step(&format!("tier (a): looking up embedded id {id}..."));
         match mb_api::mb_get_release_by_id(http_client, id, limiter).await {
             Ok(by_id) => match build_candidate(&by_id.release.id, &by_id.release.media) {
                 Some(candidate) => {
-                    reporter.sub_step(&format!(
-                        "  -> \"{}\", {} disc(s)",
+                    reporter.nested().step(&format!(
+                        "\"{}\", {} disc(s)",
                         by_id.release.title,
                         candidate.media.len()
                     ));
@@ -113,8 +111,8 @@ pub(crate) async fn candidates_from_embedded_ids(
                         },
                     });
                 }
-                None => reporter.sub_step(&format!(
-                    "  -> \"{}\" has only 1 medium, not a box",
+                None => reporter.nested().step(&format!(
+                    "\"{}\" has only 1 medium, not a box",
                     by_id.release.title
                 )),
             },
@@ -137,7 +135,7 @@ pub(crate) async fn candidates_from_search(
     reporter: &Reporter,
 ) -> CandidateFetch {
     let mut out = CandidateFetch::default();
-    reporter.sub_step(&format!(
+    reporter.step(&format!(
         "tier (b): searching MusicBrainz for \"{title}\" by {artist_name}..."
     ));
     let hits =
@@ -149,12 +147,14 @@ pub(crate) async fn candidates_from_search(
                 return out;
             }
         };
-    reporter.sub_step(&format!("  -> {} release group(s) found", hits.len()));
+    reporter
+        .nested()
+        .step(&format!("{} release group(s) found", hits.len()));
     for rg in hits {
         if !common::mb::allowlist::is_allowed(rg.primary_type.as_deref(), &rg.secondary_types, None)
         {
-            reporter.sub_step(&format!(
-                "  -> \"{}\" rejected by the allow-list ({:?}, {:?})",
+            reporter.nested().step(&format!(
+                "\"{}\" rejected by the allow-list ({:?}, {:?})",
                 rg.title, rg.primary_type, rg.secondary_types
             ));
             continue;
@@ -201,15 +201,17 @@ pub(crate) async fn candidates_from_release_group(
             return out;
         }
     };
-    reporter.sub_step(&format!("  -> {} edition(s) to check", editions.len()));
+    reporter
+        .nested()
+        .step(&format!("{} edition(s) to check", editions.len()));
     for (release, _flattened) in editions {
         if exclude.contains(&release.id) {
             continue;
         }
         match build_candidate(&release.id, &release.media) {
             Some(candidate) => {
-                reporter.sub_step(&format!(
-                    "     \"{}\" ({}), {} disc(s)",
+                reporter.nested().nested().step(&format!(
+                    "\"{}\" ({}), {} disc(s)",
                     release.title,
                     release.id,
                     candidate.media.len()
@@ -224,8 +226,8 @@ pub(crate) async fn candidates_from_release_group(
                     },
                 });
             }
-            None => reporter.sub_step(&format!(
-                "     \"{}\" has only 1 medium, not a box",
+            None => reporter.nested().nested().step(&format!(
+                "\"{}\" has only 1 medium, not a box",
                 release.title
             )),
         }

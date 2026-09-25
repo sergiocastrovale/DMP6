@@ -4,8 +4,7 @@ use std::collections::{HashMap, HashSet};
 use crate::box_editions;
 use crate::db::*;
 use crate::mb_api::RateLimiter;
-use colored::Colorize;
-use common::progress::Reporter;
+use common::progress::{paint, Reporter};
 use reqwest::Client;
 use sqlx::PgPool;
 
@@ -176,16 +175,19 @@ pub async fn run_repair(
         if group.rows.len() < 2 {
             continue;
         }
-        reporter.item("Group", &group.parent, idx + 1, total);
-        reporter.sub_step(&format!("{} sibling folder(s):", group.rows.len()));
+        reporter.item(&format!("Group {}", group.parent), idx + 1, total);
+        reporter
+            .nested()
+            .step(&format!("{} sibling folder(s):", group.rows.len()));
         for r in &group.rows {
-            reporter.sub_step(&format!(
-                "  [{}] embedded id: {}",
+            reporter.nested().nested().step(&format!(
+                "[{}] embedded id: {}",
                 r.folder_path,
                 r.unanimous_mb_release_id.as_deref().unwrap_or("(none)")
             ));
         }
 
+        let group_reporter = reporter.nested();
         let mut siblings: Vec<BoxSibling> = Vec::with_capacity(group.rows.len());
         let mut read_failed = false;
         for row in &group.rows {
@@ -196,8 +198,7 @@ pub async fn run_repair(
                     tracks,
                 }),
                 Err(e) => {
-                    let msg = format!("box group [{}]: reading tracks failed: {}", group.parent, e);
-                    reporter.warn(&msg);
+                    group_reporter.warn(&format!("reading tracks failed: {e}"));
                     summary.groups_failed += 1;
                     read_failed = true;
                     break;
@@ -211,7 +212,7 @@ pub async fn run_repair(
         let local_ids: Vec<String> = group.rows.iter().map(|r| r.local_id.clone()).collect();
         let Some((artist_id, artist_name)) = artist_for_group(pool, &local_ids).await else {
             summary.groups_skipped_no_artist += 1;
-            reporter.skip("no artist link found for this group - skipped");
+            group_reporter.skip("no artist link found for this group - skipped");
             continue;
         };
 
@@ -231,7 +232,7 @@ pub async fn run_repair(
         if all_placed || group.nested {
             fetched.candidates = candidates_from_db(pool, &embedded_ids).await;
             if !fetched.candidates.is_empty() {
-                reporter.sub_step(&format!(
+                group_reporter.step(&format!(
                     "tier (d): {} candidate(s) rebuilt from the database, no MusicBrainz call",
                     fetched.candidates.len()
                 ));
@@ -240,12 +241,14 @@ pub async fn run_repair(
         }
         if fetched.candidates.is_empty() {
             fetched =
-                candidates_from_embedded_ids(http_client, limiter, &embedded_ids, reporter).await;
+                candidates_from_embedded_ids(http_client, limiter, &embedded_ids, &group_reporter)
+                    .await;
         }
         if fetched.candidates.is_empty() {
             let title = guess_box_title(&group.parent);
             let searched =
-                candidates_from_search(http_client, limiter, &title, &artist_name, reporter).await;
+                candidates_from_search(http_client, limiter, &title, &artist_name, &group_reporter)
+                    .await;
             fetched.errors += searched.errors;
             fetched.candidates = searched.candidates;
         }
@@ -256,10 +259,10 @@ pub async fn run_repair(
                 // the next run asks again instead of never revisiting the group.
                 summary.candidate_fetch_errors += fetched.errors;
                 summary.artists_with_fetch_errors.insert(artist_id.clone());
-                reporter.skip("no candidate found - MusicBrainz lookups failed, will retry");
+                group_reporter.skip("no candidate found - MusicBrainz lookups failed, will retry");
             } else {
                 summary.groups_no_candidate += 1;
-                reporter.skip("no multi-medium candidate found");
+                group_reporter.skip("no multi-medium candidate found");
             }
             continue;
         }
@@ -295,7 +298,7 @@ pub async fn run_repair(
                 } = &f.source
                 {
                     if rg_seen.insert(rg_id.clone()) {
-                        reporter.sub_step(&format!(
+                        group_reporter.step(&format!(
                             "tier (c): trying other editions of release group {rg_id}..."
                         ));
                         let more = candidates_from_release_group(
@@ -304,7 +307,7 @@ pub async fn run_repair(
                             rg_id,
                             primary_type.as_deref(),
                             &already_tried,
-                            reporter,
+                            &group_reporter,
                         )
                         .await;
                         fetched.errors += more.errors;
@@ -322,7 +325,7 @@ pub async fn run_repair(
                 }
             }
             if plan.is_none() {
-                report_refusals(&mut summary, reporter, &refusals);
+                report_refusals(&mut summary, &group_reporter, &refusals);
                 if fetched.errors > 0 {
                     summary.candidate_fetch_errors += fetched.errors;
                     summary.artists_with_fetch_errors.insert(artist_id.clone());
@@ -332,13 +335,12 @@ pub async fn run_repair(
         }
 
         let Some((fetched_candidate, plan)) = plan else {
-            report_refusals(&mut summary, reporter, &refusals);
+            report_refusals(&mut summary, &group_reporter, &refusals);
             continue;
         };
 
-        reporter.info(&format!(
-            "{} {} -> {} ({} sibling(s) matched, {}/{} discs owned)",
-            "▸".cyan(),
+        group_reporter.step(&format!(
+            "{} -> {} ({} sibling(s) matched, {}/{} discs owned)",
             plan.release_id,
             plan.folder_path,
             plan.members.len(),
@@ -348,11 +350,13 @@ pub async fn run_repair(
         for s in &siblings {
             let owned = plan.members.iter().any(|(id, _)| id == &s.local_id);
             let mark = if owned {
-                "OWN  ".green().bold()
+                paint::good("OWN")
             } else {
-                "skip ".yellow()
+                paint::dim("skip")
             };
-            reporter.info(&format!("    {} {} [{}]", mark, s.local_id, s.folder_path));
+            group_reporter
+                .nested()
+                .info(&format!("{mark} {} [{}]", s.local_id, s.folder_path));
         }
 
         let mb_db_id = match &fetched_candidate.source {
@@ -360,8 +364,7 @@ pub async fn run_repair(
             // anyway so the outcome is identical to the fetched path.
             CandidateSource::Stored { mb_db_id } => {
                 if let Err(e) = relink_stored_tracks(pool, mb_db_id, &plan).await {
-                    let msg = format!("box group [{}]: relinking failed: {}", plan.folder_path, e);
-                    reporter.warn(&msg);
+                    group_reporter.warn(&format!("relinking failed: {e}"));
                     summary.groups_failed += 1;
                     continue;
                 }
@@ -388,9 +391,7 @@ pub async fn run_repair(
                 {
                     Ok(id) => id,
                     Err(e) => {
-                        let msg =
-                            format!("box group [{}]: binding failed: {}", plan.folder_path, e);
-                        reporter.warn(&msg);
+                        group_reporter.warn(&format!("binding failed: {e}"));
                         summary.groups_failed += 1;
                         continue;
                     }
@@ -407,21 +408,19 @@ pub async fn run_repair(
         return Ok(summary);
     }
 
-    reporter.blank();
-    reporter.header("Deriving box-set equivalences");
-    box_editions::run_link_box_editions(pool, reporter).await?;
+    reporter.section("Deriving box-set equivalences");
+    box_editions::run_link_box_editions(pool, &reporter.nested()).await?;
 
-    reporter.blank();
-    reporter.header("Fold vs dissolve");
+    reporter.section("Fold vs dissolve");
     for (plan, mb_db_id) in &bound {
+        let plan_reporter = reporter.nested();
         let equivalents = match count_equivalents(pool, mb_db_id).await {
             Ok(n) => n,
             Err(e) => {
-                let msg = format!(
-                    "box group [{}]: counting equivalents failed: {}",
+                plan_reporter.warn(&format!(
+                    "{}: counting equivalents failed: {}",
                     plan.folder_path, e
-                );
-                reporter.warn(&msg);
+                ));
                 summary.groups_failed += 1;
                 continue;
             }
@@ -443,7 +442,7 @@ pub async fn run_repair(
         match outcome {
             Ok("key-taken") => {
                 summary.groups_key_taken += 1;
-                reporter.skip(&format!(
+                plan_reporter.skip(&format!(
                     "{}: box root folder is already its own release - left as is",
                     plan.folder_path
                 ));
@@ -454,20 +453,16 @@ pub async fn run_repair(
                 } else {
                     summary.groups_dissolved += 1;
                 }
-                reporter.info(&format!(
-                    "{} {} -> {} ({} equivalent medium/media)",
-                    "▸".cyan(),
-                    plan.folder_path,
-                    label,
-                    equivalents
+                plan_reporter.ok(&format!(
+                    "{} -> {} ({} equivalent medium/media)",
+                    plan.folder_path, label, equivalents
                 ));
             }
             Err(e) => {
-                let msg = format!(
-                    "box group [{}]: fold/dissolve failed: {}",
+                plan_reporter.warn(&format!(
+                    "{}: fold/dissolve failed: {}",
                     plan.folder_path, e
-                );
-                reporter.warn(&msg);
+                ));
                 summary.groups_failed += 1;
             }
         }

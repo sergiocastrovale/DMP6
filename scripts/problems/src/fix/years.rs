@@ -13,7 +13,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use colored::*;
+use common::progress::Reporter;
 use lofty::tag::ItemKey;
 use reqwest::Client;
 
@@ -59,6 +59,7 @@ pub async fn run(
     root: &Path,
     worklist: &BTreeMap<String, Vec<String>>,
     dry_run: bool,
+    reporter: &Reporter,
 ) -> Result<FixRunResult, String> {
     let current_year: i32 = chrono::Local::now()
         .format("%Y")
@@ -105,11 +106,11 @@ pub async fn run(
         };
         let mb_call_error: Option<&String> = year_result.as_ref().err();
         if let Err(e) = &year_result {
-            eprintln!("  {} {}", "!".bright_red(), e);
+            reporter.warn(e);
         } else {
             match resolved_year {
-                Some(y) => println!("  {} {} -> {}", "✓".green(), rel_path, y),
-                None => println!("  {} {} -> null (no perfect match)", "-".yellow(), rel_path),
+                Some(y) => reporter.ok(&format!("{} -> {}", rel_path, y)),
+                None => reporter.skip(&format!("{} -> null (no perfect match)", rel_path)),
             }
         }
 

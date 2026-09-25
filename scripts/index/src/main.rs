@@ -289,15 +289,16 @@ async fn run_artist_resolution(
                     )
                 })
                 .collect();
-            println!(
-                "  {}  ->  {}  [{}]",
+            reporter.nested().info(&format!(
+                "{}  ->  {}  [{}]",
                 decision.name,
                 parts.join(" + "),
                 decision.source.as_str()
-            );
+            ));
         }
-        println!();
-        println!("  (a trailing ? marks an unverified name - kept as an artist only when it owns a release)");
+        reporter.info(
+            "(a trailing ? marks an unverified name - kept as an artist only when it owns a release)",
+        );
     }
 
     let s = &resolver.stats;
@@ -372,32 +373,27 @@ async fn run_canonicalize(
         };
 
     if dry_run {
+        let r = reporter.nested();
         for name in &report.mbids_cleared {
-            println!("  clear mbid  {}", name);
+            r.info(&format!("clear mbid  {}", name));
         }
-        for r in &report.renames {
-            println!(
-                "  rename      {}  ->  {}{}",
-                r.from,
-                r.to,
-                if r.slug_changes {
+        for rn in &report.renames {
+            r.info(&format!(
+                "rename      {}  ->  {}{}",
+                rn.from,
+                rn.to,
+                if rn.slug_changes {
                     "  (slug changes)"
                 } else {
                     ""
                 }
-            );
+            ));
         }
         for c in &report.connections {
-            println!(
-                "  connect     {}  ->  {}  [{}]",
+            r.info(&format!(
+                "connect     {}  ->  {}  [{}]",
                 c.duplicate, c.primary, c.mbid
-            );
-        }
-        if !report.mbids_cleared.is_empty()
-            || !report.renames.is_empty()
-            || !report.connections.is_empty()
-        {
-            println!();
+            ));
         }
     }
 
@@ -429,7 +425,9 @@ async fn main() {
     }
     common::error_log::init("index");
     if args.delete {
-        eprintln!("--delete was removed: use ./delete \"Artist\" or ./nuke --only \"Artist\"");
+        common::progress::early_err(
+            "--delete was removed: use ./delete \"Artist\" or ./nuke --only \"Artist\"",
+        );
         std::process::exit(2);
     }
     let reporter = Reporter::new(args.web);
@@ -447,7 +445,7 @@ async fn main() {
         common::error_log::log_error(
             "--release cannot be combined with --from, --to, --only, or --folders",
         );
-        eprintln!("Error: --release cannot be combined with --from, --to, --only, or --folders");
+        reporter.failed("--release cannot be combined with --from, --to, --only, or --folders");
         std::process::exit(1);
     }
 
@@ -466,10 +464,10 @@ async fn main() {
                     "release '{}' not found or has no folderPath",
                     release_id
                 ));
-                eprintln!(
-                    "Error: release '{}' not found or has no folderPath",
+                reporter.failed(&format!(
+                    "release '{}' not found or has no folderPath",
                     release_id
-                );
+                ));
                 std::process::exit(1);
             }
         }
@@ -1078,21 +1076,15 @@ async fn main() {
     let m = (elapsed.as_secs() % 3600) / 60;
     let s = elapsed.as_secs() % 60;
 
-    reporter.blank();
-    reporter.info(&"═".repeat(60).to_string());
-    reporter.blank();
-    reporter.done(&format!("Done. ({}h:{:02}m:{:02}s)", h, m, s));
+    reporter.section("Summary");
+    reporter.kv("Files", &total_files.to_string());
     if new_total > 0 || updated_total > 0 {
-        reporter.info(&format!(
-            "  Files: {} | New: {} | Updated: {} | Skipped: {} | Errors: {}",
-            total_files, new_total, updated_total, skipped_total, error_total
-        ));
-    } else {
-        let mut parts = vec![format!("{} up to date", skipped_total)];
-        if error_total > 0 {
-            parts.push(format!("{} errors", error_total));
-        }
-        reporter.info(&format!("  {}", parts.join(" | ")));
+        reporter.kv("New", &new_total.to_string());
+        reporter.kv("Updated", &updated_total.to_string());
+    }
+    reporter.kv("Skipped", &skipped_total.to_string());
+    if error_total > 0 {
+        reporter.kv("Errors", &error_total.to_string());
     }
 
     if favorites_dropped_total > 0 || playlists_dropped_total > 0 {
@@ -1105,7 +1097,7 @@ async fn main() {
     if !consensus_reason_totals.is_empty() || consensus_cleared_total > 0 {
         let total_unknown: u64 = consensus_reason_totals.values().sum();
         reporter.info(&format!(
-            "  Consensus: {} release(s) parked UNKNOWN, {} cleared back to UNMATCHED",
+            "Consensus: {} release(s) parked UNKNOWN, {} cleared back to UNMATCHED",
             total_unknown, consensus_cleared_total
         ));
     }
@@ -1153,4 +1145,8 @@ async fn main() {
     }
     update_statistics(&pool).await.ok();
     release_lock(&pool, "index", std::process::id()).await;
+
+    // Last line, on purpose - the web app's auto-scan reads a run's final log line as its summary
+    // (`web/server/utils/autoScan.ts`), so nothing may print after this.
+    reporter.done(&format!("Done ({}h:{:02}m:{:02}s)", h, m, s));
 }

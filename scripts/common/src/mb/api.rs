@@ -534,14 +534,14 @@ pub async fn mb_get(
                             attempt + 1,
                             max_attempts - 1
                         ));
-                        eprintln!(
-                            "      ⚠ HTTP {} (rate-limit) - waiting {:.1}s before next attempt ({}/{}) [delay_ms={}]",
+                        crate::progress::early_warn(&format!(
+                            "HTTP {} (rate-limit) - waiting {:.1}s before next attempt ({}/{}) [delay_ms={}]",
                             status,
                             wait_time as f64 / 1000.0,
                             attempt + 1,
                             max_attempts - 1,
                             limiter.inner.state.lock().await.delay_ms,
-                        );
+                        ));
                         sleep(Duration::from_millis(wait_time)).await;
                     }
                 }

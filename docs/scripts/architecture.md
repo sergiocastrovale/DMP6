@@ -107,6 +107,74 @@ exits 0 regardless of the piped command's exit code.
 failure). Signals "this mbid/slug/folder already exists" so a caller (the web `/add` UI) can render
 that case specifically instead of a generic error. See `docs/scripts/add.md`.
 
+## Output style
+
+Every binary reports through `common::progress::Reporter` — one visual grammar, identical in console
+and `--web` mode, so the web terminal panel and a local shell show the same thing. No binary prints
+directly; `scripts/check` enforces this (see below).
+
+```
+DMP Sync                                   <- header: bold bright-cyan title + a "═" rule
+════════
+  Mode          : catalogue-gaps           <- kv: key padded to 14, depth ≥ 1
+  Filter        : only 'Radiohead'
+
+[1/3] Radiohead                            <- item: bright-black counter + bold name, depth 0
+  → Fetching release groups                <- step, depth 1
+    ✓ 14 found                             <- ok, one level under the step it answers
+    ↷ Kid A (no confident match)           <- skip
+  ! lookup failed: 503                     <- warn — stderr + errors.log
+  ✗ DB write failed                        <- err  — stderr + errors.log
+
+Box sets                                   <- section: a named block within the run
+────────                                   <- lighter "─" rule, so it reads as a subsection of header
+...
+✓ Done (0h:00m:42s)                        <- done / failed: always the run's LAST line
+```
+
+Indentation is 2 spaces per `Reporter::nested()` level; `header`/`section`/`item`/`done`/`failed`
+always sit at column 0 regardless of the reporter's own depth — they're structural, not nested content.
+`--web` changes exactly one thing: `PROGRESS:{json}` lines are additionally emitted (`index_progress`/
+`sync_progress`/`tidy_progress`, a schema contract with `web/helpers/functions.ts` — see Guardrails).
+
+**Concurrent binaries prefix every line.** `sync` (per-artist `buffer_unordered` workers) and
+`artist-photos` (background image `JoinSet`) call `reporter.for_artist(name)` to get a reporter that
+stamps `[name] ` before the indentation on every line it emits, at any depth — including its own
+`item` line. Without this, several workers' interleaved output is indistinguishable:
+
+```
+[Muse] [1/2] Muse
+[Radiohead] [2/2] Radiohead
+[Muse]   → Searching MusicBrainz...
+[Radiohead]   → Searching MusicBrainz...
+```
+
+A sequential binary (`index`, `tidy`, `audit`, ...) never needs this — its own `item` line already
+says which folder/artist is current, since nothing else can be interleaved with it.
+
+**A few methods exist for cases a plain line can't cover:**
+- `Reporter::transient`/`clear_transient` — an in-place `\r`-updated progress line, console-only (a
+  no-op under `--web`, since ANSI control codes have no meaning in the web terminal's line-oriented
+  stream). Used by `problems`' rayon-parallel scan progress and a couple of tight per-file loops.
+- `Reporter::prompt` — an inline `Type y to confirm:` before reading stdin (`delete`, `nuke`): the one
+  legitimate case of output that isn't a whole line, so it's a method here rather than an exception to
+  the "everything routes through Reporter" rule.
+- `common::progress::early_warn`/`early_err` — the handful of places that run before a `Reporter`
+  exists yet (`common::lock`/`app`/`config`/`db`, one MusicBrainz client retry message): same glyphs,
+  column 0, no prefix/depth.
+- `common::progress::protocol_line` — bypasses every style rule for a machine-readable line that must
+  stay byte-exact for its outside reader: `mosaic`'s `PROGRESS:{json}`/`DONE:{json}`, read by
+  `web/server/api/labs/mosaic/generate.post.ts`.
+- `common::progress::paint` — inline emphasis (`accent`/`good`/`bad`/`dim`/`strong`) for building a
+  *piece* of a message string handed to a normal `Reporter` call; never a whole line by itself.
+
+**Enforcement**: `scripts/check` greps every tracked `.rs` file for `println!`/`eprintln!`/`print!`/
+`eprint!`, `io::stdout()`/`io::stderr()` writes, and `colored`/`use colored` — outside
+`common/src/progress.rs` (the one file allowed to touch raw stdio/`colored` directly, since it's what
+everything else routes through) and test-only code (anything under a `tests/` directory, a file named
+`tests.rs`, or a trailing `mod tests { ... }` block — this codebase's convention keeps that block at
+the end of the file, so a stray `println!` earlier in the same file still fails the gate).
+
 ## Error-propagation policy
 
 A DB/IO read whose result feeds a delete, write, or stamp must propagate its error, not swallow it —

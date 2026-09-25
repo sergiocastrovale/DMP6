@@ -146,24 +146,28 @@ async fn fetch_and_store(
     (candidate.name, result)
 }
 
+/// Scopes its own `[name]` prefix rather than trusting the caller's - results arrive out of the
+/// `JoinSet` in completion order, not the order candidates were queued, so by the time one lands a
+/// different candidate's "Fetching MB detail" step may already be on screen.
 fn report_result(
     reporter: &Reporter,
     name: &str,
     result: &Result<bool, String>,
     counts: &mut Counts,
 ) {
+    let r = reporter.for_artist(name).nested();
     match result {
         Ok(true) => {
             counts.downloaded += 1;
-            reporter.sub_ok(&format!("Downloaded: {}", name));
+            r.ok("Downloaded");
         }
         Ok(false) => {
             counts.not_found += 1;
-            reporter.sub_step(&format!("Not found: {}", name));
+            r.skip("Not found");
         }
         Err(e) => {
             counts.not_found += 1;
-            reporter.sub_step(&format!("Error ({}): {}", name, e));
+            r.warn(&format!("Error: {e}"));
         }
     }
 }
@@ -177,14 +181,14 @@ async fn main() {
     let pool = create_pool_or_exit(&config.database_url, "artist-photos").await;
     apply_db_overrides(&mut config, &pool).await;
 
-    reporter.header(if args.dry_run {
-        "DMP Artist Photos (DRY RUN)"
-    } else {
-        "DMP Artist Photos"
-    });
+    reporter.header("DMP Artist Photos");
+    if args.dry_run {
+        reporter.kv("Mode", "dry run");
+    }
 
     let candidates = fetch_candidates(&pool, args.limit, args.id.as_deref()).await;
     reporter.kv("Candidates", &candidates.len().to_string());
+    reporter.blank();
 
     let s3_client = create_s3_client(&config).await;
     let http_client = Client::builder()
@@ -196,14 +200,19 @@ async fn main() {
     let mut counts = Counts::default();
     let mut image_tasks: JoinSet<(String, Result<bool, String>)> = JoinSet::new();
 
-    for candidate in candidates {
-        reporter.step(&format!("Fetching MB detail: {}", candidate.name));
+    let total = candidates.len();
+    for (idx, candidate) in candidates.into_iter().enumerate() {
+        // Every line about this candidate carries its `[name]` prefix - once the image download is
+        // queued below, its result lands out of order relative to whichever candidate is currently
+        // being looked up, same reasoning as `sync`'s concurrent per-artist workers.
+        let cr = reporter.for_artist(&candidate.name);
+        cr.item(&candidate.name, idx + 1, total);
         let detail = match mb_get_artist_detail(&http_client, &candidate.mb_id, &mut limiter).await
         {
             Ok(d) => d,
             Err(e) => {
                 counts.mb_errors += 1;
-                reporter.sub_step(&format!("MB detail error ({}): {}", candidate.name, e));
+                cr.nested().warn(&format!("MB detail error: {e}"));
                 continue;
             }
         };
@@ -219,15 +228,11 @@ async fn main() {
             if has_source {
                 counts.would_attempt += 1;
             }
-            reporter.sub_step(&format!(
-                "{} -> {}",
-                candidate.name,
-                if has_source {
-                    "candidate source found"
-                } else {
-                    "no source available"
-                }
-            ));
+            cr.nested().info(if has_source {
+                "candidate source found"
+            } else {
+                "no source available"
+            });
             continue;
         }
 

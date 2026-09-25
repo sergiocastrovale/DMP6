@@ -41,7 +41,7 @@ pub async fn create_pool_or_exit(database_url: &str, app_name: &str) -> PgPool {
     match create_pool(database_url, app_name).await {
         Ok(pool) => pool,
         Err(e) => {
-            eprintln!("Cannot connect to database: {e}");
+            crate::progress::early_err(&format!("Cannot connect to database: {e}"));
             std::process::exit(1);
         }
     }

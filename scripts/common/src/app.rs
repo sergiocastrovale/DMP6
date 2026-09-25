@@ -22,7 +22,9 @@ pub fn spawn_shutdown_handlers(
         tokio::spawn(async move {
             tokio::signal::ctrl_c().await.ok();
             running.store(false, Ordering::SeqCst);
-            eprintln!("\nShutdown requested - finishing current {unit}...");
+            crate::progress::early_warn(&format!(
+                "Shutdown requested - finishing current {unit}..."
+            ));
             tokio::signal::ctrl_c().await.ok();
             crate::lock::release_lock(&pool, binary, std::process::id()).await;
             std::process::exit(1);

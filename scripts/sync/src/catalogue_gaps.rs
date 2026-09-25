@@ -123,7 +123,7 @@ pub async fn fill_catalogue_gaps(
         }
 
         reporter.sync_progress(name, i + 1, total, "gaps");
-        reporter.item("", name, i + 1, total);
+        reporter.item(name, i + 1, total);
 
         let release_groups = match mb_api::mb_get_release_groups(http_client, mb_id, limiter).await
         {

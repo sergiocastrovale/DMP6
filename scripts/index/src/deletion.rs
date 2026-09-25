@@ -73,6 +73,7 @@ pub async fn delete_removed_tracks(
     folder_prefix: &str,
     music_dir: &str,
     force: bool,
+    reporter: &common::progress::Reporter,
 ) -> TrackDeletionResult {
     let rows: Vec<(String, String, Option<String>)> = sqlx::query_as(
         r#"SELECT id, "filePath", "localReleaseId" FROM "LocalReleaseTrack" WHERE "filePath" LIKE $1"#,
@@ -118,10 +119,10 @@ pub async fn delete_removed_tracks(
 
     let count = missing_ids.len() as u64;
     if force && total > 0 && count as f64 / total as f64 > MAX_MISSING_RATIO {
-        println!(
-            "  Pruning {}/{} track(s) missing under '{}' (--prune, ratio guard bypassed)",
+        reporter.nested().warn(&format!(
+            "Pruning {}/{} track(s) missing under '{}' (--prune, ratio guard bypassed)",
             count, total, folder_prefix
-        );
+        ));
     }
     let (favorites_dropped, playlists_dropped) = count_dropped_links(pool, &missing_ids).await;
 

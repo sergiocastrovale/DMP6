@@ -5,11 +5,11 @@
 //! `MusicBrainzRelease` this release was matched to is deleted only if nothing else still needs it -
 //! a duplicate copy bound to the same edition, a box parent, or a dissolved disc's track links.
 
-use colored::*;
 use common::{
     config::Config,
     error_log,
     lock::{acquire_lock, clear_stale_lock_minutes, release_lock},
+    progress::Reporter,
     statistics::update_statistics,
     totals::{
         recompute_artist_completeness, update_artist_totals_for_artist,
@@ -18,7 +18,7 @@ use common::{
 };
 use sqlx::PgPool;
 use std::collections::HashSet;
-use std::io::{self, Write};
+use std::io;
 
 #[derive(Debug)]
 pub struct ReleasePlan {
@@ -224,6 +224,7 @@ pub async fn execute_plan(
 }
 
 /// Entry point called from `main.rs` when `--release` is given.
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     pool: &PgPool,
     config: &Config,
@@ -231,27 +232,24 @@ pub async fn run(
     skip_confirm: bool,
     files: bool,
     dry_run: bool,
+    reporter: &Reporter,
 ) {
     let plan = match build_plan(pool, local_release_id).await {
         Ok(plan) => plan,
         Err(e) => {
             error_log::log_error(&format!("Database error: {}", e));
-            eprintln!("{} Database error: {}", "✗".red(), e);
+            reporter.failed(&format!("Database error: {}", e));
             std::process::exit(1);
         }
     };
     let Some(plan) = plan else {
         error_log::log_error(&format!("No release found with id '{}'", local_release_id));
-        eprintln!(
-            "{} No release found with id '{}'",
-            "✗".red(),
-            local_release_id
-        );
+        reporter.failed(&format!("No release found with id '{}'", local_release_id));
         std::process::exit(1);
     };
 
-    println!("Target  : {}", plan.title.bright_white());
-    println!();
+    reporter.kv("Target", &plan.title);
+    reporter.blank();
 
     let mut verdicts: Vec<MbVerdict> = Vec::new();
     for mb_id in &plan.mb_candidates {
@@ -262,39 +260,37 @@ pub async fn run(
         });
     }
 
-    println!("{}", "Plan".bright_cyan().bold());
-    println!("{}", "----".bright_black());
-    println!(
-        "Local tracks    : {}",
-        plan.track_count.to_string().bright_white()
-    );
+    reporter.section("Plan");
+    reporter.kv("Local tracks", &plan.track_count.to_string());
     if plan.folder_paths.is_empty() {
-        println!("Folder(s)       : {}", "none on record".bright_black());
+        reporter.kv("Folder(s)", "none on record");
     } else {
         for f in &plan.folder_paths {
-            println!("    {} {}", "•".bright_black(), f.bright_white());
+            reporter.nested().info(f);
         }
     }
     if plan.mb_candidates.is_empty() {
-        println!("MB release      : {}", "none (unmatched)".bright_black());
+        reporter.kv("MB release", "none (unmatched)");
     } else {
         for v in &verdicts {
             let verb = if v.orphaned {
-                "deleted".red()
+                "deleted"
             } else {
-                "kept - still needed elsewhere".green()
+                "kept - still needed elsewhere"
             };
-            println!("MB release      : {} ({})", v.id.bright_white(), verb);
+            reporter.kv("MB release", &format!("{} ({})", v.id, verb));
         }
     }
     if files {
-        println!(
-            "Files on disk   : {} {}",
-            plan.track_paths.len().to_string().bright_white(),
-            "(will be DELETED from MUSIC_DIR)".red().bold()
+        reporter.kv(
+            "Files on disk",
+            &format!(
+                "{} (will be DELETED from MUSIC_DIR)",
+                plan.track_paths.len()
+            ),
         );
     }
-    println!();
+    reporter.blank();
 
     if dry_run {
         if files {
@@ -305,46 +301,43 @@ pub async fn run(
                     music_dir,
                     true,
                 );
-                println!(
-                    "  {} would remove {} file(s), {} folder(s)",
-                    "✓".green(),
-                    result.files_removed,
-                    result.dirs_removed
-                );
+                reporter.nested().ok(&format!(
+                    "would remove {} file(s), {} folder(s)",
+                    result.files_removed, result.dirs_removed
+                ));
             }
         }
-        println!("{} (dry run - no changes made)", "✓".green());
+        reporter.done("Dry run - no changes made.");
         return;
     }
 
     if !skip_confirm {
-        print!("Type y to confirm: ");
-        io::stdout().flush().unwrap();
+        reporter.prompt("Type y to confirm: ");
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
         if input.trim().to_lowercase() != "y" {
-            println!("Aborted.");
+            reporter.done("Aborted.");
             std::process::exit(0);
         }
-        println!();
+        reporter.blank();
     }
 
     // Same DB scan lock index/sync/artist-delete use, acquired only now.
     if clear_stale_lock_minutes(pool, common::lock::STALE_LOCK_MINUTES).await {
-        eprintln!("{}", "Cleared a stale lock.".yellow());
+        reporter.warn("Cleared a stale lock.");
     }
     let _lock_guard = match acquire_lock(pool, "delete", std::process::id()).await {
         Ok(g) => g,
         Err(e) => {
-            eprintln!("{}: {}", "Cannot start".red(), e);
+            reporter.failed(&format!("Cannot start: {}", e));
             std::process::exit(1);
         }
     };
 
-    println!("Deleting...");
+    reporter.step("Deleting...");
     if let Err(e) = execute_plan(pool, config, &plan).await {
         error_log::log_error(&format!("Database error: {}", e));
-        eprintln!("  {} Database error: {}", "✗".red(), e);
+        reporter.failed(&format!("Database error: {}", e));
         release_lock(pool, "delete", std::process::id()).await;
         std::process::exit(1);
     }
@@ -357,24 +350,18 @@ pub async fn run(
                 music_dir,
                 false,
             );
-            println!(
-                "  {} removed {} file(s), {} folder(s)",
-                "✓".green(),
-                result.files_removed,
-                result.dirs_removed
-            );
+            reporter.nested().ok(&format!(
+                "removed {} file(s), {} folder(s)",
+                result.files_removed, result.dirs_removed
+            ));
             if !result.skipped.is_empty() {
-                println!(
-                    "  {} {} path(s) skipped (outside MUSIC_DIR, missing, or not removable)",
-                    "!".yellow(),
+                reporter.nested().warn(&format!(
+                    "{} path(s) skipped (outside MUSIC_DIR, missing, or not removable)",
                     result.skipped.len()
-                );
+                ));
             }
         } else {
-            eprintln!(
-                "  {} MUSIC_DIR is not configured - no files deleted",
-                "✗".red()
-            );
+            reporter.warn("MUSIC_DIR is not configured - no files deleted");
             error_log::log_error("--files requested but MUSIC_DIR is not configured");
         }
     }
@@ -398,21 +385,15 @@ pub async fn run(
         let removed =
             index::deletion::delete_orphan_artists(pool, config, Some(&touched_artist_ids)).await;
         if removed > 0 {
-            println!(
-                "  {} {} now-ownerless artist(s) removed",
-                "✓".green(),
-                removed
-            );
+            reporter
+                .nested()
+                .ok(&format!("{} now-ownerless artist(s) removed", removed));
         }
     }
 
     update_statistics(pool).await.ok();
     release_lock(pool, "delete", std::process::id()).await;
 
-    println!();
-    println!(
-        "{} {} deleted.",
-        "✓".green().bold(),
-        plan.title.bright_white()
-    );
+    reporter.blank();
+    reporter.done(&format!("{} deleted.", plan.title));
 }

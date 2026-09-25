@@ -64,6 +64,7 @@ version = "1.0.0"
 dependencies = [
  "chrono",
  "clap",
+ "common",
  "html-escape",
  "lofty",
  "num_cpus",
@@ -204,7 +205,6 @@ version = "1.0.0"
 dependencies = [
  "chrono",
  "clap",
- "colored",
  "common",
  "cuid2",
  "regex",
@@ -1189,7 +1189,6 @@ version = "1.0.0"
 dependencies = [
  "chrono",
  "clap",
- "colored",
  "common",
  "cuid2",
  "dotenvy",
@@ -1273,7 +1272,6 @@ name = "dissect"
 version = "0.1.0"
 dependencies = [
  "clap",
- "colored",
  "common",
  "regex",
  "rust_xlsxwriter",
@@ -1410,7 +1408,6 @@ name = "extract-meta-images"
 version = "1.0.0"
 dependencies = [
  "clap",
- "colored",
  "common",
  "dotenvy",
  "image",
@@ -1475,7 +1472,6 @@ version = "1.0.0"
 dependencies = [
  "chrono",
  "clap",
- "colored",
  "common",
  "cuid2",
  "lofty",
@@ -2160,7 +2156,6 @@ dependencies = [
  "aws-sdk-s3",
  "chrono",
  "clap",
- "colored",
  "common",
  "cuid2",
  "dotenvy",
@@ -2465,6 +2460,7 @@ version = "1.0.0"
 dependencies = [
  "chrono",
  "clap",
+ "common",
  "image",
  "rand 0.8.6",
  "rayon",
@@ -2518,7 +2514,6 @@ dependencies = [
  "aws-config",
  "aws-sdk-s3",
  "clap",
- "colored",
  "common",
  "delete",
  "dotenvy",
@@ -2804,7 +2799,6 @@ version = "1.0.0"
 dependencies = [
  "chrono",
  "clap",
- "colored",
  "common",
  "dotenvy",
  "rand 0.8.6",
@@ -2855,7 +2849,6 @@ version = "1.0.0"
 dependencies = [
  "chrono",
  "clap",
- "colored",
  "common",
  "lofty",
  "num_cpus",
@@ -3908,7 +3901,6 @@ dependencies = [
  "aws-sdk-s3",
  "chrono",
  "clap",
- "colored",
  "common",
  "cuid2",
  "dotenvy",

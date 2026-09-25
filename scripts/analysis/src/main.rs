@@ -1,5 +1,6 @@
 use chrono::Local;
 use clap::Parser;
+use common::progress::Reporter;
 use html_escape::encode_text;
 use lofty::config::ParseOptions;
 use lofty::prelude::*;
@@ -2266,68 +2267,67 @@ fn generate_report(
 // ---------------------------------------------------------------------------
 
 /// Print detailed installation instructions for beets and its required plugins.
-fn print_beet_install_instructions() {
-    eprintln!();
-    eprintln!("ERROR: beet (beets) is not installed or not found in PATH.");
-    eprintln!();
-    eprintln!("Install beets and required dependencies:");
-    eprintln!();
-    eprintln!("  # Core");
-    eprintln!("  pip install beets");
-    eprintln!();
-    eprintln!("  # Required plugins");
-    eprintln!("  pip install pyacoustid              # AcoustID fingerprinting (chroma plugin)");
-    eprintln!("  pip install python-discogs-client    # Discogs metadata");
-    eprintln!();
-    eprintln!("  # Chromaprint fingerprinter (system package)");
-    eprintln!("  sudo apt install libchromaprint-tools   # provides fpcalc");
-    eprintln!();
-    eprintln!("  # Recommended plugins");
-    eprintln!("  pip install beets-bandcamp           # Bandcamp metadata");
-    eprintln!("  pip install pylast                   # Last.fm genre tagging");
-    eprintln!();
-    eprintln!("Configure beets (~/.config/beets/config.yaml):");
-    eprintln!();
-    eprintln!("  plugins:");
-    eprintln!("    - chroma");
-    eprintln!("    - discogs");
-    eprintln!("    - fetchart");
-    eprintln!("    - embedart");
-    eprintln!("    - lastgenre");
-    eprintln!("    - bandcamp");
-    eprintln!();
-    eprintln!("  import:");
-    eprintln!("    write: yes");
-    eprintln!("    move: no");
-    eprintln!("    copy: no");
-    eprintln!("    quiet: yes");
-    eprintln!();
-    eprintln!("  acoustid:");
-    eprintln!("    apikey: YOUR_KEY   # Get from https://acoustid.org/api-key");
-    eprintln!();
-    eprintln!("  chroma:");
-    eprintln!("    auto: yes");
-    eprintln!();
-    eprintln!("  discogs:");
-    eprintln!(
-        "    user_token: YOUR_TOKEN   # Get from https://www.discogs.com/settings/developers"
+fn print_beet_install_instructions(reporter: &Reporter) {
+    reporter.failed("beet (beets) is not installed or not found in PATH.");
+    reporter.info(
+        r#"
+Install beets and required dependencies:
+
+  # Core
+  pip install beets
+
+  # Required plugins
+  pip install pyacoustid              # AcoustID fingerprinting (chroma plugin)
+  pip install python-discogs-client    # Discogs metadata
+
+  # Chromaprint fingerprinter (system package)
+  sudo apt install libchromaprint-tools   # provides fpcalc
+
+  # Recommended plugins
+  pip install beets-bandcamp           # Bandcamp metadata
+  pip install pylast                   # Last.fm genre tagging
+
+Configure beets (~/.config/beets/config.yaml):
+
+  plugins:
+    - chroma
+    - discogs
+    - fetchart
+    - embedart
+    - lastgenre
+    - bandcamp
+
+  import:
+    write: yes
+    move: no
+    copy: no
+    quiet: yes
+
+  acoustid:
+    apikey: YOUR_KEY   # Get from https://acoustid.org/api-key
+
+  chroma:
+    auto: yes
+
+  discogs:
+    user_token: YOUR_TOKEN   # Get from https://www.discogs.com/settings/developers"#,
     );
 }
 
 /// Check beets availability and required plugins. Returns Ok(version_string) or exits.
-fn check_beets_setup() {
+fn check_beets_setup(reporter: &Reporter) {
     // 1. Check beet binary
     let beet_output = match std::process::Command::new("beet").arg("version").output() {
         Ok(o) if o.status.success() => o,
         _ => {
-            print_beet_install_instructions();
+            print_beet_install_instructions(reporter);
             std::process::exit(1);
         }
     };
 
     let version_str = String::from_utf8_lossy(&beet_output.stdout);
     for line in version_str.lines() {
-        println!("  {}", line.trim());
+        reporter.nested().info(line.trim());
     }
 
     // 2. Check fpcalc (chromaprint fingerprinter)
@@ -2336,12 +2336,10 @@ fn check_beets_setup() {
         .output()
         .is_err()
     {
-        eprintln!();
-        eprintln!(
-            "ERROR: fpcalc not found. Required by the chroma plugin for AcoustID fingerprinting."
+        reporter.failed(
+            "fpcalc not found. Required by the chroma plugin for AcoustID fingerprinting. \
+             Install: sudo apt install libchromaprint-tools",
         );
-        eprintln!();
-        eprintln!("  Install: sudo apt install libchromaprint-tools");
         std::process::exit(1);
     }
 
@@ -2364,31 +2362,29 @@ fn check_beets_setup() {
     }
 
     if !missing_required.is_empty() {
-        eprintln!();
-        eprintln!(
-            "ERROR: Missing required beets plugins: {}",
+        reporter.err(&format!(
+            "Missing required beets plugins: {}",
             missing_required.join(", ")
-        );
-        eprintln!();
+        ));
         for &p in &missing_required {
-            match p {
+            let line = match p {
                 "chroma" => {
-                    eprintln!("  pip install pyacoustid              # chroma plugin (AcoustID)")
+                    "pip install pyacoustid              # chroma plugin (AcoustID)".to_string()
                 }
-                "discogs" => eprintln!("  pip install python-discogs-client    # discogs plugin"),
-                _ => eprintln!("  # Enable '{}' in your beets config plugins list", p),
-            }
+                "discogs" => "pip install python-discogs-client    # discogs plugin".to_string(),
+                _ => format!("# Enable '{}' in your beets config plugins list", p),
+            };
+            reporter.nested().info(&line);
         }
-        eprintln!();
-        eprintln!("Then add them to plugins: in ~/.config/beets/config.yaml");
+        reporter.failed("Then add them to plugins: in ~/.config/beets/config.yaml");
         std::process::exit(1);
     }
 
     if !missing_recommended.is_empty() {
-        println!(
-            "  Note: recommended plugins not loaded: {}",
+        reporter.nested().warn(&format!(
+            "recommended plugins not loaded: {}",
             missing_recommended.join(", ")
-        );
+        ));
     }
 }
 
@@ -2400,11 +2396,13 @@ fn run_autofix(
     scan_root: &str,
     parent_audio_count: &HashMap<PathBuf, usize>,
     dry: bool,
+    reporter: &Reporter,
 ) -> HashMap<PathBuf, String> {
     let label = if dry { "Autofix DRY RUN" } else { "Autofix" };
 
-    println!("\n[{}] Checking beets installation...", label);
-    check_beets_setup();
+    reporter.section(label);
+    reporter.step("Checking beets installation...");
+    check_beets_setup(reporter);
 
     // Group issue files by parent directory
     let mut dirs_to_fix: BTreeMap<PathBuf, usize> = BTreeMap::new();
@@ -2416,17 +2414,16 @@ fn run_autofix(
 
     let total_dirs = dirs_to_fix.len();
     if total_dirs == 0 {
-        println!("\n[{}] No directories to process.", label);
+        reporter.done("No directories to process.");
         return HashMap::new();
     }
 
-    println!(
-        "\n[{}] Processing {} director{} ({} files with issues)...\n",
-        label,
+    reporter.step(&format!(
+        "Processing {} director{} ({} files with issues)...",
         total_dirs,
         if total_dirs == 1 { "y" } else { "ies" },
         issues.len(),
-    );
+    ));
 
     // Use a temporary library to avoid polluting user's main beet DB
     let tmp_lib = format!("/tmp/analysis_autofix_{}.db", std::process::id());
@@ -2447,15 +2444,17 @@ fn run_autofix(
 
         let is_singleton = parent_audio_count.get(dir).copied().unwrap_or(0) == 1;
 
-        print!(
-            "  [{}/{}] {} ({} file{}) ... ",
+        reporter.item(
+            &format!(
+                "{} ({} file{})",
+                rel,
+                file_count,
+                if *file_count == 1 { "" } else { "s" },
+            ),
             idx + 1,
             total_dirs,
-            rel,
-            file_count,
-            if *file_count == 1 { "" } else { "s" },
         );
-        std::io::stdout().flush().ok();
+        let dr = reporter.nested();
 
         let mut cmd = std::process::Command::new("beet");
         cmd.arg("-l")
@@ -2499,20 +2498,19 @@ fn run_autofix(
                             })
                             .map(|l| l.trim().to_string())
                             .unwrap_or_else(|| "No confident match from beets".to_string());
-                        println!("skipped (no confident match)");
+                        dr.skip(&format!("no confident match: {reason}"));
                         skipped += 1;
                         if !dry {
                             skipped_dirs.insert(dir.clone(), reason);
                         }
                     } else {
                         if dry {
-                            println!("would tag");
-                            // Print pretend output indented
+                            dr.info("would tag");
                             for line in stdout.lines().filter(|l| !l.trim().is_empty()) {
-                                println!("    {}", line.trim());
+                                dr.nested().info(line.trim());
                             }
                         } else {
-                            println!("done");
+                            dr.ok("done");
                         }
                         processed += 1;
                     }
@@ -2521,12 +2519,12 @@ fn run_autofix(
                         .lines()
                         .find(|l| !l.trim().is_empty())
                         .unwrap_or("unknown error");
-                    println!("error: {}", first_line.trim());
+                    dr.warn(&format!("error: {}", first_line.trim()));
                     failed += 1;
                 }
             }
             Err(e) => {
-                println!("failed: {}", e);
+                dr.warn(&format!("failed: {}", e));
                 failed += 1;
             }
         }
@@ -2535,15 +2533,14 @@ fn run_autofix(
     // Clean up temporary beet library
     let _ = fs::remove_file(&tmp_lib);
 
-    println!();
-    println!("[{}] Complete.", label);
+    reporter.section(&format!("{} Complete", label));
     if dry {
-        println!("  Would tag: {}", processed);
+        reporter.kv("Would tag", &processed.to_string());
     } else {
-        println!("  Tagged:    {}", processed);
+        reporter.kv("Tagged", &processed.to_string());
     }
-    println!("  Skipped:   {} (no confident match)", skipped);
-    println!("  Failed:    {}", failed);
+    reporter.kv("Skipped", &format!("{} (no confident match)", skipped));
+    reporter.kv("Failed", &failed.to_string());
 
     skipped_dirs
 }
@@ -2850,15 +2847,21 @@ fn compute_autofix_diffs(
 // Quarantine helpers
 // ---------------------------------------------------------------------------
 
-fn restore_dir(staging_dir: &Path, scan_root: &str, moved: &mut u32, failed: &mut u32) {
+fn restore_dir(
+    staging_dir: &Path,
+    scan_root: &str,
+    moved: &mut u32,
+    failed: &mut u32,
+    reporter: &Reporter,
+) {
     if !staging_dir.exists() {
         return;
     }
 
-    println!(
+    reporter.step(&format!(
         "Moving files from {} back to original locations...",
         staging_dir.display()
-    );
+    ));
 
     for entry in WalkDir::new(staging_dir)
         .into_iter()
@@ -2874,7 +2877,11 @@ fn restore_dir(staging_dir: &Path, scan_root: &str, moved: &mut u32, failed: &mu
 
         if let Some(dst_parent) = dst.parent() {
             if let Err(e) = fs::create_dir_all(dst_parent) {
-                eprintln!("  FAILED to create {}: {}", dst_parent.display(), e);
+                reporter.nested().warn(&format!(
+                    "FAILED to create {}: {}",
+                    dst_parent.display(),
+                    e
+                ));
                 *failed += 1;
                 continue;
             }
@@ -2882,11 +2889,15 @@ fn restore_dir(staging_dir: &Path, scan_root: &str, moved: &mut u32, failed: &mu
 
         match fs::rename(src, &dst) {
             Ok(_) => {
-                println!("  Restored: {} -> {}", src.display(), dst.display());
+                reporter
+                    .nested()
+                    .ok(&format!("Restored: {} -> {}", src.display(), dst.display()));
                 *moved += 1;
             }
             Err(e) => {
-                eprintln!("  FAILED to move {}: {}", src.display(), e);
+                reporter
+                    .nested()
+                    .warn(&format!("FAILED to move {}: {}", src.display(), e));
                 *failed += 1;
             }
         }
@@ -2896,7 +2907,7 @@ fn restore_dir(staging_dir: &Path, scan_root: &str, moved: &mut u32, failed: &mu
     let _ = fs::remove_dir(staging_dir);
 }
 
-fn end_quarantine(scan_root: &str) {
+fn end_quarantine(scan_root: &str, reporter: &Reporter) {
     let quarantine_dir = PathBuf::from(scan_root).join("__QUARANTINE");
     let needs_review_dir = PathBuf::from(scan_root).join("__NEEDS_REVIEW");
     let unreadable_dir = PathBuf::from(scan_root).join("__UNREADABLE");
@@ -2907,19 +2918,37 @@ fn end_quarantine(scan_root: &str) {
         && !unreadable_dir.exists()
         && !autofixed_dir.exists()
     {
-        println!("Nothing to do: no staging folders found.");
+        reporter.done("Nothing to do: no staging folders found.");
         return;
     }
 
     let mut moved = 0u32;
     let mut failed = 0u32;
 
-    restore_dir(&quarantine_dir, scan_root, &mut moved, &mut failed);
-    restore_dir(&needs_review_dir, scan_root, &mut moved, &mut failed);
-    restore_dir(&unreadable_dir, scan_root, &mut moved, &mut failed);
-    restore_dir(&autofixed_dir, scan_root, &mut moved, &mut failed);
+    restore_dir(
+        &quarantine_dir,
+        scan_root,
+        &mut moved,
+        &mut failed,
+        reporter,
+    );
+    restore_dir(
+        &needs_review_dir,
+        scan_root,
+        &mut moved,
+        &mut failed,
+        reporter,
+    );
+    restore_dir(
+        &unreadable_dir,
+        scan_root,
+        &mut moved,
+        &mut failed,
+        reporter,
+    );
+    restore_dir(&autofixed_dir, scan_root, &mut moved, &mut failed, reporter);
 
-    println!("Done. Restored: {}, Failed: {}", moved, failed);
+    reporter.done(&format!("Restored: {}, Failed: {}", moved, failed));
 }
 
 /// Recursively remove empty directories (deepest first).
@@ -2941,18 +2970,18 @@ fn remove_empty_dirs(dir: &Path) {
 
 fn main() {
     let mut args = Args::parse();
+    let reporter = Reporter::new(false);
     let scan_root = args.scan_path.trim_end_matches('/').to_string();
 
     if args.end_quarantine {
-        end_quarantine(&scan_root);
+        end_quarantine(&scan_root, &reporter);
         return;
     }
 
-    println!("Audio Metadata Scanner");
-    println!("======================");
-    println!("Scan root : {}", scan_root);
+    reporter.header("DMP Analysis");
+    reporter.kv("Scan root", &scan_root);
     if args.limit > 0 {
-        println!("Limit     : {} files", args.limit);
+        reporter.kv("Limit", &format!("{} files", args.limit));
     }
     // Handle --autofix / --autofix-dry + --only-* interaction
     let do_autofix = args.autofix || args.autofix_dry;
@@ -2965,7 +2994,7 @@ fn main() {
             || args.only_other;
 
         if do_autofix && any_only {
-            println!("Autofix enabled, skipping --only-* commands");
+            reporter.warn("Autofix enabled, skipping --only-* commands");
             args.only_critical = false;
             args.only_mb = false;
             args.only_discogs = false;
@@ -2992,19 +3021,19 @@ fn main() {
             if args.only_other {
                 modes.push("other");
             }
-            println!("Pages     : {}", modes.join(", "));
+            reporter.kv("Pages", &modes.join(", "));
         }
     }
     if args.autofix {
-        println!("Autofix   : enabled (beets)");
+        reporter.kv("Autofix", "enabled (beets)");
     } else if args.autofix_dry {
-        println!("Autofix   : dry run (beets --pretend)");
+        reporter.kv("Autofix", "dry run (beets --pretend)");
     }
     if args.no_report {
-        println!("Report    : disabled");
+        reporter.kv("Report", "disabled");
     }
     if !args.only.is_empty() {
-        println!("Filter    : only folders matching '{}'", args.only);
+        reporter.kv("Filter", &format!("only folders matching '{}'", args.only));
     } else if !args.from.is_empty() || !args.to.is_empty() {
         let from_str = if args.from.is_empty() {
             "A".to_string()
@@ -3016,15 +3045,15 @@ fn main() {
         } else {
             args.to.to_uppercase()
         };
-        println!("Filter    : {} to {}", from_str, to_str);
+        reporter.kv("Filter", &format!("{} to {}", from_str, to_str));
     }
-    println!("CPU cores : {}", num_cpus::get());
-    println!();
+    reporter.kv("CPU cores", &num_cpus::get().to_string());
+    reporter.blank();
 
     let start = Instant::now();
 
     // --- Phase 1: Collect file paths ---
-    println!("[1/4] Walking directory tree...");
+    reporter.step("[1/4] Walking directory tree...");
     let extensions = ["mp3", "m4a", "opus", "aac", "ogg", "flac"];
     let total_dirs = AtomicU64::new(0);
 
@@ -3084,10 +3113,10 @@ fn main() {
 
     let total_files = paths.len() as u64;
     let total_dirs = total_dirs.load(Ordering::Relaxed);
-    println!(
-        "  Found {} audio files in {} folders",
+    reporter.nested().ok(&format!(
+        "Found {} audio files in {} folders",
         total_files, total_dirs
-    );
+    ));
 
     // --- Always build parent_audio_count (needed for issues.html and quarantine) ---
     let mut parent_audio_count: HashMap<PathBuf, usize> = HashMap::new();
@@ -3098,10 +3127,10 @@ fn main() {
     }
 
     // --- Phase 2: Parallel scan ---
-    println!(
+    reporter.step(&format!(
         "[2/4] Scanning metadata ({} threads)...",
         rayon::current_num_threads()
-    );
+    ));
     let scanned = AtomicU64::new(0);
 
     // Lock-free accumulation via rayon fold/reduce.
@@ -3125,7 +3154,7 @@ fn main() {
 
                 // Progress: print every 10 000 files
                 if n.is_multiple_of(10_000) || n == total_files {
-                    eprintln!("  ... scanned {}/{}", n, total_files);
+                    reporter.transient(&format!("scanned {}/{}", n, total_files));
                 }
 
                 // Track extension counts (thread-local, no lock needed)
@@ -3144,7 +3173,9 @@ fn main() {
                     Err(err) => {
                         acc.4 += 1;
                         acc.5.push((p.clone(), err.clone()));
-                        eprintln!("  UNREADABLE: {} - {}", p.display(), err);
+                        reporter
+                            .nested()
+                            .warn(&format!("UNREADABLE: {} - {}", p.display(), err));
                     }
                 }
                 acc
@@ -3165,25 +3196,33 @@ fn main() {
             },
         );
 
-    println!("  Scanned {} files ({} errors)", results.len(), error_count);
+    reporter.clear_transient();
+    reporter.nested().ok(&format!(
+        "Scanned {} files ({} errors)",
+        results.len(),
+        error_count
+    ));
 
     // --- Phase 3: Filter to only files with issues ---
-    println!("[3/4] Filtering results...");
+    reporter.step("[3/4] Filtering results...");
     let issues: Vec<FileIssue> = results.into_iter().filter(|i| i.has_any_issue()).collect();
 
-    println!("  {} files with at least one issue", issues.len());
+    reporter
+        .nested()
+        .info(&format!("{} files with at least one issue", issues.len()));
 
     // --- Autofix: use beets to tag files with issues, then re-scan for diffs ---
     let autofix_data = if args.autofix {
-        let skip_dirs = run_autofix(&issues, &scan_root, &parent_audio_count, false);
-        println!("\n[4/5] Re-scanning files after autofix...");
+        let skip_dirs = run_autofix(&issues, &scan_root, &parent_audio_count, false, &reporter);
+        reporter.step("[4/5] Re-scanning files after autofix...");
         let result = compute_autofix_diffs(&issues, &skip_dirs);
-        println!("  Matched: {} | Still broken: {} | Newly unreadable: {} | Diffs: {} files | Skipped: {} files",
-            result.matched.len(), result.still_broken.len(), result.unreadable.len(), result.diffs.len(), result.skipped_files.len());
+        reporter.nested().info(&format!(
+            "Matched: {} | Still broken: {} | Newly unreadable: {} | Diffs: {} files | Skipped: {} files",
+            result.matched.len(), result.still_broken.len(), result.unreadable.len(), result.diffs.len(), result.skipped_files.len()));
         Some(result)
     } else {
         if args.autofix_dry {
-            run_autofix(&issues, &scan_root, &parent_audio_count, true);
+            run_autofix(&issues, &scan_root, &parent_audio_count, true, &reporter);
         }
         None
     };
@@ -3198,20 +3237,25 @@ fn main() {
             if batch.is_empty() {
                 return;
             }
-            println!();
             if dry {
-                println!(
+                reporter.step(&format!(
                     "[DRY RUN] Would move {} file(s) to {}:",
                     batch.len(),
                     staging_dir.display()
-                );
+                ));
                 for src in batch {
                     let rel = src.strip_prefix(&scan_root_path).unwrap_or(src);
                     let dst = staging_dir.join(rel);
-                    println!("  {} -> {}", src.display(), dst.display());
+                    reporter
+                        .nested()
+                        .info(&format!("{} -> {}", src.display(), dst.display()));
                 }
             } else {
-                println!("[Move] Moving {} file(s) to {}...", batch.len(), label);
+                reporter.step(&format!(
+                    "[Move] Moving {} file(s) to {}...",
+                    batch.len(),
+                    label
+                ));
                 for src in batch {
                     let rel = src.strip_prefix(&scan_root_path).unwrap_or(src);
                     let dst = staging_dir.join(rel);
@@ -3219,22 +3263,34 @@ fn main() {
                     // rename semantics) - a second quarantine pass landing on the same relative
                     // path would destroy whatever was staged there first, with no warning.
                     if dst.exists() {
-                        eprintln!(
-                            "  SKIPPED (destination already exists): {} -> {}",
+                        reporter.nested().warn(&format!(
+                            "SKIPPED (destination already exists): {} -> {}",
                             src.display(),
                             dst.display()
-                        );
+                        ));
                         continue;
                     }
                     if let Some(dst_parent) = dst.parent() {
                         if let Err(e) = fs::create_dir_all(dst_parent) {
-                            eprintln!("  FAILED to create {}: {}", dst_parent.display(), e);
+                            reporter.nested().warn(&format!(
+                                "FAILED to create {}: {}",
+                                dst_parent.display(),
+                                e
+                            ));
                             continue;
                         }
                     }
                     match fs::rename(src, &dst) {
-                        Ok(_) => println!("  Moved: {} -> {}", src.display(), dst.display()),
-                        Err(e) => eprintln!("  FAILED to move {}: {}", src.display(), e),
+                        Ok(_) => reporter.nested().ok(&format!(
+                            "Moved: {} -> {}",
+                            src.display(),
+                            dst.display()
+                        )),
+                        Err(e) => reporter.nested().warn(&format!(
+                            "FAILED to move {}: {}",
+                            src.display(),
+                            e
+                        )),
                     }
                 }
             }
@@ -3324,9 +3380,9 @@ fn main() {
 
     // --- Phase 5: Generate report ---
     if args.no_report {
-        println!("\n[5/5] Report generation skipped (--no-report)");
+        reporter.skip("[5/5] Report generation skipped (--no-report)");
     } else {
-        println!("[5/5] Generating HTML report...");
+        reporter.step("[5/5] Generating HTML report...");
 
         let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
         let output_dir = if args.output_dir.starts_with('/') {
@@ -3383,27 +3439,32 @@ fn main() {
             },
         ) {
             Ok(_) => {
-                println!();
-                println!("Report written to: {}", report_dir.display());
-                println!("Total time: {:.2}s", elapsed.as_secs_f64());
+                reporter.section("Summary");
+                reporter.kv("Report", &report_dir.display().to_string());
+                reporter.kv("Total time", &format!("{:.2}s", elapsed.as_secs_f64()));
                 let readable = total_files.saturating_sub(error_count);
                 let ok = readable.saturating_sub(issues.len() as u64);
-                println!(
-                    "Files OK: {} | Issues: {} | Unreadable: {}",
-                    ok,
-                    issues.len(),
-                    error_count
+                reporter.kv(
+                    "Files",
+                    &format!(
+                        "OK: {} | Issues: {} | Unreadable: {}",
+                        ok,
+                        issues.len(),
+                        error_count
+                    ),
                 );
             }
             Err(e) => {
-                eprintln!("Failed to write report: {}", e);
+                reporter.failed(&format!("Failed to write report: {}", e));
                 std::process::exit(1);
             }
         }
     }
 
     if args.autofix_dry {
-        println!();
-        println!("[Autofix DRY RUN] No files were modified. Run with --autofix to apply changes.");
+        reporter
+            .done("[Autofix DRY RUN] No files were modified. Run with --autofix to apply changes.");
+    } else {
+        reporter.done("Done.");
     }
 }

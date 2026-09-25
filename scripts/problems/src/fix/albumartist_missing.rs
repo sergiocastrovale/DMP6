@@ -16,7 +16,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use colored::*;
+use common::progress::Reporter;
 
 use crate::audio::read_tags_guarded;
 use crate::checks::artist::{is_unknown_artist, unrecognised_various};
@@ -33,6 +33,7 @@ pub async fn run(
     root: &Path,
     worklist: &BTreeMap<String, Vec<String>>,
     dry_run: bool,
+    reporter: &Reporter,
 ) -> Result<FixRunResult, String> {
     let mut result = FixRunResult::default();
 
@@ -42,26 +43,19 @@ pub async fn run(
         // majority (not just the defective files) is the right signal here.
         let majority = folder_majority(&folder, |s| s.album_artist.as_deref());
         match &majority {
-            Some(a) => println!(
-                "  {} {} -> folder majority: {}",
-                "→".bright_black(),
-                rel_path,
-                a
-            ),
-            None => println!(
-                "  {} {} -> no folder majority (falls back to each file's own artist, if usable)",
-                "→".bright_black(),
+            Some(a) => reporter.step(&format!("{} -> folder majority: {}", rel_path, a)),
+            None => reporter.step(&format!(
+                "{} -> no folder majority (falls back to each file's own artist, if usable)",
                 rel_path
-            ),
+            )),
         }
 
         for file in files {
             let abs_path = folder.join(file);
             match process_file(rel_path, file, &abs_path, majority.as_deref(), dry_run) {
                 Ok(outcome) => {
-                    println!(
-                        "    {} {} -> \"{}\" (from {})",
-                        "✓".green(),
+                    reporter.nested().ok(&format!(
+                        "{} -> \"{}\" (from {})",
                         file,
                         outcome.new_value.as_deref().unwrap_or(""),
                         outcome
@@ -69,11 +63,13 @@ pub async fn run(
                             .get("source")
                             .and_then(|v| v.as_str())
                             .unwrap_or("?")
-                    );
+                    ));
                     result.outcomes.push(outcome);
                 }
                 Err(error) => {
-                    println!("    {} {}: {}", "!".bright_red(), file, error.message);
+                    reporter
+                        .nested()
+                        .warn(&format!("{}: {}", file, error.message));
                     result.errors.push(error);
                 }
             }

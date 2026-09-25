@@ -121,7 +121,7 @@ pub(crate) async fn process_folder(
 
     let folder_path = PathBuf::from(&music_dir).join(folder_name);
 
-    reporter.item("", folder_name, folder_idx + 1, total_folders);
+    reporter.item(folder_name, folder_idx + 1, total_folders);
 
     // -----------------------------------------------------------------
     // Walk all audio files in this folder recursively
@@ -160,7 +160,7 @@ pub(crate) async fn process_folder(
 
     let file_count = paths.len();
     if file_count == 0 {
-        reporter.sub_step("0 files");
+        reporter.nested().skip("0 files");
         if let Some(ref h) = run_hash {
             stamp_folder_index_hash(&pool, folder_name, h).await;
         }
@@ -959,14 +959,14 @@ pub(crate) async fn process_folder(
         let mut total = 0u64;
         for sub in tf.get(folder_name.as_str()).unwrap_or(&vec![]) {
             let prefix = format!("{}/", sub);
-            let res = delete_removed_tracks(&pool, &prefix, music_dir, prune).await;
+            let res = delete_removed_tracks(&pool, &prefix, music_dir, prune, reporter).await;
             favorites_dropped_total += res.favorites_dropped;
             playlists_dropped_total += res.playlists_dropped;
             total += res.count;
         }
         total
     } else {
-        let res = delete_removed_tracks(&pool, &folder_prefix, music_dir, prune).await;
+        let res = delete_removed_tracks(&pool, &folder_prefix, music_dir, prune, reporter).await;
         favorites_dropped_total += res.favorites_dropped;
         playlists_dropped_total += res.playlists_dropped;
         res.count

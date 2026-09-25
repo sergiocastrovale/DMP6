@@ -1,7 +1,7 @@
-use colored::Colorize;
 use common::cleanup::ARTIST_UNLINKED;
 use common::config::Config;
 use common::images::{artist_images, delete_artist_image_files};
+use common::progress::Reporter;
 use sqlx::types::chrono::Utc;
 use sqlx::PgPool;
 
@@ -11,6 +11,7 @@ pub async fn fix(
     pool: &PgPool,
     config: &Config,
     dry_run: bool,
+    reporter: &Reporter,
 ) -> Result<(usize, usize), sqlx::Error> {
     let rows: Vec<(String, String, String)> = sqlx::query_as(
         r#"SELECT i.id, i."artistId", a.name
@@ -22,11 +23,11 @@ pub async fn fix(
     .await?;
 
     if rows.is_empty() {
-        println!("  No PENDING orphan artist issues.");
+        reporter.skip("No PENDING orphan artist issues.");
         return Ok((0, 0));
     }
 
-    println!("  Processing {} issues...", rows.len());
+    reporter.step(&format!("Processing {} issues...", rows.len()));
     let mut ok = 0usize;
     let mut fail = 0usize;
     let now = Utc::now().naive_utc();
@@ -35,7 +36,9 @@ pub async fn fix(
 
     for (issue_id, artist_id, name) in &rows {
         if dry_run {
-            println!("  {} would delete orphan: {}", "[dry-run]".cyan(), name);
+            reporter
+                .nested()
+                .info(&format!("[dry-run] would delete orphan: {}", name));
             ok += 1;
             continue;
         }
@@ -47,7 +50,7 @@ pub async fn fix(
         {
             Ok(r) if r.rows_affected() == 1 => {
                 delete_artist_image_files(config, &images).await;
-                println!("  {} Deleted orphan: {}", "✓".green(), name);
+                reporter.nested().ok(&format!("Deleted orphan: {}", name));
                 sqlx::query(
                     r#"UPDATE "IssueOrphanArtist" SET status = 'RESOLVED', "updatedAt" = $1 WHERE id = $2"#,
                 )
@@ -58,18 +61,18 @@ pub async fn fix(
                 ok += 1;
             }
             Ok(_) => {
-                println!(
-                    "  {} {} is no longer an orphan - issue dropped",
-                    "⚠".yellow(),
-                    name
-                );
+                reporter
+                    .nested()
+                    .skip(&format!("{} is no longer an orphan - issue dropped", name));
                 sqlx::query(r#"DELETE FROM "IssueOrphanArtist" WHERE id = $1"#)
                     .bind(issue_id)
                     .execute(pool)
                     .await?;
             }
             Err(e) => {
-                println!("  {} Failed to delete {}: {}", "✗".red(), name, e);
+                reporter
+                    .nested()
+                    .warn(&format!("Failed to delete {}: {}", name, e));
                 sqlx::query(
                     r#"UPDATE "IssueOrphanArtist" SET status = 'FAILED', "updatedAt" = $1 WHERE id = $2"#,
                 )

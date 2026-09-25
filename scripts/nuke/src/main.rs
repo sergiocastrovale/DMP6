@@ -1,30 +1,18 @@
 use aws_sdk_s3::Client as S3Client;
 use clap::Parser;
-use colored::*;
 use common::{
     config::{apply_db_overrides, load_config},
     error_log,
     filters::matches_filter,
     lock::{acquire_lock, clear_stale_lock_minutes, release_lock},
+    progress::Reporter,
     s3::create_s3_client,
 };
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 use std::fs;
-use std::io::{self, Write};
+use std::io;
 use std::path::PathBuf;
-
-/// println that always flushes immediately (Rust buffers stdout when not a TTY)
-macro_rules! log {
-    () => {{
-        writeln!(io::stdout()).ok();
-        io::stdout().flush().ok();
-    }};
-    ($($arg:tt)*) => {{
-        writeln!(io::stdout(), $($arg)*).ok();
-        io::stdout().flush().ok();
-    }};
-}
 
 #[derive(Parser, Debug)]
 #[command(name = "nuke", about = "Delete all data from DMP database and images")]
@@ -54,6 +42,7 @@ async fn delete_s3_prefix(
     client: &S3Client,
     bucket: &str,
     prefix: &str,
+    reporter: &Reporter,
 ) -> Result<usize, Box<dyn std::error::Error>> {
     use aws_sdk_s3::types::{Delete, ObjectIdentifier};
 
@@ -86,11 +75,11 @@ async fn delete_s3_prefix(
 
         let count = identifiers.len();
         if count > 0 {
-            log!(
-                "  Deleting {} S3 objects from {}...",
+            reporter.nested().info(&format!(
+                "Deleting {} S3 objects from {}...",
                 count,
                 prefix.trim_end_matches('/')
-            );
+            ));
             let delete = Delete::builder()
                 .set_objects(Some(identifiers))
                 .quiet(true)
@@ -153,6 +142,7 @@ async fn only_targets(pool: &PgPool, only: &str) -> Result<Vec<(String, String)>
 async fn main() {
     let args = Args::parse();
     error_log::init("nuke");
+    let reporter = Reporter::new(false);
 
     // NOTE: DB-configured S3/image overrides (Settings table) aren't applied until each branch below
     // opens its own pool - apply_db_overrides needs a live connection, and --only/full-wipe modes each
@@ -162,15 +152,11 @@ async fn main() {
 
     // --only mode: selective artist deletion
     if let Some(ref only) = args.only {
-        log!("{}", "DMP Nuke --only".bright_cyan().bold());
-        log!("{}", "===============".bright_black());
+        reporter.header("DMP Nuke --only");
         if args.dry_run {
-            log!(
-                "Mode: {}",
-                "DRY RUN (no changes will be made)".yellow().bold()
-            );
+            reporter.kv("Mode", "dry run");
         }
-        log!();
+        reporter.blank();
 
         let pool = match PgPoolOptions::new()
             .max_connections(5)
@@ -180,7 +166,7 @@ async fn main() {
             Ok(p) => p,
             Err(e) => {
                 error_log::log_error(&format!("Failed to connect to database: {}", e));
-                eprintln!("Failed to connect to database: {}", e);
+                reporter.failed(&format!("Failed to connect to database: {}", e));
                 std::process::exit(1);
             }
         };
@@ -192,12 +178,12 @@ async fn main() {
             Ok(t) => t,
             Err(e) => {
                 error_log::log_error(&format!("Failed to resolve artists: {}", e));
-                eprintln!("Failed to resolve artists: {}", e);
+                reporter.failed(&format!("Failed to resolve artists: {}", e));
                 std::process::exit(1);
             }
         };
         if targets.is_empty() {
-            log!("No artists match '{}'.", only);
+            reporter.done(&format!("No artists match '{}'.", only));
             return;
         }
 
@@ -205,15 +191,12 @@ async fn main() {
             Ok(p) => p,
             Err(e) => {
                 error_log::log_error(&format!("Failed to build deletion plan: {}", e));
-                eprintln!("Failed to build deletion plan: {}", e);
+                reporter.failed(&format!("Failed to build deletion plan: {}", e));
                 std::process::exit(1);
             }
         };
 
-        log!(
-            "Artists to delete  : {}",
-            plan.artist_actions.len().to_string().bright_white()
-        );
+        reporter.kv("Artists to delete", &plan.artist_actions.len().to_string());
         for artist in &plan.artist_actions {
             let tag = if artist.is_cascaded {
                 "cascaded"
@@ -225,71 +208,63 @@ async fn main() {
             } else {
                 ""
             };
-            log!(
-                "  {} {}  {}",
-                "•".bright_black(),
-                artist.name.bright_white(),
-                format!("({}) {}{}", artist.slug, tag, kept).bright_black()
-            );
+            reporter.nested().info(&format!(
+                "{} ({}) {}{}",
+                artist.name, artist.slug, tag, kept
+            ));
         }
-        log!(
-            "Local releases     : {}",
-            plan.doomed_releases.len().to_string().bright_white()
-        );
+        reporter.kv("Local releases", &plan.doomed_releases.len().to_string());
         let co_owned = plan.owned_releases.len() - plan.doomed_releases.len();
         if co_owned > 0 {
-            log!(
-                "Co-owned kept      : {} (still owned by another artist - only unlinked)",
-                co_owned
+            reporter.kv(
+                "Co-owned kept",
+                &format!(
+                    "{} (still owned by another artist - only unlinked)",
+                    co_owned
+                ),
             );
         }
-        log!(
-            "Local tracks       : {}",
-            plan.track_count.to_string().bright_white()
-        );
-        log!();
+        reporter.kv("Local tracks", &plan.track_count.to_string());
+        reporter.blank();
 
         if args.dry_run {
-            log!("{} (dry run - no changes made)", "✓".green());
+            reporter.done("Dry run - no changes made.");
             return;
         }
 
         if !args.y {
-            print!("Type y to confirm: ");
-            io::stdout().flush().unwrap();
+            reporter.prompt("Type y to confirm: ");
             let mut input = String::new();
             io::stdin().read_line(&mut input).unwrap();
             if input.trim().to_lowercase() != "y" {
-                log!("Aborted.");
+                reporter.done("Aborted.");
                 std::process::exit(0);
             }
-            log!();
+            reporter.blank();
         }
 
         if clear_stale_lock_minutes(&pool, common::lock::STALE_LOCK_MINUTES).await {
-            log!("Cleared a stale lock.");
+            reporter.warn("Cleared a stale lock.");
         }
         let _lock_guard = match acquire_lock(&pool, "nuke", std::process::id()).await {
             Ok(g) => g,
             Err(e) => {
-                eprintln!("{}: {}", "Cannot start".red(), e);
+                reporter.failed(&format!("Cannot start: {}", e));
                 std::process::exit(1);
             }
         };
 
-        log!("Deleting...");
+        reporter.step("Deleting...");
         match delete::artist::execute_plan(&pool, &plan, &config, args.keep_artist_img).await {
             Ok((local, s3)) => {
-                log!(
-                    "  {} {} local image(s), {} S3 object(s) removed",
-                    "✓".green(),
-                    local,
-                    s3
-                );
+                reporter.nested().ok(&format!(
+                    "{} local image(s), {} S3 object(s) removed",
+                    local, s3
+                ));
             }
             Err(e) => {
                 error_log::log_error(&e.to_string());
-                eprintln!("  {} Error: {}", "✗".red(), e);
+                reporter.failed(&format!("Error: {}", e));
                 release_lock(&pool, "nuke", std::process::id()).await;
                 std::process::exit(1);
             }
@@ -300,48 +275,50 @@ async fn main() {
         }
         release_lock(&pool, "nuke", std::process::id()).await;
 
-        log!();
-        log!(
-            "{} {} artist(s), {} local release(s) deleted.",
-            "✓".green().bold(),
+        reporter.blank();
+        reporter.done(&format!(
+            "{} artist(s), {} local release(s) deleted. Run ./index && ./sync to re-index the affected artists.",
             plan.artist_actions.len(),
             plan.doomed_releases.len()
-        );
-        log!("Run ./index && ./sync to re-index the affected artists.");
+        ));
         return;
     }
 
     // Full wipe mode
-    log!("DMP Database Nuke");
-    log!("=================");
-    log!();
+    reporter.header("DMP Nuke");
+    reporter.blank();
 
-    log!("WARNING: This will DELETE ALL DATA from the database and images.");
-    log!("This includes the download queue/history (DownloadedRelease) and the entire audit/fix");
-    log!("issue history (Issue* + FixHistory tables) - they cascade-truncate via their Artist FK");
-    log!("even though they aren't in the explicit truncate list below. Settings (web config +");
-    log!("credentials) is preserved.");
+    reporter.warn("This will DELETE ALL DATA from the database and images.");
+    reporter.info(
+        "This includes the download queue/history (DownloadedRelease) and the entire audit/fix",
+    );
+    reporter.info(
+        "issue history (Issue* + FixHistory tables) - they cascade-truncate via their Artist FK",
+    );
+    reporter.info(
+        "even though they aren't in the explicit truncate list below. Settings (web config +",
+    );
+    reporter.info("credentials) is preserved.");
     if args.keep_artist_img {
-        log!("Artist images will be preserved.");
+        reporter.info("Artist images will be preserved.");
     }
-    log!("Database: {}", redact_url(&config.database_url));
-    log!();
+    reporter.kv("Database", &redact_url(&config.database_url));
+    reporter.blank();
 
     if args.dry_run {
-        log!("(dry run - no changes made)");
+        reporter.done("Dry run - no changes made.");
         return;
     }
 
     if !args.y {
-        print!("Are you sure? Type 'y' to confirm: ");
-        io::stdout().flush().unwrap();
+        reporter.prompt("Are you sure? Type 'y' to confirm: ");
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
         if input.trim() != "y" {
-            log!("Aborted.");
+            reporter.done("Aborted.");
             std::process::exit(0);
         }
-        log!();
+        reporter.blank();
     }
 
     let pool = match PgPoolOptions::new()
@@ -352,7 +329,7 @@ async fn main() {
         Ok(p) => p,
         Err(e) => {
             error_log::log_error(&format!("Failed to connect to database: {}", e));
-            eprintln!("Failed to connect to database: {}", e);
+            reporter.failed(&format!("Failed to connect to database: {}", e));
             std::process::exit(1);
         }
     };
@@ -361,12 +338,12 @@ async fn main() {
     // that holds the lock columns - release_lock below becomes a harmless no-op in that case (0 rows
     // affected), and the next acquire_lock anywhere recreates the row via its own ON CONFLICT insert.
     if clear_stale_lock_minutes(&pool, common::lock::STALE_LOCK_MINUTES).await {
-        log!("Cleared a stale lock.");
+        reporter.warn("Cleared a stale lock.");
     }
     let _lock_guard = match acquire_lock(&pool, "nuke", std::process::id()).await {
         Ok(g) => g,
         Err(e) => {
-            eprintln!("{}: {}", "Cannot start".red(), e);
+            reporter.failed(&format!("Cannot start: {}", e));
             std::process::exit(1);
         }
     };
@@ -375,7 +352,7 @@ async fn main() {
     // now: Settings is preserved by this wipe (see #52), not truncated below.
     apply_db_overrides(&mut config, &pool).await;
 
-    log!("Truncating all tables...");
+    reporter.step("Truncating all tables...");
     let tables = vec![
         "PlaylistTrack",
         "Playlist",
@@ -414,14 +391,15 @@ async fn main() {
     );
     if let Err(e) = sqlx::query(&truncate).execute(&pool).await {
         error_log::log_error(&format!("truncate failed: {e}"));
-        eprintln!("  {} Truncate failed, nothing deleted: {}", "✗".red(), e);
+        reporter.failed(&format!("Truncate failed, nothing deleted: {}", e));
         release_lock(&pool, "nuke", std::process::id()).await;
         std::process::exit(1);
     }
-    log!("  {} Truncated {} tables", "✓".green(), tables.len());
+    reporter
+        .nested()
+        .ok(&format!("Truncated {} tables", tables.len()));
 
-    log!();
-    log!("Deleting image files...");
+    reporter.step("Deleting image files...");
 
     let img_dirs: Vec<(&str, PathBuf)> = vec![
         (
@@ -434,7 +412,9 @@ async fn main() {
     let mut local_deleted = 0usize;
     for (label, dir) in &img_dirs {
         if *label == "artists" && args.keep_artist_img {
-            log!("  Skipping artist images (--keep-artist-img)");
+            reporter
+                .nested()
+                .skip("Skipping artist images (--keep-artist-img)");
             continue;
         }
         if !dir.exists() {
@@ -444,19 +424,23 @@ async fn main() {
             let path = entry.path();
             if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("jpg") {
                 let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                log!("  Deleting {}/{}", label, name);
+                reporter
+                    .nested()
+                    .info(&format!("Deleting {}/{}", label, name));
                 if fs::remove_file(&path).is_ok() {
                     local_deleted += 1;
                 }
             }
         }
     }
-    log!("  {} Deleted {} local image(s)", "✓".green(), local_deleted);
+    reporter
+        .nested()
+        .ok(&format!("Deleted {} local image(s)", local_deleted));
 
     let use_s3 = config.image_storage == "s3" || config.image_storage == "both";
 
     if use_s3 {
-        log!("Deleting S3 images...");
+        reporter.step("Deleting S3 images...");
         if let Some(s3_client) = create_s3_client(&config).await {
             if let Some(bucket) = &config.storage_bucket {
                 let prefixes: Vec<&str> = if args.keep_artist_img {
@@ -466,38 +450,39 @@ async fn main() {
                 };
                 let mut s3_deleted = 0usize;
                 for prefix in prefixes {
-                    match delete_s3_prefix(&s3_client, bucket, prefix).await {
+                    match delete_s3_prefix(&s3_client, bucket, prefix, &reporter).await {
                         Ok(n) => s3_deleted += n,
                         Err(e) => {
                             error_log::log_error(&format!("S3 error ({}): {}", prefix, e));
-                            eprintln!("  {} S3 error ({}): {}", "✗".red(), prefix, e);
+                            reporter
+                                .nested()
+                                .warn(&format!("S3 error ({}): {}", prefix, e));
                         }
                     }
                 }
-                log!("  {} Deleted {} S3 image(s)", "✓".green(), s3_deleted);
+                reporter
+                    .nested()
+                    .ok(&format!("Deleted {} S3 image(s)", s3_deleted));
             } else {
-                log!(
-                    "  {} Skipped (STORAGE_IMAGE_BUCKET not set)",
-                    "–".bright_black()
-                );
+                reporter
+                    .nested()
+                    .skip("Skipped (STORAGE_IMAGE_BUCKET not set)");
             }
         } else {
-            log!(
-                "  {} Skipped (S3 credentials not configured)",
-                "–".bright_black()
-            );
+            reporter
+                .nested()
+                .skip("Skipped (S3 credentials not configured)");
         }
     } else {
-        log!(
-            "S3 images: {} (IMAGE_STORAGE={})",
-            "skipped".bright_black(),
-            config.image_storage.bright_black()
-        );
+        reporter.info(&format!(
+            "S3 images: skipped (IMAGE_STORAGE={})",
+            config.image_storage
+        ));
     }
 
-    log!();
-    log!("Done. Run ./index && ./sync to rebuild.");
     release_lock(&pool, "nuke", std::process::id()).await;
+    reporter.blank();
+    reporter.done("Done. Run ./index && ./sync to rebuild.");
 }
 
 #[cfg(test)]

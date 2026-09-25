@@ -25,7 +25,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use clap::{ArgGroup, Parser};
-use colored::*;
+use common::progress::{early_err, Reporter};
 
 use fix::FixKind;
 use fixed::FixedIndex;
@@ -155,6 +155,8 @@ fn default_work_dir() -> PathBuf {
 
 fn main() {
     let args = Args::parse();
+    common::error_log::init("problems");
+    let reporter = Reporter::new(false);
     audio::install_quiet_panic_hook();
 
     let root = match args
@@ -164,18 +166,12 @@ fn main() {
     {
         Some(r) => PathBuf::from(r),
         None => {
-            eprintln!(
-                "{}",
-                "MUSIC_DIR not set. Pass --root /path/to/music.".bright_red()
-            );
+            early_err("MUSIC_DIR not set. Pass --root /path/to/music.");
             std::process::exit(2);
         }
     };
     if !root.is_dir() {
-        eprintln!(
-            "{}",
-            format!("Not a directory: {}", root.display()).bright_red()
-        );
+        early_err(&format!("Not a directory: {}", root.display()));
         std::process::exit(2);
     }
 
@@ -216,30 +212,16 @@ fn main() {
         None
     };
 
-    println!(
-        "{}",
-        format!(
-            "DMP tag problem {}",
-            if fix_mode.is_some() { "fix" } else { "scan" }
-        )
-        .bright_cyan()
-        .bold()
-    );
-    println!("{}", "===================".bright_black());
-    println!(
-        "{:<14}: {}",
-        "Music dir",
-        root.display().to_string().bright_white()
-    );
-    println!(
-        "{:<14}: {}",
-        "Work dir",
-        work_dir.display().to_string().bright_white()
-    );
+    reporter.header(&format!(
+        "DMP Problems - {}",
+        if fix_mode.is_some() { "fix" } else { "scan" }
+    ));
+    reporter.kv("Music dir", &root.display().to_string());
+    reporter.kv("Work dir", &work_dir.display().to_string());
 
     if let Some((kind, mode_desc)) = fix_mode {
-        println!("{:<14}: {}", "Mode", mode_desc.bright_white());
-        println!();
+        reporter.kv("Mode", mode_desc);
+        reporter.blank();
         fix::run_fix(
             kind,
             &root,
@@ -249,11 +231,12 @@ fn main() {
             args.threads,
             panic_strategy,
             args.dry_run,
+            &reporter,
         );
         return;
     }
 
-    run_audit(&args, &root, &work_dir, &output, panic_strategy);
+    run_audit(&args, &root, &work_dir, &output, panic_strategy, &reporter);
 }
 
 fn run_audit(
@@ -262,6 +245,7 @@ fn run_audit(
     work_dir: &Path,
     output: &Path,
     panic_strategy: &'static str,
+    reporter: &Reporter,
 ) {
     let paths = Paths::in_dir(work_dir);
 
@@ -275,36 +259,30 @@ fn run_audit(
         )
     };
 
-    println!(
-        "{:<14}: {}",
-        "Report",
-        output.display().to_string().bright_white()
-    );
-    println!("{:<14}: {}", "Filters", filters.bright_white());
-    println!(
-        "{:<14}: {}",
-        "Threads",
-        args.threads.to_string().bright_white()
-    );
-    println!(
-        "{:<14}: {}",
-        "Mode",
-        "read-only (never modifies audio files)".bright_white()
-    );
+    reporter.kv("Report", &output.display().to_string());
+    reporter.kv("Filters", &filters);
+    reporter.kv("Threads", &args.threads.to_string());
+    reporter.kv("Mode", "read-only (never modifies audio files)");
 
     if panic_strategy == "abort" {
-        eprintln!(
-            "{}",
-            "WARNING: built with panic=abort - one corrupt file that crashes the tag parser will \
-             kill this run. Rebuild with `cargo build --profile scan -p problems`. (--resume can \
-             pick up where it died.)"
-                .yellow()
+        reporter.warn(
+            "built with panic=abort - one corrupt file that crashes the tag parser will kill this \
+             run. Rebuild with `cargo build --profile scan -p problems`. (--resume can pick up \
+             where it died.)",
         );
     }
-    println!();
+    reporter.blank();
 
     if args.report_only {
-        regenerate_report(&paths, output, root, &filters, args.threads, panic_strategy);
+        regenerate_report(
+            &paths,
+            output,
+            root,
+            &filters,
+            args.threads,
+            panic_strategy,
+            reporter,
+        );
         return;
     }
 
@@ -313,36 +291,27 @@ fn run_audit(
     let existing = load_state(&paths.state);
     let mut state = match (&existing, args.resume, args.restart) {
         (Some(_), false, false) => {
-            eprintln!(
-                "{}",
-                format!(
-                    "A previous scan state exists at {}.\n  Pass --resume to continue it, or \
-                     --restart to discard it and start over.",
-                    paths.state.display()
-                )
-                .bright_red()
-            );
+            reporter.failed(&format!(
+                "A previous scan state exists at {}. Pass --resume to continue it, or --restart \
+                 to discard it and start over.",
+                paths.state.display()
+            ));
             std::process::exit(2);
         }
         (Some(prev), true, _) => {
             if prev.filter_key != filter_key {
-                eprintln!(
-                    "{}",
-                    format!(
-                        "Cannot resume: that scan used different filters.\n  previous: {}\n  now:      {}",
-                        prev.filter_key, filter_key
-                    )
-                    .bright_red()
-                );
+                reporter.failed(&format!(
+                    "Cannot resume: that scan used different filters. previous: {} now: {}",
+                    prev.filter_key, filter_key
+                ));
                 std::process::exit(2);
             }
-            println!(
-                "  {} resuming after '{}' ({} artists, {} files done)",
-                "→".bright_black(),
+            reporter.step(&format!(
+                "resuming after '{}' ({} artists, {} files done)",
                 prev.last_artist.clone().unwrap_or_default(),
                 prev.artists_done,
                 prev.files_scanned
-            );
+            ));
             prev.clone()
         }
         _ => ScanState::new(&root.display().to_string(), &filter_key),
@@ -356,7 +325,7 @@ fn run_audit(
     } {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("{}", format!("Cannot open spool: {e}").bright_red());
+            reporter.failed(&format!("Cannot open spool: {e}"));
             std::process::exit(1);
         }
     };
@@ -369,10 +338,7 @@ fn run_audit(
     let artists = match scan::list_artist_dirs(root, &args.from, &args.to, &args.only, args.exact) {
         Ok(a) => a,
         Err(e) => {
-            eprintln!(
-                "{}",
-                format!("Cannot read {}: {e}", root.display()).bright_red()
-            );
+            reporter.failed(&format!("Cannot read {}: {e}", root.display()));
             std::process::exit(1);
         }
     };
@@ -389,12 +355,11 @@ fn run_audit(
         None => artists,
     };
 
-    println!(
-        "{:<14}: {} artist folder(s) to scan",
+    reporter.kv(
         "Queue",
-        pending.len()
+        &format!("{} artist folder(s) to scan", pending.len()),
     );
-    println!();
+    reporter.blank();
 
     let counters = Arc::new(Counters::default());
     counters.files.store(state.files_scanned, Ordering::Relaxed);
@@ -410,7 +375,12 @@ fn run_audit(
         .store(state.artists_done, Ordering::Relaxed);
 
     let total_artists = state.artists_done + pending.len() as u64;
-    let progress = Progress::start(counters.clone(), total_artists, args.no_progress);
+    let progress = Progress::start(
+        counters.clone(),
+        total_artists,
+        args.no_progress,
+        reporter.clone(),
+    );
     let started = Instant::now();
     let current_year: i32 = chrono::Local::now()
         .format("%Y")
@@ -437,7 +407,7 @@ fn run_audit(
 
         if let Err(e) = spool.write_rows(&batch.rows).and_then(|_| spool.sync()) {
             progress.finish();
-            eprintln!("{}", format!("Cannot write spool: {e}").bright_red());
+            reporter.failed(&format!("Cannot write spool: {e}"));
             std::process::exit(1);
         }
 
@@ -473,12 +443,12 @@ fn run_audit(
         panic_strategy,
     };
 
-    emit_report(&paths, output, &counts, &info);
+    emit_report(&paths, output, &counts, &info, reporter);
 
     if stopped_early {
-        println!("  {} stopped at --limit-files", "→".bright_black());
+        reporter.skip("stopped at --limit-files");
     }
-    print_summary(&info, output);
+    print_summary(&info, output, reporter);
 }
 
 /// Rebuild the workbook from an existing spool without rescanning.
@@ -494,17 +464,14 @@ pub fn regenerate_report(
     filters: &str,
     threads: usize,
     panic_strategy: &'static str,
+    reporter: &Reporter,
 ) {
     let state = load_state(&paths.state);
     if !paths.spool.exists() {
-        eprintln!(
-            "{}",
-            format!(
-                "No spool at {} - nothing to report on.",
-                paths.spool.display()
-            )
-            .bright_red()
-        );
+        reporter.failed(&format!(
+            "No spool at {} - nothing to report on.",
+            paths.spool.display()
+        ));
         std::process::exit(2);
     }
 
@@ -540,15 +507,21 @@ pub fn regenerate_report(
         panic_strategy,
     };
 
-    emit_report(paths, output, &counts, &info);
-    print_summary(&info, output);
+    emit_report(paths, output, &counts, &info, reporter);
+    print_summary(&info, output, reporter);
 }
 
-fn emit_report(paths: &Paths, output: &Path, counts: &CodeCounts, info: &report::RunInfo) {
+fn emit_report(
+    paths: &Paths,
+    output: &Path,
+    counts: &CodeCounts,
+    info: &report::RunInfo,
+    reporter: &Reporter,
+) {
     let rows = match spool::read_rows(&paths.spool) {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("{}", format!("Cannot read spool: {e}").bright_red());
+            reporter.failed(&format!("Cannot read spool: {e}"));
             std::process::exit(1);
         }
     };
@@ -556,32 +529,30 @@ fn emit_report(paths: &Paths, output: &Path, counts: &CodeCounts, info: &report:
     match report::write_report(output, rows, counts, info, &fixed) {
         Ok(stats) => {
             if stats.rolled_over {
-                println!(
-                    "  {} row cap reached - problems continue across {} sheets",
-                    "→".bright_black(),
+                reporter.info(&format!(
+                    "row cap reached - problems continue across {} sheets",
                     stats.sheets_used
-                );
+                ));
             }
         }
         Err(e) => {
-            eprintln!("{}", format!("Cannot write report: {e}").bright_red());
-            eprintln!(
-                "  The spool is intact at {} - fix the path and re-run with --audit --report-only.",
+            reporter.err(&format!("Cannot write report: {e}"));
+            reporter.failed(&format!(
+                "The spool is intact at {} - fix the path and re-run with --audit --report-only.",
                 paths.spool.display()
-            );
+            ));
             std::process::exit(1);
         }
     }
 }
 
-fn print_summary(info: &report::RunInfo, output: &Path) {
-    println!();
-    println!("{}", "═".repeat(60).bright_black());
-    println!();
-    println!("{}", format!("Done. ({})", info.duration).green().bold());
-    println!(
-        "  Files: {} | Flagged: {} | Problems: {} | Unreadable: {} | Panics: {}",
-        info.files, info.problem_files, info.problem_instances, info.unreadable, info.panicked
-    );
-    println!("  Report: {}", output.display().to_string().bright_white());
+fn print_summary(info: &report::RunInfo, output: &Path, reporter: &Reporter) {
+    reporter.section("Summary");
+    reporter.kv("Files", &info.files.to_string());
+    reporter.kv("Flagged", &info.problem_files.to_string());
+    reporter.kv("Problems", &info.problem_instances.to_string());
+    reporter.kv("Unreadable", &info.unreadable.to_string());
+    reporter.kv("Panics", &info.panicked.to_string());
+    reporter.kv("Report", &output.display().to_string());
+    reporter.done(&format!("Done ({})", info.duration));
 }

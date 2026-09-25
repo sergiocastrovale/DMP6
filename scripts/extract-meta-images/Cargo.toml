@@ -11,7 +11,6 @@ path = "src/main.rs"
 clap = { workspace = true }
 image = { workspace = true }
 rayon = { workspace = true }
-colored = { workspace = true }
 dotenvy = { workspace = true }
 # Not a workspace dependency (same as the analysis and problems crates, which also declare it locally).
 walkdir = { workspace = true }

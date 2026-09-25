@@ -102,7 +102,9 @@ async fn main() {
     let args = SyncArgs::parse();
     common::error_log::init("sync");
     if args.delete {
-        eprintln!("--delete was removed: use ./delete \"Artist\" or ./nuke --only \"Artist\"");
+        common::progress::early_err(
+            "--delete was removed: use ./delete \"Artist\" or ./nuke --only \"Artist\"",
+        );
         std::process::exit(2);
     }
     let reporter = Reporter::new(args.web);
@@ -112,13 +114,13 @@ async fn main() {
 
     if args.release.is_some() && (args.from.is_some() || args.to.is_some() || args.only.is_some()) {
         common::error_log::log_error("--release cannot be combined with --from, --to, or --only");
-        eprintln!("Error: --release cannot be combined with --from, --to, or --only");
+        reporter.failed("--release cannot be combined with --from, --to, or --only");
         std::process::exit(1);
     }
 
     if args.catalogue_gaps && args.release.is_some() {
         common::error_log::log_error("--catalogue-gaps cannot be combined with --release");
-        eprintln!("Error: --catalogue-gaps cannot be combined with --release");
+        reporter.failed("--catalogue-gaps cannot be combined with --release");
         std::process::exit(1);
     }
 
@@ -126,8 +128,8 @@ async fn main() {
         common::error_log::log_error(
             "--only-write-mb-to-files cannot be combined with --release or --catalogue-gaps",
         );
-        eprintln!(
-            "Error: --only-write-mb-to-files cannot be combined with --release or --catalogue-gaps"
+        reporter.failed(
+            "--only-write-mb-to-files cannot be combined with --release or --catalogue-gaps",
         );
         std::process::exit(1);
     }

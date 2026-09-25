@@ -1,14 +1,14 @@
 use clap::{ArgGroup, Parser};
-use colored::*;
 use common::{
     config::{apply_db_overrides, load_config, Config},
     error_log,
     lock::{acquire_lock, clear_stale_lock_minutes, release_lock},
+    progress::Reporter,
     statistics::update_statistics,
 };
 use delete::artist::{build_plan, execute_plan, DeletionPlan};
 use sqlx::postgres::PgPoolOptions;
-use std::io::{self, Write};
+use std::io;
 
 // ---------------------------------------------------------------------------
 // CLI
@@ -51,12 +51,9 @@ struct Args {
 /// Deletes the artist's audio files and prunes the folders they emptied. Runs AFTER the DB work: a
 /// failed transaction must never leave the catalogue intact while the files are gone. Paths outside
 /// MUSIC_DIR are skipped and reported, never followed (see `delete::files`).
-fn remove_audio_files(plan: &DeletionPlan, config: &Config, dry_run: bool) {
+fn remove_audio_files(plan: &DeletionPlan, config: &Config, dry_run: bool, reporter: &Reporter) {
     let Some(music_dir) = config.music_dir.as_deref() else {
-        eprintln!(
-            "  {} MUSIC_DIR is not configured - no files deleted",
-            "✗".red()
-        );
+        reporter.warn("MUSIC_DIR is not configured - no files deleted");
         error_log::log_error("--files requested but MUSIC_DIR is not configured");
         return;
     };
@@ -64,22 +61,18 @@ fn remove_audio_files(plan: &DeletionPlan, config: &Config, dry_run: bool) {
     let result = delete::files::delete_files(&plan.track_paths, music_dir, dry_run);
     let verb = if dry_run { "would remove" } else { "removed" };
 
-    println!(
-        "  {} {} {} file(s), {} empty folder(s)",
-        "✓".green(),
-        verb,
-        result.files_removed,
-        result.dirs_removed
-    );
+    reporter.nested().ok(&format!(
+        "{} {} file(s), {} empty folder(s)",
+        verb, result.files_removed, result.dirs_removed
+    ));
 
     if !result.skipped.is_empty() {
-        println!(
-            "  {} {} path(s) skipped (outside MUSIC_DIR, missing, or not removable)",
-            "!".yellow(),
+        reporter.nested().warn(&format!(
+            "{} path(s) skipped (outside MUSIC_DIR, missing, or not removable)",
             result.skipped.len()
-        );
+        ));
         for path in result.skipped.iter().take(10) {
-            println!("      {} {}", "•".bright_black(), path.bright_black());
+            reporter.nested().nested().info(path);
         }
     }
 }
@@ -92,14 +85,11 @@ fn remove_audio_files(plan: &DeletionPlan, config: &Config, dry_run: bool) {
 async fn main() {
     let args = Args::parse();
     error_log::init("delete");
+    let reporter = Reporter::new(false);
 
-    println!("{}", "DMP Delete".bright_cyan().bold());
-    println!("{}", "==========".bright_black());
+    reporter.header("DMP Delete");
     if args.dry_run {
-        println!(
-            "Mode    : {}",
-            "DRY RUN (no changes will be made)".yellow().bold()
-        );
+        reporter.kv("Mode", "dry run");
     }
 
     let mut config = load_config(None);
@@ -116,7 +106,16 @@ async fn main() {
     apply_db_overrides(&mut config, &pool).await;
 
     if let Some(release_id) = &args.release {
-        delete::release::run(&pool, &config, release_id, args.y, args.files, args.dry_run).await;
+        delete::release::run(
+            &pool,
+            &config,
+            release_id,
+            args.y,
+            args.files,
+            args.dry_run,
+            &reporter,
+        )
+        .await;
         return;
     }
 
@@ -131,17 +130,14 @@ async fn main() {
         .collect();
 
     if artist_names.len() == 1 {
-        println!("Target  : {}", artist_names[0].bright_white());
+        reporter.kv("Target", &artist_names[0]);
     } else {
-        println!(
-            "Targets : {} artists",
-            artist_names.len().to_string().bright_white()
-        );
+        reporter.kv("Targets", &format!("{} artists", artist_names.len()));
         for name in &artist_names {
-            println!("    {} {}", "•".bright_black(), name.bright_white());
+            reporter.nested().info(name);
         }
     }
-    println!();
+    reporter.blank();
 
     // Resolve target artists
     let mut target_ids: Vec<(String, String)> = Vec::new();
@@ -157,7 +153,7 @@ async fn main() {
         match matches.len() {
             0 => {
                 error_log::log_error(&format!("No artist found matching '{}'", name));
-                eprintln!("{} No artist found matching '{}'", "✗".red(), name);
+                reporter.failed(&format!("No artist found matching '{}'", name));
                 std::process::exit(1);
             }
             1 => {
@@ -165,11 +161,11 @@ async fn main() {
             }
             n => {
                 error_log::log_error(&format!("{} artists match '{}' - ambiguous", n, name));
-                eprintln!("{} {} artists match '{}':", "✗".red(), n, name);
+                reporter.err(&format!("{} artists match '{}':", n, name));
                 for (_id, name, slug) in &matches {
-                    eprintln!("    - {} ({})", name, slug.bright_black());
+                    reporter.nested().info(&format!("{} ({})", name, slug));
                 }
-                eprintln!("Refine the name and try again.");
+                reporter.failed("Refine the name and try again.");
                 std::process::exit(1);
             }
         }
@@ -189,14 +185,14 @@ async fn main() {
         }
     }
     if !connected_ids.is_empty() {
-        println!(
-            "Linked artists : {} (will be deleted with primary)",
-            connected_ids.len().to_string().bright_white()
+        reporter.kv(
+            "Linked artists",
+            &format!("{} (will be deleted with primary)", connected_ids.len()),
         );
         for (_, name) in &connected_ids {
-            println!("    {} {}", "•".bright_black(), name.bright_white());
+            reporter.nested().info(name);
         }
-        println!();
+        reporter.blank();
         target_ids.extend(connected_ids);
     }
 
@@ -205,14 +201,10 @@ async fn main() {
         .expect("Failed to build deletion plan");
 
     // Display plan
-    println!("{}", "Plan".bright_cyan().bold());
-    println!("{}", "----".bright_black());
+    reporter.section("Plan");
 
     if !plan.artist_actions.is_empty() {
-        println!(
-            "Artists to delete: {}",
-            plan.artist_actions.len().to_string().bright_white()
-        );
+        reporter.kv("Artists to delete", &plan.artist_actions.len().to_string());
         for a in &plan.artist_actions {
             let tag = if a.is_cascaded { "cascaded" } else { "target" };
             let warning = if a.other_credits_count > 0 {
@@ -223,124 +215,114 @@ async fn main() {
             } else {
                 String::new()
             };
-            println!(
-                "    {} {}  {}",
-                "•".bright_black(),
-                a.name.bright_white(),
-                format!("({}) {}{}", a.slug, tag, warning).bright_black()
-            );
+            reporter
+                .nested()
+                .info(&format!("{} ({}) {}{}", a.name, a.slug, tag, warning));
         }
     }
 
-    println!(
-        "Local releases  : {}",
-        plan.doomed_releases.len().to_string().bright_white()
-    );
+    reporter.kv("Local releases", &plan.doomed_releases.len().to_string());
     let co_owned = plan.owned_releases.len() - plan.doomed_releases.len();
     if co_owned > 0 {
-        println!(
-            "Co-owned kept   : {} {}",
-            co_owned.to_string().bright_white(),
-            "(still owned by another artist - only unlinked)".bright_black()
+        reporter.kv(
+            "Co-owned kept",
+            &format!(
+                "{} (still owned by another artist - only unlinked)",
+                co_owned
+            ),
         );
     }
-    println!(
-        "Local tracks    : {}",
-        plan.track_count.to_string().bright_white()
-    );
-    println!(
-        "MB releases     : {} {}",
-        plan.mb_releases.len().to_string().bright_white(),
-        "(unlinked; removed when nothing else uses them)".bright_black()
+    reporter.kv("Local tracks", &plan.track_count.to_string());
+    reporter.kv(
+        "MB releases",
+        &format!(
+            "{} (unlinked; removed when nothing else uses them)",
+            plan.mb_releases.len()
+        ),
     );
     if args.files {
-        println!(
-            "Files on disk   : {} {}",
-            plan.track_paths.len().to_string().bright_white(),
-            "(will be DELETED from MUSIC_DIR)".red().bold()
+        reporter.kv(
+            "Files on disk",
+            &format!(
+                "{} (will be DELETED from MUSIC_DIR)",
+                plan.track_paths.len()
+            ),
         );
     }
-    println!();
+    reporter.blank();
 
     if plan.artist_actions.is_empty() {
-        println!("Nothing to do.");
+        reporter.done("Nothing to do.");
         return;
     }
 
     if args.dry_run {
         if args.files {
-            remove_audio_files(&plan, &config, true);
+            remove_audio_files(&plan, &config, true, &reporter);
         }
-        println!("{} (dry run - no changes made)", "✓".green());
+        reporter.done("Dry run - no changes made.");
         return;
     }
 
     // Confirm
     if !args.y {
-        print!("Type y to confirm: ");
-        io::stdout().flush().unwrap();
+        reporter.prompt("Type y to confirm: ");
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
         if input.trim().to_lowercase() != "y" {
-            println!("Aborted.");
+            reporter.done("Aborted.");
             std::process::exit(0);
         }
-        println!();
+        reporter.blank();
     }
 
     // Same DB scan lock index/sync use - acquired only now (not while waiting on the confirmation
     // prompt above) so delete's cascading writes never interleave with a running index/sync pass.
     if clear_stale_lock_minutes(&pool, common::lock::STALE_LOCK_MINUTES).await {
-        eprintln!("{}", "Cleared a stale lock.".yellow());
+        reporter.warn("Cleared a stale lock.");
     }
     let _lock_guard = match acquire_lock(&pool, "delete", std::process::id()).await {
         Ok(g) => g,
         Err(e) => {
-            eprintln!("{}: {}", "Cannot start".red(), e);
+            reporter.failed(&format!("Cannot start: {}", e));
             std::process::exit(1);
         }
     };
 
-    println!("Deleting...");
+    reporter.step("Deleting...");
     match execute_plan(&pool, &plan, &config, false).await {
         Ok((local, s3)) => {
-            println!(
-                "  {} {} local image(s), {} S3 object(s) removed",
-                "✓".green(),
-                local,
-                s3
-            );
+            reporter.nested().ok(&format!(
+                "{} local image(s), {} S3 object(s) removed",
+                local, s3
+            ));
         }
         Err(e) => {
             error_log::log_error(&format!("Database error: {}", e));
-            eprintln!("  {} Database error: {}", "✗".red(), e);
+            reporter.failed(&format!("Database error: {}", e));
             release_lock(&pool, "delete", std::process::id()).await;
             std::process::exit(1);
         }
     }
 
     if args.files {
-        remove_audio_files(&plan, &config, false);
+        remove_audio_files(&plan, &config, false, &reporter);
     }
 
     update_statistics(&pool).await.ok();
     release_lock(&pool, "delete", std::process::id()).await;
 
-    println!();
+    reporter.blank();
     let kept = plan
         .artist_actions
         .iter()
         .filter(|a| a.other_credits_count > 0)
         .count();
-    println!(
-        "{} {} artist(s) deleted, {} kept as credit-only.",
-        "✓".green().bold(),
+    reporter.done(&format!(
+        "{} artist(s) deleted, {} kept as credit-only. {} local release(s), {} MB release(s) deleted.",
         plan.artist_actions.len() - kept,
-        kept
-    );
-    println!(
-        "  {} local release(s), {} MB release(s) deleted.",
+        kept,
         plan.doomed_releases.len(),
         plan.mb_releases.len()
-    );
+    ));
 }

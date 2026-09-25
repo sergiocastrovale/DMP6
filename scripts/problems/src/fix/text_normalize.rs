@@ -17,7 +17,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use colored::*;
+use common::progress::Reporter;
 
 use crate::audio::read_tags_guarded;
 use crate::checks::text::{invisible_chars, is_untrimmed, normalize_tag_text};
@@ -32,6 +32,7 @@ pub async fn run(
     root: &Path,
     worklist: &BTreeMap<String, Vec<String>>,
     dry_run: bool,
+    reporter: &Reporter,
 ) -> Result<FixRunResult, String> {
     let mut result = FixRunResult::default();
 
@@ -41,35 +42,26 @@ pub async fn run(
             let abs_path = folder.join(file);
             match process_file(rel_path, file, &abs_path, dry_run) {
                 Ok(outcomes) if outcomes.is_empty() => {
-                    println!(
-                        "  {} {}/{}: tags changed since scan, nothing left to fix",
-                        "-".yellow(),
-                        rel_path,
-                        file
-                    );
+                    reporter.skip(&format!(
+                        "{}/{}: tags changed since scan, nothing left to fix",
+                        rel_path, file
+                    ));
                 }
                 Ok(outcomes) => {
                     for outcome in outcomes {
-                        println!(
-                            "  {} {}/{} [{}]: {:?} -> {:?}",
-                            "✓".green(),
+                        reporter.ok(&format!(
+                            "{}/{} [{}]: {:?} -> {:?}",
                             rel_path,
                             file,
                             outcome.code.code(),
                             outcome.old_value,
                             outcome.new_value.as_deref().unwrap_or("")
-                        );
+                        ));
                         result.outcomes.push(outcome);
                     }
                 }
                 Err(error) => {
-                    println!(
-                        "  {} {}/{}: {}",
-                        "!".bright_red(),
-                        rel_path,
-                        file,
-                        error.message
-                    );
+                    reporter.warn(&format!("{}/{}: {}", rel_path, file, error.message));
                     result.errors.push(error);
                 }
             }

@@ -31,52 +31,6 @@ use std::sync::Arc;
 pub(crate) type ImageTaskResult = (String, Result<bool, String>);
 pub(crate) type ImageTasks = Arc<tokio::sync::Mutex<tokio::task::JoinSet<ImageTaskResult>>>;
 
-/// Prefixes every message with `[artist name] ` before forwarding to the real `Reporter`. Concurrency
-/// interleaves several artists' output on one stream (6 workers by default), so a bare message reads
-/// as if a single release were stuck repeating - every line needs to say whose it is.
-struct ArtistReporter<'a> {
-    inner: &'a Reporter,
-    name: &'a str,
-}
-
-impl<'a> ArtistReporter<'a> {
-    fn new(inner: &'a Reporter, name: &'a str) -> Self {
-        Self { inner, name }
-    }
-
-    fn tag(&self, msg: &str) -> String {
-        format!("[{}] {}", self.name, msg)
-    }
-
-    fn info(&self, msg: &str) {
-        self.inner.info(&self.tag(msg));
-    }
-
-    fn step(&self, msg: &str) {
-        self.inner.step(&self.tag(msg));
-    }
-
-    fn ok(&self, msg: &str) {
-        self.inner.ok(&self.tag(msg));
-    }
-
-    fn sub_ok(&self, msg: &str) {
-        self.inner.sub_ok(&self.tag(msg));
-    }
-
-    fn skip(&self, msg: &str) {
-        self.inner.skip(&self.tag(msg));
-    }
-
-    fn warn(&self, msg: &str) {
-        self.inner.warn(&self.tag(msg));
-    }
-
-    fn err(&self, msg: &str) {
-        self.inner.err(&self.tag(msg));
-    }
-}
-
 /// What one artist contributed to the run totals. Returned rather than accumulated in place so the
 /// per-artist work needs no shared counters.
 #[derive(Default)]
@@ -126,14 +80,14 @@ enum SearchOutcome {
 async fn search_release_candidate(
     http_client: &Client,
     limiter: &mut RateLimiter,
-    reporter: &ArtistReporter<'_>,
+    reporter: &Reporter,
     local_title: &str,
     artist_name: &str,
     verbose: bool,
 ) -> SearchOutcome {
     let api_start = std::time::Instant::now();
-    reporter.info(&format!(
-        "        → Search MusicBrainz for \"{}\" by {}",
+    reporter.step(&format!(
+        "Search MusicBrainz for \"{}\" by {}",
         local_title, artist_name
     ));
     // The whole shortlist, not just the top hit: MusicBrainz frequently scores a Single-typed group
@@ -153,7 +107,9 @@ async fn search_release_candidate(
             return SearchOutcome::Transient
         }
         Err(e) => {
-            reporter.warn(&format!("{}: search failed: {}", local_title, e));
+            reporter
+                .nested()
+                .warn(&format!("{}: search failed: {}", local_title, e));
             return SearchOutcome::NotFound;
         }
     };
@@ -168,13 +124,15 @@ async fn search_release_candidate(
         )
     }) else {
         if verbose {
-            reporter.skip(&format!("{} (no confident search match)", local_title));
+            reporter
+                .nested()
+                .skip(&format!("{} (no confident search match)", local_title));
         }
         return SearchOutcome::NotFound;
     };
 
-    reporter.info(&format!(
-        "        ← Search hit {} (score {}) in {:.1}s - browsing editions",
+    reporter.nested().ok(&format!(
+        "Search hit {} (score {}) in {:.1}s - browsing editions",
         found.id,
         found.score,
         api_start.elapsed().as_secs_f64()
@@ -193,7 +151,7 @@ async fn search_release_candidate(
         }
         _ => {
             if verbose {
-                reporter.skip(&format!(
+                reporter.nested().skip(&format!(
                     "{} (search hit had no official editions)",
                     local_title
                 ));
@@ -206,7 +164,7 @@ async fn search_release_candidate(
 /// A failed artist lookup is not "no match": nothing is stamped, so the artist stays pending and the
 /// next run asks again.
 fn artist_lookup_failed(
-    r: &ArtistReporter<'_>,
+    r: &Reporter,
     mut outcome: ArtistOutcome,
     name: &str,
     e: &str,
@@ -311,13 +269,15 @@ async fn fetch_and_store_artist_image(
     (artist_name, result)
 }
 
-/// Named because the download no longer lines up with the artist on screen - the result arrives while
-/// some later artist is being synced, so the message has to say whose image it was.
+/// Scopes its own `[name]` prefix rather than trusting the caller's - the download no longer lines up
+/// with the artist on screen by the time it lands (the result arrives while some later artist is being
+/// synced), so the message has to say whose image it was regardless of who's "current".
 pub(crate) fn report_image_result(reporter: &Reporter, name: &str, result: &Result<bool, String>) {
+    let r = reporter.for_artist(name).nested();
     match result {
-        Ok(true) => reporter.sub_ok(&format!("[{}] Artist image downloaded", name)),
-        Ok(false) => reporter.sub_step(&format!("[{}] Artist image not found", name)),
-        Err(e) => reporter.sub_step(&format!("[{}] Artist image error: {}", name, e)),
+        Ok(true) => r.ok("Artist image downloaded"),
+        Ok(false) => r.skip("Artist image not found"),
+        Err(e) => r.warn(&format!("Artist image error: {e}")),
     }
 }
 
@@ -374,7 +334,11 @@ pub(crate) async fn process_artist(
     let mut release_type_cache: HashMap<String, String> = HashMap::new();
     let mut genre_cache: HashMap<String, String> = HashMap::new();
     let is_targeted = args.release.is_some();
-    let r = ArtistReporter::new(&reporter, &artist.name);
+    // Every line this artist's worker prints, at any depth, carries `[name] ` - concurrency
+    // interleaves several artists' output on one stream (6 workers by default), so a bare message
+    // reads as if a single release were stuck repeating.
+    let ar = reporter.for_artist(&artist.name);
+    let r = ar.nested();
     let mut outcome = ArtistOutcome::default();
     if !running.load(Ordering::SeqCst) {
         return outcome;
@@ -386,7 +350,7 @@ pub(crate) async fn process_artist(
 
     // Skip special artists (Various Artists, [unknown], etc.)
     if is_special_artist_name(&artist.name) {
-        reporter.item("", &artist.name, i + 1, total);
+        ar.item(&artist.name, i + 1, total);
         r.skip("Special artist - skipped");
         if let Some(ref h) = run_hash {
             stamp_sync_hash(&pool, &artist.id, h).await;
@@ -395,7 +359,7 @@ pub(crate) async fn process_artist(
     }
 
     reporter.sync_progress(&artist.name, i + 1, total, "syncing");
-    reporter.item("", &artist.name, i + 1, total);
+    ar.item(&artist.name, i + 1, total);
     // Sampled either side of the artist so `--verbose` can report what it cost in MusicBrainz
     // calls. That number is the whole point of the catalogue browse below, and the thing to
     // watch if it ever creeps back up. Approximate under concurrency (the counter is global and
@@ -470,7 +434,7 @@ pub(crate) async fn process_artist(
 
     let mb_artist = match mb_artist_opt {
         Some(m) => {
-            r.sub_ok(&format!("Found: {} ({})", m.name, m.id));
+            r.nested().ok(&format!("Found: {} ({})", m.name, m.id));
             m
         }
         None => {
@@ -650,7 +614,7 @@ pub(crate) async fn process_artist(
         batch_upsert_artist_urls(&pool, &artist.id, &urls)
             .await
             .ok();
-        r.sub_ok(&format!(
+        r.nested().ok(&format!(
             "Saved {} URLs, {} genres{}",
             urls.len(),
             artist_genre_ids.len(),
@@ -743,12 +707,13 @@ pub(crate) async fn process_artist(
             continue;
         }
         let release_start = std::time::Instant::now();
-        r.info(&format!(
-            "    ({}/{}) - {}",
+        r.step(&format!(
+            "({}/{}) {}",
             lr_idx + 1,
             local_release_total,
             local_release.title,
         ));
+        let rr = r.nested();
 
         // If already synced and not overwriting, skip the MB API call entirely.
         //
@@ -767,7 +732,7 @@ pub(crate) async fn process_artist(
                     .ok();
                 processed_count += 1;
                 if args.verbose {
-                    r.skip(&format!("{} (already synced)", local_release.title));
+                    rr.skip(&format!("{} (already synced)", local_release.title));
                 }
                 continue;
             }
@@ -793,7 +758,7 @@ pub(crate) async fn process_artist(
                 consensus::mark_local_release_unknown(&pool, &local_release.id, reason)
                     .await
                     .ok();
-                r.skip(&format!("{} ({})", local_release.title, reason));
+                rr.skip(&format!("{} ({})", local_release.title, reason));
                 continue;
             }
         }
@@ -810,11 +775,11 @@ pub(crate) async fn process_artist(
         let mut matched: Option<MatchCandidate> = None;
         if let Some(ref rel_id) = tier1_release_id {
             let api_start = std::time::Instant::now();
-            r.info(&format!("        → Lookup by album ID {}", rel_id));
+            rr.step(&format!("Lookup by album ID {}", rel_id));
             match mb_api::mb_get_release_by_id(&http_client, rel_id, &mut limiter).await {
                 Ok(found) => {
-                    r.info(&format!(
-                        "        ← Found release in {:.1}s ({} tracks)",
+                    rr.nested().ok(&format!(
+                        "Found release in {:.1}s ({} tracks)",
                         api_start.elapsed().as_secs_f64(),
                         found.tracks.len()
                     ));
@@ -828,10 +793,11 @@ pub(crate) async fn process_artist(
                     });
                 }
                 Err(e) if mb_api::classify_mb_error(&e) == mb_api::MbErrorKind::NotFound => {
-                    r.info("        ← Album ID not found, trying release group...");
+                    rr.nested()
+                        .skip("Album ID not found, trying release group...");
                 }
                 Err(e) if mb_api::classify_mb_error(&e) == mb_api::MbErrorKind::Transient => {
-                    r.warn(&format!(
+                    rr.warn(&format!(
                         "{}: MB unavailable, skipping",
                         local_release.title
                     ));
@@ -839,7 +805,7 @@ pub(crate) async fn process_artist(
                 }
                 Err(e) => {
                     release_failures += 1;
-                    r.err(&format!("{}: {}", local_release.title, e));
+                    rr.err(&format!("{}: {}", local_release.title, e));
                     continue;
                 }
             }
@@ -852,14 +818,11 @@ pub(crate) async fn process_artist(
         if matched.is_none() {
             if let Some(ref rg_id) = tier2_rg_id {
                 let api_start = std::time::Instant::now();
-                r.info(&format!(
-                    "        → Browse release group {} (all editions)",
-                    rg_id
-                ));
+                rr.step(&format!("Browse release group {} (all editions)", rg_id));
                 match mb_api::mb_get_release_tracks(&http_client, rg_id, &mut limiter).await {
                     Ok(releases) if !releases.is_empty() => {
-                        r.info(&format!(
-                            "        ← Found {} edition(s) in {:.1}s",
+                        rr.nested().ok(&format!(
+                            "Found {} edition(s) in {:.1}s",
                             releases.len(),
                             api_start.elapsed().as_secs_f64(),
                         ));
@@ -879,14 +842,14 @@ pub(crate) async fn process_artist(
                     }
                     Ok(_) => {
                         if args.verbose {
-                            r.skip(&format!(
+                            rr.skip(&format!(
                                 "{} (no official releases in group)",
                                 local_release.title
                             ));
                         }
                     }
                     Err(e) if mb_api::classify_mb_error(&e) == mb_api::MbErrorKind::Transient => {
-                        r.warn(&format!(
+                        rr.warn(&format!(
                             "{}: MB unavailable, skipping",
                             local_release.title
                         ));
@@ -894,7 +857,7 @@ pub(crate) async fn process_artist(
                     }
                     Err(e) => {
                         release_failures += 1;
-                        r.err(&format!("{}: {}", local_release.title, e));
+                        rr.err(&format!("{}: {}", local_release.title, e));
                         continue;
                     }
                 }
@@ -915,7 +878,7 @@ pub(crate) async fn process_artist(
             match search_release_candidate(
                 &http_client,
                 &mut limiter,
-                &r,
+                &rr,
                 &local_release.title,
                 &artist.name,
                 args.verbose,
@@ -925,7 +888,7 @@ pub(crate) async fn process_artist(
                 SearchOutcome::Found(candidate) => matched = Some(candidate),
                 SearchOutcome::NotFound => {}
                 SearchOutcome::Transient => {
-                    r.warn(&format!(
+                    rr.warn(&format!(
                         "{}: MB unavailable, skipping",
                         local_release.title
                     ));
@@ -943,7 +906,7 @@ pub(crate) async fn process_artist(
                     .await
                     .ok();
                 if args.verbose {
-                    r.skip(&format!(
+                    rr.skip(&format!(
                         "{} (no MB metadata in tags - left Unmatched)",
                         local_release.title
                     ));
@@ -979,7 +942,7 @@ pub(crate) async fn process_artist(
                 mark_local_release_unmatched(&pool, &local_release.id)
                     .await
                     .ok();
-                r.skip(&format!(
+                rr.skip(&format!(
                     "{} ({} MB siblings, no exact track-count match - left Unmatched)",
                     local_release.title,
                     candidate.releases.len()
@@ -1008,15 +971,15 @@ pub(crate) async fn process_artist(
 
             if has_embedded_ids && !searched_fallback {
                 searched_fallback = true;
-                r.info(&format!(
-                        "        → Tagged release is not bindable (type={}, status={}) - searching for an allowed edition",
-                        candidate.primary_type.as_deref().unwrap_or("?"),
-                        best_status.as_deref().unwrap_or("?"),
-                    ));
+                rr.step(&format!(
+                    "Tagged release is not bindable (type={}, status={}) - searching for an allowed edition",
+                    candidate.primary_type.as_deref().unwrap_or("?"),
+                    best_status.as_deref().unwrap_or("?"),
+                ));
                 if let SearchOutcome::Found(found) = search_release_candidate(
                     &http_client,
                     &mut limiter,
-                    &r,
+                    &rr,
                     &local_release.title,
                     &artist.name,
                     args.verbose,
@@ -1031,7 +994,7 @@ pub(crate) async fn process_artist(
             mark_local_release_unmatched(&pool, &local_release.id)
                 .await
                 .ok();
-            r.skip(&format!(
+            rr.skip(&format!(
                 "{} (not allowed: type={}, status={} - left Unmatched)",
                 local_release.title,
                 candidate.primary_type.as_deref().unwrap_or("?"),
@@ -1114,7 +1077,7 @@ pub(crate) async fn process_artist(
             Ok(id) => id,
             Err(e) => {
                 release_failures += 1;
-                r.err(&format!("{}: DB error: {}", local_release.title, e));
+                rr.err(&format!("{}: DB error: {}", local_release.title, e));
                 continue;
             }
         };
@@ -1140,7 +1103,7 @@ pub(crate) async fn process_artist(
                 disc_number: t.disc_number.map(|d| d as i32),
                 duration_ms: t.length.map(|l| l as i32),
                 mb_id: Some(t.id.clone()),
-                recording_id: t.recording.as_ref().map(|r| r.id.clone()),
+                recording_id: t.recording.as_ref().map(|rec| rec.id.clone()),
             })
             .collect();
 
@@ -1149,7 +1112,7 @@ pub(crate) async fn process_artist(
             Ok(t) => t,
             Err(e) => {
                 release_failures += 1;
-                r.warn(&format!(
+                rr.warn(&format!(
                     "{}: track insert failed: {}",
                     local_release.title, e
                 ));
@@ -1179,7 +1142,7 @@ pub(crate) async fn process_artist(
         .await
         {
             release_failures += 1;
-            r.warn(&format!("{}: bind failed: {}", local_release.title, e));
+            rr.warn(&format!("{}: bind failed: {}", local_release.title, e));
             continue;
         }
 
@@ -1197,7 +1160,7 @@ pub(crate) async fn process_artist(
                             local_id.as_str(),
                             (
                                 mb_track.id.as_str(),
-                                mb_track.recording.as_ref().map(|r| r.id.as_str()),
+                                mb_track.recording.as_ref().map(|rec| rec.id.as_str()),
                             ),
                         );
                     }
@@ -1230,14 +1193,14 @@ pub(crate) async fn process_artist(
                             Ok(false) => {}
                             Err(e) => {
                                 if args.verbose {
-                                    r.warn(&format!("MB tag write {}: {}", rel_path, e));
+                                    rr.warn(&format!("MB tag write {}: {}", rel_path, e));
                                 }
                             }
                         }
                     }
                     if tags_written > 0 {
-                        r.info(&format!(
-                            "        ↳ Wrote MB IDs to {}/{} tracks",
+                        rr.nested().ok(&format!(
+                            "Wrote MB IDs to {}/{} tracks",
                             tags_written,
                             id_paths.len()
                         ));
@@ -1261,7 +1224,7 @@ pub(crate) async fn process_artist(
                 status::ReleaseStatus::MissingTracks => "Missing tracks",
                 status::ReleaseStatus::Incomplete => "Incomplete",
             };
-            r.sub_ok(&format!(
+            rr.nested().ok(&format!(
                 "{} - {} ({} local / {} MB tracks)",
                 local_release.title,
                 status_label,
@@ -1271,9 +1234,8 @@ pub(crate) async fn process_artist(
         }
         processed_count += 1;
         newly_synced_count += 1;
-        r.info(&format!(
-            "        ✓ {} done in {:.1}s",
-            local_release.title,
+        rr.ok(&format!(
+            "Done in {:.1}s",
             release_start.elapsed().as_secs_f64()
         ));
     }
@@ -1355,7 +1317,7 @@ pub(crate) async fn process_artist(
                 };
                 if let Some(note) = &contained_note {
                     contained_count += 1;
-                    r.info(&format!("        · {} - {}", rg.title, note));
+                    r.nested().info(&format!("{} - {}", rg.title, note));
                 }
                 let type_name = rg.primary_type.as_deref().unwrap_or("Other");
                 let type_id =
@@ -1449,8 +1411,8 @@ pub(crate) async fn process_artist(
                                 }
                             }
                             if embedded > 0 {
-                                r.info(&format!(
-                                    "      ↳ Embedded cover into {}/{} tracks",
+                                r.nested().ok(&format!(
+                                    "Embedded cover into {}/{} tracks",
                                     embedded,
                                     file_paths.len()
                                 ));
@@ -1504,8 +1466,8 @@ pub(crate) async fn process_artist(
                         }
                     }
 
-                    r.info(&format!(
-                        "      ↓ {} cover in {:.1}s",
+                    r.nested().ok(&format!(
+                        "{} cover in {:.1}s",
                         rg_id,
                         art_start.elapsed().as_secs_f64()
                     ));
@@ -1585,8 +1547,8 @@ pub(crate) async fn process_artist(
         r.skip("No releases matched");
     }
     if args.verbose {
-        r.info(&format!(
-            "        · {} MusicBrainz call(s) for this artist",
+        r.nested().info(&format!(
+            "{} MusicBrainz call(s) for this artist",
             limiter.requests_issued().saturating_sub(calls_before)
         ));
     }

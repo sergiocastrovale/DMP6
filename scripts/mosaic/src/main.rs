@@ -1,5 +1,6 @@
 use chrono::Utc;
 use clap::Parser;
+use common::progress::{early_err, protocol_line, Reporter};
 use image::codecs::jpeg::JpegEncoder;
 use image::imageops::FilterType;
 use image::{DynamicImage, GenericImage, RgbImage};
@@ -88,6 +89,9 @@ fn diagonal_positions(cols: u32, rows: u32) -> Vec<(u32, u32)> {
 
 fn main() {
     let args = Args::parse();
+    common::error_log::init("mosaic");
+    let reporter = Reporter::new(args.web);
+    reporter.header("DMP Mosaic");
 
     let manifest: Vec<Value> = args
         .manifest
@@ -99,7 +103,10 @@ fn main() {
     let scan_dir = || -> Vec<PathBuf> {
         fs::read_dir(&args.image_dir)
             .unwrap_or_else(|e| {
-                eprintln!("Cannot read image directory '{}': {}", args.image_dir, e);
+                early_err(&format!(
+                    "Cannot read image directory '{}': {}",
+                    args.image_dir, e
+                ));
                 std::process::exit(1);
             })
             .filter_map(|entry| {
@@ -130,11 +137,11 @@ fn main() {
         // directory when none of them resolve would silently mosaic a completely different (and
         // usually much larger) set of images than the caller asked for, with no visible error.
         if filtered.is_empty() {
-            eprintln!(
+            reporter.failed(&format!(
                 "None of the {} manifest file(s) were found under '{}'",
                 allowed.len(),
                 args.image_dir
-            );
+            ));
             std::process::exit(1);
         }
         filtered
@@ -143,15 +150,15 @@ fn main() {
     // Fail before spending minutes resizing/compositing thousands of images on an output path that
     // was never writable in the first place.
     fs::create_dir_all(&args.output_dir).unwrap_or_else(|e| {
-        eprintln!(
+        reporter.failed(&format!(
             "Cannot create output directory '{}': {}",
             args.output_dir, e
-        );
+        ));
         std::process::exit(1);
     });
 
     if paths.is_empty() {
-        eprintln!("No JPEG images found in '{}'", args.image_dir);
+        reporter.failed(&format!("No JPEG images found in '{}'", args.image_dir));
         std::process::exit(1);
     }
 
@@ -197,17 +204,10 @@ fn main() {
     };
     let preview_size: u32 = (tile_size * 3 / 8).max(10);
 
-    if args.web {
-        println!(
-            "Found {} cover images, building {}x{} grid @ {}px (mode: {})",
-            count, cols, rows, tile_size, args.mode
-        );
-    } else {
-        eprintln!(
-            "Found {} cover images, building {}x{} grid @ {}px (mode: {})",
-            count, cols, rows, tile_size, args.mode
-        );
-    }
+    reporter.info(&format!(
+        "Found {} cover images, building {}x{} grid @ {}px (mode: {})",
+        count, cols, rows, tile_size, args.mode
+    ));
 
     let full_w = cols * tile_size;
     let full_h = rows * tile_size;
@@ -239,13 +239,13 @@ fn main() {
             let done = processed.fetch_add(1, Ordering::Relaxed) + 1;
             if args.web {
                 if done.is_multiple_of(progress_stride) || done == count {
-                    println!(
+                    protocol_line(&format!(
                         "PROGRESS:{}",
                         serde_json::json!({"current": done, "total": count})
-                    );
+                    ));
                 }
             } else if done.is_multiple_of(100) || done == count {
-                eprint!("\r  Processing: {}/{}", done, count);
+                reporter.transient(&format!("Processing: {}/{}", done, count));
             }
 
             Some(TileData {
@@ -257,9 +257,7 @@ fn main() {
         })
         .collect();
 
-    if !args.web {
-        eprintln!();
-    }
+    reporter.clear_transient();
 
     if args.mode == "gradient" {
         tiles.sort_by(|a, b| {
@@ -340,7 +338,7 @@ fn main() {
     let preview_size = fs::metadata(&preview_path).map(|m| m.len()).unwrap_or(0);
 
     if args.web {
-        println!(
+        protocol_line(&format!(
             "DONE:{}",
             serde_json::json!({
                 "full": full_name,
@@ -349,14 +347,15 @@ fn main() {
                 "cols": cols,
                 "rows": rows,
             })
-        );
-    } else {
-        eprintln!(
-            "Created {} ({:.1} MB) and {} ({:.1} MB)",
-            full_name,
-            full_size as f64 / 1_048_576.0,
-            preview_name,
-            preview_size as f64 / 1_048_576.0,
-        );
+        ));
     }
+    // Last line, on purpose - see the `index`/`sync`/`tidy` convention (`web/server/utils/autoScan.ts`
+    // doesn't read this one, but every binary's own tail keeps the same shape regardless).
+    reporter.done(&format!(
+        "Created {} ({:.1} MB) and {} ({:.1} MB)",
+        full_name,
+        full_size as f64 / 1_048_576.0,
+        preview_name,
+        preview_size as f64 / 1_048_576.0,
+    ));
 }

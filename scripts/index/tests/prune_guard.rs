@@ -14,6 +14,7 @@
 //!   SMOKE_TEST_DATABASE_URL=postgres://... cargo test -p index --release --test prune_guard \
 //!     -- --ignored --nocapture
 
+use common::progress::Reporter;
 use index::deletion::delete_removed_tracks;
 use sqlx::PgPool;
 
@@ -120,7 +121,8 @@ async fn prune_bypasses_the_mount_blip_guard() {
     let (release_id, _missing) = seed(&pool, &music_dir).await;
 
     // Without --prune: 9/10 missing reads as a mount blip, nothing is touched.
-    let guarded = delete_removed_tracks(&pool, PREFIX, &music_dir_str, false).await;
+    let guarded =
+        delete_removed_tracks(&pool, PREFIX, &music_dir_str, false, &Reporter::new(false)).await;
     assert_eq!(
         guarded.count, 0,
         "the ratio guard should have deleted nothing"
@@ -138,7 +140,8 @@ async fn prune_bypasses_the_mount_blip_guard() {
 
     // With --prune: the missing rows go, the file that still exists stays, and the release is flagged
     // for sync to recompute.
-    let pruned = delete_removed_tracks(&pool, PREFIX, &music_dir_str, true).await;
+    let pruned =
+        delete_removed_tracks(&pool, PREFIX, &music_dir_str, true, &Reporter::new(false)).await;
     assert_eq!(pruned.count, 9, "prune should delete every missing row");
     assert_eq!(
         track_count(&pool).await,
@@ -152,7 +155,8 @@ async fn prune_bypasses_the_mount_blip_guard() {
     );
 
     // A folder with nothing missing is unaffected either way.
-    let noop = delete_removed_tracks(&pool, PREFIX, &music_dir_str, true).await;
+    let noop =
+        delete_removed_tracks(&pool, PREFIX, &music_dir_str, true, &Reporter::new(false)).await;
     assert_eq!(noop.count, 0, "prune deleted rows whose files are present");
 
     reset_fixture(&pool, &music_dir).await;

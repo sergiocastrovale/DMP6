@@ -1,7 +1,7 @@
 use crate::{folder_from_path, tags};
-use colored::Colorize;
 use common::artists::replace_artist_word;
 use common::config::Config;
+use common::progress::Reporter;
 use sqlx::types::chrono::Utc;
 use sqlx::PgPool;
 use std::collections::HashSet;
@@ -11,6 +11,7 @@ pub async fn fix(
     config: &Config,
     music_dir: &str,
     dry_run: bool,
+    reporter: &Reporter,
 ) -> Result<(usize, usize, HashSet<String>), sqlx::Error> {
     let rows: Vec<(String, String, String, String, String)> = sqlx::query_as(
         r#"SELECT i.id, i."artistAId", a.name, i."artistBId", b.name
@@ -23,11 +24,11 @@ pub async fn fix(
     .await?;
 
     if rows.is_empty() {
-        println!("  No PENDING duplicate artist issues.");
+        reporter.skip("No PENDING duplicate artist issues.");
         return Ok((0, 0, HashSet::new()));
     }
 
-    println!("  Processing {} issues...", rows.len());
+    reporter.step(&format!("Processing {} issues...", rows.len()));
     let mut ok = 0usize;
     let mut fail = 0usize;
     let mut artists: HashSet<String> = HashSet::new();
@@ -35,18 +36,21 @@ pub async fn fix(
 
     for (issue_id, artist_a, name_a, artist_b, name_b) in &rows {
         if dry_run {
-            println!(
-                "  {} would merge {} → {}",
-                "[dry-run]".cyan(),
-                name_b,
-                name_a
-            );
+            reporter
+                .nested()
+                .info(&format!("[dry-run] would merge {} → {}", name_b, name_a));
             ok += 1;
             continue;
         }
-        match merge(pool, config, music_dir, artist_a, name_a, artist_b, name_b).await {
+        match merge(
+            pool, config, music_dir, artist_a, name_a, artist_b, name_b, reporter,
+        )
+        .await
+        {
             Ok(affected) => {
-                println!("  {} Merged {} → {}", "✓".green(), name_b, name_a);
+                reporter
+                    .nested()
+                    .ok(&format!("Merged {} → {}", name_b, name_a));
                 sqlx::query(
                     r#"UPDATE "IssueDuplicateArtist" SET status = 'RESOLVED', "updatedAt" = $1 WHERE id = $2"#,
                 )
@@ -58,13 +62,9 @@ pub async fn fix(
                 ok += 1;
             }
             Err(e) => {
-                println!(
-                    "  {} Failed to merge {} → {}: {}",
-                    "✗".red(),
-                    name_b,
-                    name_a,
-                    e
-                );
+                reporter
+                    .nested()
+                    .warn(&format!("Failed to merge {} → {}: {}", name_b, name_a, e));
                 sqlx::query(
                     r#"UPDATE "IssueDuplicateArtist" SET status = 'FAILED', "updatedAt" = $1 WHERE id = $2"#,
                 )
@@ -80,6 +80,7 @@ pub async fn fix(
     Ok((ok, fail, artists))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn merge(
     pool: &PgPool,
     config: &Config,
@@ -88,6 +89,7 @@ async fn merge(
     name_a: &str,
     artist_b: &str,
     name_b: &str,
+    reporter: &Reporter,
 ) -> Result<HashSet<String>, sqlx::Error> {
     let file_paths: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
         r#"SELECT DISTINCT t."filePath", t.artist, t."albumArtist"
@@ -118,7 +120,7 @@ async fn merge(
         if let Err(e) =
             tags::write_artist_tags(&abs_path, &new_artist, &new_album_artist, name_b, name_a)
         {
-            println!("  {} {}: {}", "⚠".yellow(), fp, e);
+            reporter.nested().warn(&format!("{}: {}", fp, e));
         } else if let Some(a) = folder_from_path(fp) {
             affected.insert(a);
         }

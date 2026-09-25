@@ -56,11 +56,7 @@ async fn main() {
     let pool = create_pool_or_exit(&config.database_url, "add").await;
     apply_db_overrides(&mut config, &pool).await;
 
-    reporter.header(if args.web {
-        "DMP Add Artist"
-    } else {
-        "DMP Add Artist - New Library Entry"
-    });
+    reporter.header("DMP Add Artist");
 
     let Some(mb_id) = sanitize_mb_id(&args.mbid) else {
         reporter.err(&format!("Not a valid MusicBrainz artist id: {}", args.mbid));
@@ -223,10 +219,12 @@ async fn main() {
     match download_artist_image(&http_client, &detail, &slug, None, &s3_client, &config).await {
         Ok(true) => {
             record_artist_image(&pool, &config, &artist_id, &slug).await;
-            reporter.sub_ok("Artist image downloaded");
+            reporter.nested().ok("Artist image downloaded");
         }
-        Ok(false) => reporter.sub_step("Artist image not found"),
-        Err(e) => reporter.sub_step(&format!("Artist image error: {}", e)),
+        Ok(false) => reporter.nested().skip("Artist image not found"),
+        Err(e) => reporter
+            .nested()
+            .warn(&format!("Artist image error: {}", e)),
     }
 
     reporter.blank();

@@ -8,4 +8,3 @@ common = { path = "../common" }
 clap = { workspace = true }
 rust_xlsxwriter = { workspace = true }
 regex = { workspace = true }
-colored = { workspace = true }

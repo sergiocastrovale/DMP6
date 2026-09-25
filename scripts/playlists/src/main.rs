@@ -1,7 +1,7 @@
 use chrono::Utc;
 use clap::Parser;
-use colored::*;
 use common::lock::{acquire_lock, clear_stale_lock_minutes, release_lock};
+use common::progress::Reporter;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 use std::collections::HashMap;
@@ -334,14 +334,14 @@ async fn prune_playlist(pool: &PgPool, generator_id: &str) -> Result<u64, sqlx::
 /// Called from every early-exit in the generation loops (no matches, too few tracks): prunes this
 /// generator's existing playlist so a rule that stops qualifying doesn't leave stale tracks or an
 /// empty shell behind forever. `--dry-run` only reports what would be pruned.
-async fn prune_if_stale(pool: &PgPool, generator: &Generator, dry_run: bool) {
+async fn prune_if_stale(pool: &PgPool, generator: &Generator, dry_run: bool, reporter: &Reporter) {
     if dry_run {
         return;
     }
     match prune_playlist(pool, &generator.id).await {
         Ok(0) => {}
-        Ok(_) => println!("    {} pruned stale playlist", "↩".yellow()),
-        Err(e) => println!("    {} failed to prune: {}", "✗".red(), e),
+        Ok(_) => reporter.nested().skip("pruned stale playlist"),
+        Err(e) => reporter.nested().warn(&format!("failed to prune: {}", e)),
     }
 }
 
@@ -533,10 +533,9 @@ fn select_tracks(
 // Report Mode
 // ---------------------------------------------------------------------------
 
-fn print_report(genres: &[(String, String)], generators: &[Generator]) {
-    println!("{}", "Genre Assignment Report".bold());
-    println!("{}", "=".repeat(70));
-    println!();
+fn print_report(genres: &[(String, String)], generators: &[Generator], reporter: &Reporter) {
+    reporter.header("DMP Playlists - Genre Assignment Report");
+    reporter.blank();
 
     let genre_generators: Vec<(&Generator, GenreRule)> = generators
         .iter()
@@ -574,43 +573,35 @@ fn print_report(genres: &[(String, String)], generators: &[Generator]) {
         }
         group_genres.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap().then(a.0.cmp(b.0)));
 
-        println!(
-            "{} {} ({} genres)",
-            "●".cyan(),
-            generator.name.bold(),
+        reporter.step(&format!(
+            "{} ({} genres)",
+            generator.name,
             group_genres.len()
-        );
+        ));
 
         for (genre_name, weight) in &group_genres {
-            let weight_label = match *weight {
-                w if w >= 1.0 => "exact".green(),
-                _ => "word".bright_green(),
-            };
-            println!("    {:.1} [{}] {}", weight, weight_label, genre_name);
+            let weight_label = if *weight >= 1.0 { "exact" } else { "word" };
+            reporter
+                .nested()
+                .info(&format!("{:.1} [{}] {}", weight, weight_label, genre_name));
         }
-        println!();
     }
 
     // Print unmatched
     if !unmatched.is_empty() {
-        println!(
-            "{} {} ({} genres)",
-            "○".bright_black(),
-            "Unmatched".bright_black().bold(),
-            unmatched.len()
-        );
+        reporter.step(&format!("Unmatched ({} genres)", unmatched.len()));
         for name in &unmatched {
-            println!("    {}", name.bright_black());
+            reporter.nested().info(name);
         }
-        println!();
     }
 
-    println!(
+    reporter.blank();
+    reporter.done(&format!(
         "Total: {} genres, {} assigned, {} unmatched",
         genres.len(),
         genre_assignments.len(),
         unmatched.len()
-    );
+    ));
 }
 
 // ---------------------------------------------------------------------------
@@ -621,19 +612,15 @@ fn print_report(genres: &[(String, String)], generators: &[Generator]) {
 async fn main() {
     let args = Args::parse();
     common::error_log::init("playlists");
+    let reporter = Reporter::new(false);
 
-    println!("DMP Generated Playlists");
-    println!("========================");
+    reporter.header("DMP Playlists");
     if args.dry_run {
-        println!(
-            "Mode: {} (no changes will be made)",
-            "DRY RUN".yellow().bold()
-        );
+        reporter.kv("Mode", "dry run");
     }
     if args.report {
-        println!("Mode: {}", "REPORT".cyan().bold());
+        reporter.kv("Mode", "report");
     }
-    println!();
 
     // Load config
     let app_config = load_env();
@@ -646,19 +633,17 @@ async fn main() {
         .expect("Failed to connect to database. Is PostgreSQL running?");
 
     let all_generators = fetch_generators(&pool).await;
-    println!(
-        "Config: {} playlist generators (from the database, see /playlists/setup/generated)",
-        all_generators.len(),
+    reporter.kv(
+        "Config",
+        &format!(
+            "{} playlist generators (from the database, see /playlists/setup/generated)",
+            all_generators.len()
+        ),
     );
-    println!();
 
     // Fetch all genres
     let all_genres = fetch_all_genres(&pool).await;
-    println!(
-        "  {} {} genres in database",
-        "→".bright_black(),
-        all_genres.len()
-    );
+    reporter.kv("Genres", &format!("{} in database", all_genres.len()));
 
     // Filter generators if --group is specified
     let generators: Vec<&Generator> = if let Some(ref group_slug) = args.group {
@@ -669,12 +654,11 @@ async fn main() {
         if filtered.is_empty() {
             let all_slugs: Vec<&str> = all_generators.iter().map(|g| g.slug.as_str()).collect();
             common::error_log::log_error(&format!("No group found with slug '{}'", group_slug));
-            eprintln!(
-                "{} No group found with slug '{}'. Available: {}",
-                "✗".red(),
+            reporter.failed(&format!(
+                "No group found with slug '{}'. Available: {}",
                 group_slug,
                 all_slugs.join(", ")
-            );
+            ));
             std::process::exit(1);
         }
         filtered
@@ -695,8 +679,7 @@ async fn main() {
 
     // Report mode: just show assignments and exit
     if args.report {
-        println!();
-        print_report(&all_genres, &all_generators);
+        print_report(&all_genres, &all_generators, &reporter);
         return;
     }
 
@@ -705,12 +688,12 @@ async fn main() {
     // could otherwise interleave with this pass. Skipped for --dry-run, which never writes.
     let _lock_guard = if !args.dry_run {
         if clear_stale_lock_minutes(&pool, common::lock::STALE_LOCK_MINUTES).await {
-            println!("{}", "Cleared a stale lock.".yellow());
+            reporter.warn("Cleared a stale lock.");
         }
         match acquire_lock(&pool, "playlists", std::process::id()).await {
             Ok(g) => Some(g),
             Err(e) => {
-                eprintln!("{}: {}", "Cannot start".red(), e);
+                reporter.failed(&format!("Cannot start: {}", e));
                 std::process::exit(1);
             }
         }
@@ -718,18 +701,16 @@ async fn main() {
         None
     };
 
-    println!();
-
     let mut total_playlists = 0;
     let mut total_tracks = 0;
 
     // --- Genre playlists ---
     if !args.no_genres && !genre_generators.is_empty() {
-        println!("  {} {}", "▸".bright_black(), "Genre Playlists".bold());
-        println!();
+        reporter.section("Genre Playlists");
 
         for generator in &genre_generators {
-            print!("  {} {}... ", "●".cyan(), generator.name.bold());
+            reporter.step(&generator.name);
+            let r = reporter.nested();
 
             let rule = GenreRule::from_terms(&generator.terms);
 
@@ -744,8 +725,8 @@ async fn main() {
                 .collect();
 
             if genre_matches.is_empty() {
-                println!("{} no matching genres", "○".bright_black());
-                prune_if_stale(&pool, generator, args.dry_run).await;
+                r.skip("no matching genres");
+                prune_if_stale(&pool, generator, args.dry_run, &reporter).await;
                 continue;
             }
 
@@ -765,8 +746,8 @@ async fn main() {
             .await;
 
             if artist_links.is_empty() {
-                println!("{} no artists with matching genres", "○".bright_black());
-                prune_if_stale(&pool, generator, args.dry_run).await;
+                r.skip("no artists with matching genres");
+                prune_if_stale(&pool, generator, args.dry_run, &reporter).await;
                 continue;
             }
 
@@ -791,47 +772,44 @@ async fn main() {
             .await;
 
             if tracks.is_empty() {
-                println!("{} no tracks found", "○".bright_black());
-                prune_if_stale(&pool, generator, args.dry_run).await;
+                r.skip("no tracks found");
+                prune_if_stale(&pool, generator, args.dry_run, &reporter).await;
                 continue;
             }
 
             let selected = select_tracks(tracks, &artist_scores, MAX_TRACKS, MAX_PER_RELEASE);
 
             if selected.len() < MIN_TRACKS {
-                println!(
-                    "{} only {} tracks (min {} required, skipping)",
-                    "○".bright_black(),
+                r.skip(&format!(
+                    "only {} tracks (min {} required, skipping)",
                     selected.len(),
                     MIN_TRACKS
-                );
-                prune_if_stale(&pool, generator, args.dry_run).await;
+                ));
+                prune_if_stale(&pool, generator, args.dry_run, &reporter).await;
                 continue;
             }
 
             if args.dry_run {
-                println!(
-                    "{} {} genres, {} artists, {} tracks (dry run)",
-                    "○".cyan(),
+                r.info(&format!(
+                    "{} genres, {} artists, {} tracks (dry run)",
                     genre_matches.len(),
                     artist_scores.len(),
                     selected.len()
-                );
+                ));
             } else {
                 match upsert_playlist(&pool, generator, &selected).await {
                     Ok(_) => {
-                        println!(
-                            "{} {} genres, {} artists, {} tracks",
-                            "✓".green(),
+                        r.ok(&format!(
+                            "{} genres, {} artists, {} tracks",
                             genre_matches.len(),
                             artist_scores.len(),
                             selected.len()
-                        );
+                        ));
                         total_playlists += 1;
                         total_tracks += selected.len();
                     }
                     Err(e) => {
-                        println!("{} failed: {}", "✗".red(), e);
+                        r.warn(&format!("failed: {}", e));
                     }
                 }
             }
@@ -840,12 +818,11 @@ async fn main() {
 
     // --- Region playlists ---
     if !args.no_regions && !region_generators.is_empty() {
-        println!();
-        println!("  {} {}", "▸".bright_black(), "Region Playlists".bold());
-        println!();
+        reporter.section("Region Playlists");
 
         for generator in &region_generators {
-            print!("  {} {}... ", "●".magenta(), generator.name.bold());
+            reporter.step(&generator.name);
+            let r = reporter.nested();
 
             let countries = region_countries(&generator.terms);
             let tracks = common::lock::expect_or_release(
@@ -858,8 +835,8 @@ async fn main() {
             .await;
 
             if tracks.is_empty() {
-                println!("{} no tracks found", "○".bright_black());
-                prune_if_stale(&pool, generator, args.dry_run).await;
+                r.skip("no tracks found");
+                prune_if_stale(&pool, generator, args.dry_run, &reporter).await;
                 continue;
             }
 
@@ -868,37 +845,34 @@ async fn main() {
             let selected = select_tracks(tracks, &artist_scores, MAX_TRACKS, MAX_PER_RELEASE);
 
             if selected.len() < MIN_TRACKS {
-                println!(
-                    "{} only {} tracks (min {} required, skipping)",
-                    "○".bright_black(),
+                r.skip(&format!(
+                    "only {} tracks (min {} required, skipping)",
                     selected.len(),
                     MIN_TRACKS
-                );
-                prune_if_stale(&pool, generator, args.dry_run).await;
+                ));
+                prune_if_stale(&pool, generator, args.dry_run, &reporter).await;
                 continue;
             }
 
             if args.dry_run {
-                println!(
-                    "{} {} countries, {} tracks (dry run)",
-                    "○".magenta(),
+                r.info(&format!(
+                    "{} countries, {} tracks (dry run)",
                     countries.len(),
                     selected.len()
-                );
+                ));
             } else {
                 match upsert_playlist(&pool, generator, &selected).await {
                     Ok(_) => {
-                        println!(
-                            "{} {} countries, {} tracks",
-                            "✓".green(),
+                        r.ok(&format!(
+                            "{} countries, {} tracks",
                             countries.len(),
                             selected.len()
-                        );
+                        ));
                         total_playlists += 1;
                         total_tracks += selected.len();
                     }
                     Err(e) => {
-                        println!("{} failed: {}", "✗".red(), e);
+                        r.warn(&format!("failed: {}", e));
                     }
                 }
             }
@@ -910,9 +884,7 @@ async fn main() {
     }
 
     // Summary
-    println!();
-    println!("════════════════════════════════════════════════════════════");
-    println!();
+    reporter.section("Summary");
     if args.dry_run {
         let total_groups = if args.no_genres {
             0
@@ -923,18 +895,15 @@ async fn main() {
         } else {
             region_generators.len()
         };
-        println!(
-            "{} {} group(s) would be updated",
-            "Dry run:".cyan().bold(),
+        reporter.done(&format!(
+            "Dry run: {} group(s) would be updated",
             total_groups
-        );
+        ));
     } else {
-        println!(
-            "{} {} playlist(s) updated with {} total tracks",
-            "Done:".green().bold(),
-            total_playlists,
-            total_tracks
-        );
+        reporter.done(&format!(
+            "{} playlist(s) updated with {} total tracks",
+            total_playlists, total_tracks
+        ));
     }
 }
 

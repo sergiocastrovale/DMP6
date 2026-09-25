@@ -1,5 +1,5 @@
 use crate::{folder_from_path, tags};
-use colored::Colorize;
+use common::progress::Reporter;
 use serde_json::json;
 use sqlx::types::chrono::Utc;
 use sqlx::PgPool;
@@ -9,6 +9,7 @@ pub async fn fix(
     pool: &PgPool,
     music_dir: &str,
     dry_run: bool,
+    reporter: &Reporter,
 ) -> Result<(usize, usize, HashSet<String>), sqlx::Error> {
     let rows: Vec<(String, String, Option<serde_json::Value>)> = sqlx::query_as(
         r#"SELECT i.id, t."filePath", i."proposedValues"
@@ -21,7 +22,7 @@ pub async fn fix(
     .await?;
 
     if rows.is_empty() {
-        println!("  No PENDING missing metadata issues with proposed values.");
+        reporter.skip("No PENDING missing metadata issues with proposed values.");
         return Ok((0, 0, HashSet::new()));
     }
 
@@ -39,7 +40,7 @@ pub async fn fix(
         let folder = file_path.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
         if folder != current_folder {
             current_folder = folder.to_string();
-            println!("  Processing {}...", folder);
+            reporter.step(&format!("Processing {}...", folder));
         }
 
         let abs_path = tags::resolve_path(music_dir, file_path);
@@ -49,7 +50,9 @@ pub async fn fix(
             .unwrap_or(file_path);
 
         if dry_run {
-            println!("  {} {}: {}", "[dry-run]".cyan(), file_name, proposed);
+            reporter
+                .nested()
+                .info(&format!("[dry-run] {}: {}", file_name, proposed));
             ok += 1;
             continue;
         }
@@ -61,7 +64,7 @@ pub async fn fix(
         let mut tx = match pool.begin().await {
             Ok(tx) => tx,
             Err(e) => {
-                println!("    {} {}: {}", "✗".red(), file_name, e);
+                reporter.nested().warn(&format!("{}: {}", file_name, e));
                 fail += 1;
                 continue;
             }
@@ -80,7 +83,7 @@ pub async fn fix(
         .execute(&mut *tx)
         .await
         {
-            println!("    {} {}: {}", "✗".red(), file_name, e);
+            reporter.nested().warn(&format!("{}: {}", file_name, e));
             fail += 1;
             continue;
         }
@@ -92,7 +95,7 @@ pub async fn fix(
         .execute(&mut *tx)
         .await
         {
-            println!("    {} {}: {}", "✗".red(), file_name, e);
+            reporter.nested().warn(&format!("{}: {}", file_name, e));
             fail += 1;
             continue;
         }
@@ -100,11 +103,11 @@ pub async fn fix(
         match tags::write_tags_from_json(&abs_path, proposed) {
             Ok(()) => {
                 if let Err(e) = tx.commit().await {
-                    println!("    {} {}: {}", "✗".red(), file_name, e);
+                    reporter.nested().warn(&format!("{}: {}", file_name, e));
                     fail += 1;
                     continue;
                 }
-                println!("    {} {}", "✓".green(), file_name);
+                reporter.nested().ok(file_name);
                 if let Some(a) = folder_from_path(file_path) {
                     artists.insert(a);
                 }
@@ -112,7 +115,7 @@ pub async fn fix(
             }
             Err(e) => {
                 tx.rollback().await.ok();
-                println!("    {} {}: {}", "✗".red(), file_name, e);
+                reporter.nested().warn(&format!("{}: {}", file_name, e));
                 sqlx::query(
                     r#"UPDATE "IssueMissingMetadata" SET status = 'FAILED', "updatedAt" = $1 WHERE id = $2"#,
                 )

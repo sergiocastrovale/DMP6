@@ -32,6 +32,43 @@ if [ "$neutrality_hit" -ne 0 ]; then
   exit 1
 fi
 
+# Unified output style: every binary reports through common::progress::Reporter (or early_warn/
+# early_err/protocol_line for the handful of pre-Reporter/machine-protocol cases), so console and
+# --web output look and nest the same way everywhere, and the web terminal shows one consistent
+# grammar. common/src/progress.rs is the one file allowed to touch raw stdio/colored directly - it's
+# what everything else routes through. Also catches `writeln!(io::stdout(), ...)`-style macros (nuke
+# used to build its own `log!` this way) that a bare println!/eprintln! grep would miss.
+#
+# Test-only code is exempt - it never runs as part of a script's real output, only under `cargo test`:
+# a dedicated integration-test file (anything under a `tests/` directory, or named `tests.rs` for the
+# module-per-file test suites this codebase uses), and a trailing `mod tests { ... }` block (this
+# codebase's convention keeps that block at the end of the file, so only lines at or after it are
+# skipped - a raw print!/eprintln! anywhere earlier in the same file still fails the gate).
+output_hit=0
+while IFS= read -r f; do
+  if [ "$f" = "common/src/progress.rs" ]; then
+    continue
+  fi
+  case "$f" in
+    */tests/*|*/tests.rs) continue ;;
+  esac
+  pattern='\b(println!|eprintln!|print!|eprint!)\(|io::std(out|err)\(\)\.(write|flush)|writeln!\(io::std(out|err)|use colored|colored::'
+  test_mod_line="$(grep -nE '^mod tests \{' "$HERE/$f" 2>/dev/null | head -1 | cut -d: -f1 || true)"
+  if [ -n "$test_mod_line" ]; then
+    hit="$(head -n "$((test_mod_line - 1))" "$HERE/$f" | grep -nE "$pattern" || true)"
+  else
+    hit="$(grep -nE "$pattern" "$HERE/$f" 2>/dev/null || true)"
+  fi
+  if [ -n "$hit" ]; then
+    echo "scripts/check: raw output outside common::progress::Reporter in $f:"
+    echo "$hit"
+    output_hit=1
+  fi
+done < <(git -C "$HERE" ls-files -- '*.rs')
+if [ "$output_hit" -ne 0 ]; then
+  exit 1
+fi
+
 if [ "${1:-}" = "--db" ]; then
   ./test-db --quiet
 fi

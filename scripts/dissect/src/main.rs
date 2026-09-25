@@ -1,5 +1,5 @@
 use clap::Parser;
-use colored::*;
+use common::progress::Reporter;
 use regex::Regex;
 use rust_xlsxwriter::{Format, FormatAlign, FormatBorder, Workbook};
 use std::collections::{BTreeMap, HashMap};
@@ -161,22 +161,23 @@ type GroupKey = (ErrorType, String, String, String);
 
 fn main() {
     let args = Args::parse();
+    common::error_log::init("dissect");
+    let reporter = Reporter::new(false);
     let input = args.input.unwrap_or_else(|| {
         common::error_log::default_log_path()
             .to_string_lossy()
             .into_owned()
     });
 
-    println!("{}", "DMP Dissect".bright_cyan().bold());
-    println!("{}", "===========".bright_black());
-    println!("Input   : {}", input.bright_white());
-    println!("Output  : {}", args.output.bright_white());
-    println!();
+    reporter.header("DMP Dissect");
+    reporter.kv("Input", &input);
+    reporter.kv("Output", &args.output);
+    reporter.blank();
 
     let content = match fs::read_to_string(&input) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("{} Cannot read '{}': {}", "✗".red(), input, e);
+            reporter.failed(&format!("Cannot read '{}': {}", input, e));
             std::process::exit(1);
         }
     };
@@ -227,31 +228,28 @@ fn main() {
         });
     }
 
-    println!("Parsed  : {} lines", total_lines);
+    reporter.kv("Parsed", &format!("{} lines", total_lines));
     if unparsed > 0 {
-        println!("Skipped : {} unparseable lines", unparsed);
+        reporter.kv("Skipped", &format!("{} unparseable lines", unparsed));
     }
-    println!();
+    reporter.blank();
 
     for (error_type, rows) in &by_type {
         let total_errors: u64 = rows.iter().map(|(_, _, _, c)| c).sum();
-        println!(
-            "  {} {}: {} errors across {} folders",
-            "•".bright_black(),
-            error_type.sheet_name().bright_white(),
-            total_errors.to_string().yellow(),
-            rows.len().to_string().bright_white()
-        );
+        reporter.info(&format!(
+            "{}: {} errors across {} folders",
+            error_type.sheet_name(),
+            total_errors,
+            rows.len()
+        ));
     }
     if !db_errors.is_empty() {
-        println!(
-            "  {} {}: {} errors (individual rows)",
-            "•".bright_black(),
-            "DB Error".bright_white(),
-            db_errors.len().to_string().yellow()
-        );
+        reporter.info(&format!(
+            "DB Error: {} errors (individual rows)",
+            db_errors.len()
+        ));
     }
-    println!();
+    reporter.blank();
 
     if let Some(parent) = PathBuf::from(&args.output).parent() {
         fs::create_dir_all(parent).ok();
@@ -402,14 +400,10 @@ fn main() {
 
     match workbook.save(&args.output) {
         Ok(_) => {
-            println!(
-                "{} Saved to {}",
-                "✓".green().bold(),
-                args.output.bright_white()
-            );
+            reporter.done(&format!("Saved to {}", args.output));
         }
         Err(e) => {
-            eprintln!("{} Failed to write XLSX: {}", "✗".red(), e);
+            reporter.failed(&format!("Failed to write XLSX: {}", e));
             std::process::exit(1);
         }
     }

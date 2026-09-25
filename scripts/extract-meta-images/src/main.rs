@@ -14,8 +14,7 @@ mod release;
 use std::path::{Path, PathBuf};
 
 use clap::Parser;
-use colored::Colorize;
-use common::progress::Reporter;
+use common::progress::{early_err, Reporter};
 use cover::{process_release, Outcome};
 use rayon::prelude::*;
 
@@ -78,16 +77,14 @@ fn load_music_dir(override_root: Option<String>) -> PathBuf {
     match override_root.or_else(|| std::env::var("MUSIC_DIR").ok()) {
         Some(root) => PathBuf::from(root),
         None => {
-            eprintln!(
-                "{}",
-                "MUSIC_DIR not set. Pass --root /path/to/music or set it in web/.env.".bright_red()
-            );
+            early_err("MUSIC_DIR not set. Pass --root /path/to/music or set it in web/.env.");
             std::process::exit(2);
         }
     }
 }
 
 fn process_artist(root: &Path, artist: &str, dry_run: bool, reporter: &Reporter) -> Totals {
+    let reporter = reporter.nested();
     let releases = release::release_dirs_for_artist(root, artist);
 
     let outcomes: Vec<(PathBuf, Outcome)> = releases
@@ -106,7 +103,7 @@ fn process_artist(root: &Path, artist: &str, dry_run: bool, reporter: &Reporter)
             Outcome::AlreadyHasCover => totals.skipped += 1,
             Outcome::Written => {
                 totals.written += 1;
-                reporter.sub_step(&format!("{} → folder.jpg", label));
+                reporter.ok(&format!("{} → folder.jpg", label));
             }
             Outcome::NoArt => totals.no_art += 1,
             Outcome::Failed(e) => {
@@ -135,16 +132,15 @@ fn main() {
     ) {
         Ok(a) => a,
         Err(e) => {
-            eprintln!("{} {}: {}", "Cannot read".bright_red(), root.display(), e);
+            early_err(&format!("Cannot read {}: {}", root.display(), e));
             std::process::exit(1);
         }
     };
 
-    reporter.header(if args.dry_run {
-        "extract-meta-images (dry run)"
-    } else {
-        "extract-meta-images"
-    });
+    reporter.header("DMP Extract Meta Images");
+    if args.dry_run {
+        reporter.kv("Mode", "dry run");
+    }
     reporter.kv("Library", &root.to_string_lossy());
     reporter.kv("Artists", &artists.len().to_string());
     reporter.blank();
@@ -153,7 +149,7 @@ fn main() {
     let total_artists = artists.len();
 
     for (idx, artist) in artists.iter().enumerate() {
-        reporter.item("", artist, idx + 1, total_artists);
+        reporter.item(artist, idx + 1, total_artists);
         let t = process_artist(&root, artist, args.dry_run, &reporter);
         totals.scanned += t.scanned;
         totals.skipped += t.skipped;
@@ -162,8 +158,7 @@ fn main() {
         totals.failed += t.failed;
     }
 
-    reporter.blank();
-    reporter.header("Summary");
+    reporter.section("Summary");
     reporter.kv("Releases", &totals.scanned.to_string());
     reporter.kv("Had cover", &totals.skipped.to_string());
     reporter.kv(
@@ -180,5 +175,10 @@ fn main() {
     if args.dry_run && totals.written > 0 {
         reporter.blank();
         reporter.info("Dry run - nothing was written. Re-run without --dry-run to apply.");
+    }
+    if totals.failed > 0 {
+        reporter.failed(&format!("Done, {} failure(s)", totals.failed));
+    } else {
+        reporter.done("Done");
     }
 }

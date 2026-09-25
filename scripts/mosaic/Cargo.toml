@@ -8,6 +8,7 @@ name = "mosaic"
 path = "src/main.rs"
 
 [dependencies]
+common = { path = "../common" }
 clap = { workspace = true }
 image = { workspace = true }
 rand = { workspace = true }
