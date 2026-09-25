@@ -71,3 +71,10 @@ export interface Track {
   mbTitle?: string | null
   mbTrackMusicbrainzId?: string | null
 }
+
+// GET /api/releases/[id]/tracks - `discTitles` is keyed by disc number (server/utils/discTitles.ts).
+export interface ReleaseTracksResponse {
+  release: { id: string, title: string, image: string | null, imageUrl: string | null, artistName: string, artistSlug: string } | null
+  tracks: Track[]
+  discTitles: Record<number, string>
+}

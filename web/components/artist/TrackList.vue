@@ -14,7 +14,12 @@ const props = withDefaults(defineProps<{
   releaseMap?: Record<string, { title: string; status: ReleaseStatus; image: string | null; imageUrl: string | null }>
   buildPlayerTracks?: (tracks: Track[], startTrack: Track) => void
   selectedTrackId?: string | null
+  discTitles?: Record<number, string>
 }>(), {
+  releaseMap: undefined,
+  buildPlayerTracks: undefined,
+  selectedTrackId: null,
+  discTitles: () => ({}),
   columns: () => [
     { key: 'trackNumber', label: '#' },
     { key: 'title', label: 'Title' },
@@ -38,15 +43,15 @@ onMounted(async () => {
 })
 
 
-function isTrackPlaying(trackId: string) {
+const isTrackPlaying = (trackId: string) => {
   return player.isPlaying && player.currentTrack?.id === trackId
 }
 
-function isCurrentTrack(trackId: string) {
+const isCurrentTrack = (trackId: string) => {
   return player.currentTrack?.id === trackId
 }
 
-function handleTrackClick(track: Track) {
+const handleTrackClick = (track: Track) => {
   if (isCurrentTrack(track.id)) {
     player.togglePlay()
   } else {
@@ -54,7 +59,7 @@ function handleTrackClick(track: Track) {
   }
 }
 
-function playTrack(track: Track) {
+const playTrack = (track: Track) => {
   if (props.buildPlayerTracks) {
     props.buildPlayerTracks(props.tracks, track)
     return
@@ -77,7 +82,7 @@ function playTrack(track: Track) {
   player.setQueue(playerTracks, startTrack)
 }
 
-async function toggleFavorite(trackId: string) {
+const toggleFavorite = async (trackId: string) => {
   const isFavorite = favoriteTracks.value.has(trackId)
   try {
     if (isFavorite) {
@@ -99,7 +104,7 @@ const showInfoDialog = ref(false)
 const infoTrack = ref<Track | null>(null)
 const infoData = ref<TrackInfo | null>(null)
 
-function hasColumn(key: string) {
+const hasColumn = (key: string) => {
   return props.columns.some(c => c.key === key)
 }
 
@@ -158,7 +163,7 @@ const formatFileSize = (bytes: number) => {
     <SlimTableBody>
       <template v-for="group in trackGroups" :key="group.discNumber ?? 'all'">
         <tr v-if="group.discNumber !== null">
-          <td :colspan="columns.length" class="pt-3 pb-1 pl-4 text-xs font-semibold uppercase tracking-wide text-stone-100/40">Disc {{ group.discNumber }}</td>
+          <td :colspan="columns.length" class="pt-3 pb-1 pl-4 text-xs font-semibold uppercase tracking-wide text-stone-100/40">Disc {{ group.discNumber }}<span v-if="discTitles[group.discNumber]" class="normal-case font-medium tracking-normal"> — {{ discTitles[group.discNumber] }}</span></td>
         </tr>
         <SlimTableRow
           v-for="track in group.tracks"
@@ -258,7 +263,7 @@ const formatFileSize = (bytes: number) => {
   </SlimTable>
 
   <Dialog v-model="showInfoDialog" :title="infoTrack?.title ?? 'Track Info'" size="md">
-    <template #content v-if="infoTrack">
+    <template v-if="infoTrack" #content>
       <dl class="space-y-3 text-sm">
         <div>
           <dt class="text-xs text-stone-100/60">Track ID</dt>

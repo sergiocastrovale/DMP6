@@ -3,6 +3,7 @@ import { verifyImage } from '~/server/utils/images'
 import { linkBoxDiscTracks, mapBundleMbTracks } from '~/server/utils/bundleTracks'
 import { currentUserId } from '~/server/utils/libraryOwnership'
 import { trackPlaysByIds, withTrackPlay } from '~/server/utils/userPlays'
+import { buildDiscTitles } from '~/server/utils/discTitles'
 
 const normalizeTitle = (title: string): string => {
   return title
@@ -10,6 +11,24 @@ const normalizeTitle = (title: string): string => {
     .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D-]/g, '')
     .replace(/[^\w\s]/g, '')
     .trim()
+}
+
+const loadDiscTitles = async (mbReleaseId: string | null | undefined, releaseTitle: string): Promise<Record<number, string>> => {
+  if (!mbReleaseId) {
+    return {}
+  }
+  const media = await prisma.musicBrainzReleaseMedium.findMany({
+    where: { releaseId: mbReleaseId },
+    select: { position: true, title: true, equivalentReleaseId: true },
+  })
+  if (media.length < 2) {
+    return {}
+  }
+  const equivalentIds = media.filter(m => !m.title && m.equivalentReleaseId).map(m => m.equivalentReleaseId!)
+  const equivalents = equivalentIds.length
+    ? await prisma.musicBrainzRelease.findMany({ where: { id: { in: equivalentIds } }, select: { id: true, title: true } })
+    : []
+  return buildDiscTitles(releaseTitle, media, new Map(equivalents.map(e => [e.id, e.title])))
 }
 
 export default defineEventHandler(async (event) => {
@@ -114,6 +133,7 @@ export default defineEventHandler(async (event) => {
         artistSlug: firstDiscArtist?.slug ?? '',
       },
       tracks: mapBundleMbTracks(mbRelease.tracks ?? [], linkedLocalTracks.map(t => withTrackPlay(t, linkedPlays))),
+      discTitles: await loadDiscTitles(mbRelease.id, mbRelease.title),
     }
   }
 
@@ -155,6 +175,8 @@ const getLocalReleaseTracks = async (
       title: true,
       image: true,
       imageUrl: true,
+      releaseId: true,
+      release: { select: { title: true } },
       artists: { select: { artist: { select: { name: true, slug: true, primaryArtistId: true, primaryArtist: { select: { name: true, slug: true } } } } } },
     },
   })
@@ -296,5 +318,6 @@ const getLocalReleaseTracks = async (
         }
       : null,
     tracks: enrichedTracks,
+    discTitles: await loadDiscTitles(release?.releaseId, release?.release?.title ?? release?.title ?? ''),
   }
 }

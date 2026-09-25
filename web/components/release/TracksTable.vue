@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Track } from '~/types/track'
+import type { ReleaseTracksResponse, Track } from '~/types/track'
 import type { TrackListColumn } from '~/types/ui'
 import { usePlayerStore } from '~/stores/player'
 
@@ -8,6 +8,7 @@ const props = withDefaults(defineProps<{
   columns?: TrackListColumn[]
   selectedTrackId?: string | null
 }>(), {
+  selectedTrackId: null,
   columns: () => [
     { key: 'trackNumber', label: '#' },
     { key: 'title', label: 'Title' },
@@ -17,13 +18,14 @@ const props = withDefaults(defineProps<{
 })
 
 const player = usePlayerStore()
-const { data, pending } = useFetch(`/api/releases/${props.releaseId}/tracks`)
+const { data, pending } = useFetch<ReleaseTracksResponse>(`/api/releases/${props.releaseId}/tracks`)
 
-const tracks = computed(() => (data.value as any)?.tracks || [])
+const tracks = computed(() => data.value?.tracks ?? [])
+const discTitles = computed(() => data.value?.discTitles ?? {})
 
-function buildPlayerTracks(allTracks: Track[], startTrack: Track) {
+const buildPlayerTracks = (allTracks: Track[], startTrack: Track) => {
   if (!data.value) {return}
-  const release = (data.value as any).release
+  const release = data.value.release
 
   const playerTracks = allTracks
     .filter(t => !t.missing)
@@ -49,6 +51,7 @@ function buildPlayerTracks(allTracks: Track[], startTrack: Track) {
     <ArtistTrackList
       v-else-if="tracks.length"
       :tracks="tracks"
+      :disc-titles="discTitles"
       :columns="columns"
       :build-player-tracks="buildPlayerTracks"
       :selected-track-id="selectedTrackId"

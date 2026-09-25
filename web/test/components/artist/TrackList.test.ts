@@ -32,6 +32,16 @@ describe('TrackList.vue - disc subheaders (single-release track lists only)', ()
     expect(wrapper.text()).toContain('Disc 2')
   })
 
+  it('appends a disc title when one is known, and leaves untitled discs bare', async () => {
+    const tracks = [
+      track({ id: 't1', discNumber: 1, trackNumber: 1, title: 'Wreath' }),
+      track({ id: 't2', discNumber: 2, trackNumber: 1, title: 'Windowpane' }),
+    ]
+    const wrapper = await mountSuspended(ArtistTrackList, { props: { tracks, discTitles: { 1: 'Deliverance' } } })
+    const headers = wrapper.findAll('td[colspan]').map(td => td.text())
+    expect(headers).toEqual(['Disc 1 — Deliverance', 'Disc 2'])
+  })
+
   it('shows no subheader when every track is on the same disc', async () => {
     const tracks = [
       track({ id: 't1', discNumber: 1, trackNumber: 1 }),
