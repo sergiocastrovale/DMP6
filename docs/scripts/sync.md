@@ -82,9 +82,21 @@ Without `--web`: colored console progress + rate-limit countdown. With `--web`: 
 
 Duplicate detection: tracks processed MB ids across the run, skips artists resolving to an already-processed MB artist.
 
-## --catalogue-gaps Behaviour
+## File writes (what sync changes in your audio files)
 
-Fast path for populating MISSING entries without a full sync. Requires artist already has `musicbrainzId`.
+Sync touches file tags in exactly two ways, both **fill-blanks-only by default**. Nothing else in a file (title, artist, album, year, genre, ...) is ever written. `./tidy` writes no files at all (`docs/scripts/tidy.md`).
+
+**1. MusicBrainz ids** — `common::tags::write_mb_ids`, called per track after a release binds (and by `--only-write-mb-to-files`). Five ids: album artist, album, release group, release-track, recording.
+- **Default:** a slot is written only if it is empty (`get_mb(key).is_none()`). An existing embedded id is never overwritten — a bad id from an old mismatch should need a deliberate decision to fix, not get clobbered by a routine sync.
+- **`--overwrite`:** overwrites existing ids (use after fixing a bad match).
+- **Stale-recording self-heal (no flag needed):** a recording slot holding this track's own release-track id (an old bug of ours, not an id to respect) is corrected, or removed when the recording is unknown.
+- **No tag block:** one is created (nothing to preserve).
+- **Off switch:** `--skip-mb-tags`.
+- MP3s go through the concrete `Id3v2Tag`, never lofty's generic `Tag`, so a resave can't drop other MusicBrainz frames (`CLAUDE.md` MP3 note). The file's mtime is restored after the write; a failure to restore is only warned about, not fatal.
+
+**2. Cover art** — `common::images::embed_cover_art`, only for releases with no cover yet. Embeds the Cover Art Archive JPEG **only if the file already has a tag block and no embedded picture**. An existing picture is never replaced, with or without `--overwrite`. Unlike the id writer this is a generic lofty resave (known MP3 limitation, `CLAUDE.md`).
+
+ for populating MISSING entries without a full sync. Requires artist already has `musicbrainzId`.
 
 Scope: name filtering (`--only`/`--from`/`--to`/`--exact`), or an explicit `artist_ids` param on `fill_catalogue_gaps` used only by `./add` — scopes to the single artist id it just created (no name-match cross-contamination, no `;` handling needed). `./sync`'s own CLI always passes `None`.
 

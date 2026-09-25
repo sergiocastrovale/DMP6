@@ -577,7 +577,7 @@ pub(crate) async fn process_artist(
         let mut artist_genre_ids: Vec<String> = Vec::new();
         if let Some(ref genres) = detail.genres {
             let mut sorted = genres.to_vec();
-            sorted.sort_by(|a, b| b.count.unwrap_or(0).cmp(&a.count.unwrap_or(0)));
+            sorted.sort_by_key(|entry| std::cmp::Reverse(entry.count.unwrap_or(0)));
             for genre in sorted.iter().take(5) {
                 if let Ok(id) = ensure_genre_cached(&pool, &genre.name, &mut genre_cache).await {
                     artist_genre_ids.push(id);

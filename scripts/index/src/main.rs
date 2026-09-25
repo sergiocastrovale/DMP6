@@ -704,7 +704,7 @@ async fn main() {
                 .iter()
                 .position(|f| f.to_lowercase() > checkpoint.to_lowercase());
             if let Some(idx) = pos {
-                reporter.info(&format!("Resuming from '{}'...", &checkpoint));
+                reporter.info(&format!("Resuming from '{}'...", checkpoint));
                 artist_folders = artist_folders.split_off(idx);
             }
         }

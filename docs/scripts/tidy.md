@@ -61,6 +61,10 @@ No `--dry-run` — same reasoning as sync's box pass: `./backup` is the recovery
 9. **Statistics**: `common::statistics::update_statistics`.
 10. **Watermark stamp**: only if `running && !had_error`. `--all` → every artist with `lastSyncedAt IS NOT NULL`; else the scoped id list — stamped to this run's *start* time, not `NOW()` (an artist re-synced mid-tidy must stay pending). **Never calls `update_artist_sync_stats`** (would stamp `lastSyncedAt`, hiding it from sync's pending clause). Artists whose box group hit an MB lookup failure are excluded from the stamp (503 isn't a settled answer) — deliberately not `had_error` (would unstamp the whole scope over one failed request). Known limitation: the held-back artist is whichever one `boxset::artist_for_group` picked (`LIMIT 1`), not necessarily the artist that pulled a multi-artist group in — group stays unbound either way, so it resurfaces once any of its artists is pending again (a nudge, not a guarantee).
 
+## Files: never touched
+
+`tidy` reads and writes the **database only** — no audio-file tags, no cover art, no file moves. Re-scoring re-links tracks and writes `matchStatus`/`statusReason` in the DB; embedding MusicBrainz ids and cover art into files is `sync`'s job, and it only fills blank tags unless `--overwrite` (`docs/scripts/sync.md` § File writes).
+
 ## Watermark semantics
 
 `Artist.lastTidiedAt DateTime?`. Plain scope query:

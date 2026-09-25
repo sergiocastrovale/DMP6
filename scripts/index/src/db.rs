@@ -561,7 +561,7 @@ pub async fn folder_artist_track_counts(pool: &PgPool, folder_prefix: &str) -> V
 /// a folder's cover art is only ever attributed to one clear main artist, never split or guessed.
 pub fn pick_folder_image_owner(counts: &[(String, i64)]) -> Option<String> {
     let mut sorted = counts.to_vec();
-    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+    sorted.sort_by_key(|entry| std::cmp::Reverse(entry.1));
     match sorted.as_slice() {
         [(id, top), rest @ ..] if rest.first().map(|(_, c)| c < top).unwrap_or(true) => {
             Some(id.clone())

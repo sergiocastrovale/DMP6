@@ -424,9 +424,7 @@ pub async fn download_artist_image(
                         image_url = get_wikidata_image(client, resource).await;
                     }
                     "wikipedia" => {
-                        if image_url.is_none() {
-                            image_url = get_wikipedia_image(client, resource).await;
-                        }
+                        image_url = get_wikipedia_image(client, resource).await;
                     }
                     _ => {}
                 }
