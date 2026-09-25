@@ -19,11 +19,11 @@ import { containmentContainerTitle } from '~/helpers/functions'
 // box's medium rows but deliberately does not renumber (flatten_audio_tracks's own contract, see
 // CLAUDE.md), so a box that interleaves audio with a bonus video disc has real gaps in its stored
 // positions (e.g. discs 1, 2, 4, 5) - showing "disc 4 of 4" would raise the obvious "where's 3?".
-function computeBoxParent(
+const computeBoxParent = (
   lr: LocalReleaseRow,
   mbr: MbReleaseRow,
   boxMbr: MbReleaseRow | null | undefined,
-): UnifiedRelease['boxParent'] {
+): UnifiedRelease['boxParent'] => {
   if (lr.boxReleaseId && boxMbr && lr.boxMediumPosition != null) {
     const idx = boxMbr.media.findIndex(m => m.position === lr.boxMediumPosition)
     if (idx === -1) { return null }
@@ -52,12 +52,12 @@ function computeBoxParent(
   return null
 }
 
-export function buildReleaseCard(
+export const buildReleaseCard = (
   lr: LocalReleaseRow,
   mbr: MbReleaseRow | null,
   resolveImage: ImageResolver,
   extras?: { coArtists?: { name: string, slug: string }[], connectedArtistName?: string, boxMbr?: MbReleaseRow | null, alsoPartOf?: { title: string, year: number | null }[] },
-): UnifiedRelease {
+): UnifiedRelease => {
   const img = resolveImage(lr.image, lr.imageUrl, 'releases')
   if (!mbr) {
     return {
@@ -135,11 +135,11 @@ export function buildReleaseCard(
 
 // For each local release, the names of other credited artists (excluding the page's own artist and
 // any of its connected/duplicate artists) - shown as "feat. X" style co-artist chips.
-export function buildCoArtistMap(
+export const buildCoArtistMap = (
   localReleases: LocalReleaseRow[],
   slug: string,
   connectedSlugs: Set<string>,
-): Map<string, { name: string, slug: string }[]> {
+): Map<string, { name: string, slug: string }[]> => {
   const map = new Map<string, { name: string, slug: string }[]>()
   for (const lr of localReleases) {
     const others = lr.artists
@@ -154,10 +154,10 @@ export function buildCoArtistMap(
 
 // Which connected artist (if any) actually owns a given LocalReleaseArtist link, for the
 // "via <connected artist>" badge.
-export function buildConnectedArtistByRelease(
+export const buildConnectedArtistByRelease = (
   releaseLinks: { localReleaseId: string, artistId: string }[],
   connectedArtistById: Map<string, { name: string }>,
-): Map<string, string> {
+): Map<string, string> => {
   const map = new Map<string, string>()
   for (const link of releaseLinks) {
     const ca = connectedArtistById.get(link.artistId)
@@ -171,11 +171,11 @@ export function buildConnectedArtistByRelease(
 // releaseId. A medium whose own release belongs to the group it points at is an edition of that group,
 // not a box reprinting it, and is skipped. Mutates `byGroupId`/`seen` in place so multiple fetches
 // accumulate into one shared map.
-export function accumulateAlsoPartOf(
+export const accumulateAlsoPartOf = (
   media: { equivalentReleaseGroupId: string | null, releaseId: string, release: { title: string, year: number | null, releaseGroupId?: string | null } }[],
   byGroupId: Map<string, { title: string, year: number | null }[]>,
   seen: Map<string, Set<string>>,
-): void {
+): void => {
   for (const m of media) {
     if (!m.equivalentReleaseGroupId) {continue}
     const groupId = m.equivalentReleaseGroupId
@@ -196,14 +196,14 @@ const ALLOWED_GAP_TYPES = new Set(['album', 'ep'])
 // MB release) followed by loop 2 (uncovered MB releases in this artist's catalogue -> MISSING gap
 // cards). `mbById` MUST already be deduplicated by MusicBrainzRelease.id (one entry per release
 // regardless of how many artist credits point at it) - the caller dedupes via a Map when fetching.
-export function buildLocalAndGapCards(params: {
+export const buildLocalAndGapCards = (params: {
   localReleases: LocalReleaseRow[]
   mbById: Map<string, MbReleaseRow>
   coArtistMap: Map<string, { name: string, slug: string }[]>
   connectedArtistByRelease: Map<string, string>
   resolveImage: ImageResolver
   alsoPartOfByGroupId?: Map<string, { title: string, year: number | null }[]>
-}): LocalAndGapCardsResult {
+}): LocalAndGapCardsResult => {
   const { localReleases, mbById, coArtistMap, connectedArtistByRelease, resolveImage, alsoPartOfByGroupId } = params
   const cards: UnifiedRelease[] = []
   const coveredMbIds = new Set<string>()
@@ -231,10 +231,22 @@ export function buildLocalAndGapCards(params: {
     cards.push(buildReleaseCard(lr, mbr, resolveImage, extras))
   }
 
+  // A dissolved box has no LocalRelease of its own - each disc binds to the album it reprints - so it
+  // lands here as a gap. Its discs still hold every file, so the row borrows their cover, track count
+  // and plays, which is what makes it expandable/playable (the tracks endpoint re-links the discs).
+  const boxDiscsByBoxId = new Map<string, LocalReleaseRow[]>()
+  for (const lr of localReleases) {
+    if (!lr.boxReleaseId) {continue}
+    boxDiscsByBoxId.set(lr.boxReleaseId, [...(boxDiscsByBoxId.get(lr.boxReleaseId) ?? []), lr])
+  }
+
   for (const mbr of mbById.values()) {
     if (coveredMbIds.has(mbr.id)) {continue}
     if (!ALLOWED_GAP_TYPES.has(mbr.type.slug)) {continue}
-    const gapImg = resolveImage(null, null, 'releases')
+    const boxDiscs = [...(boxDiscsByBoxId.get(mbr.id) ?? [])]
+      .sort((a, b) => (a.boxMediumPosition ?? 0) - (b.boxMediumPosition ?? 0))
+    const firstDisc = boxDiscs[0]
+    const gapImg = resolveImage(firstDisc?.image ?? null, firstDisc?.imageUrl ?? null, 'releases')
     // A gap whose every track already sits inside a bigger local release carries a containment note
     // (scripts/sync/src/owned.rs). It stays a gap - a box set's rendition of an album is not that
     // album - but the note names the container, which we resolve to its local release so the card can
@@ -262,8 +274,8 @@ export function buildLocalAndGapCards(params: {
       image: gapImg.image,
       imageUrl: gapImg.imageUrl,
       trackCount: mbr.tracks.length,
-      totalPlayCount: 0,
-      localTrackCount: 0,
+      totalPlayCount: boxDiscs.reduce((sum, d) => sum + d.totalPlayCount, 0),
+      localTrackCount: boxDiscs.reduce((sum, d) => sum + d.tracks.length, 0),
       isMusicBrainz: true,
       hasLocal: false,
       localReleaseId: null,
@@ -282,14 +294,14 @@ export function buildLocalAndGapCards(params: {
 // credited on another artist's page - "Appears On"). `appearsOnMbById` is looked up by the caller in a
 // second DB round-trip (it needs the ids discovered by buildLocalAndGapCards first), so this stays a
 // separate pure step rather than folded into the function above.
-export function buildAppearsOnCards(params: {
+export const buildAppearsOnCards = (params: {
   appearsOnLocal: LocalReleaseRow[]
   appearsOnMbById: Map<string, MbReleaseRow>
   coArtistMap: Map<string, { name: string, slug: string }[]>
   connectedArtistByRelease: Map<string, string>
   resolveImage: ImageResolver
   alsoPartOfByGroupId?: Map<string, { title: string, year: number | null }[]>
-}): UnifiedRelease[] {
+}): UnifiedRelease[] => {
   const { appearsOnLocal, appearsOnMbById, coArtistMap, connectedArtistByRelease, resolveImage, alsoPartOfByGroupId } = params
   return appearsOnLocal.map((lr) => {
     const mbr = appearsOnMbById.get(lr.releaseId!) ?? null
@@ -306,6 +318,6 @@ export function buildAppearsOnCards(params: {
 // (unsorted, appended after). Sort the whole thing by year before paginating so page 2+ can't show an
 // old gap release after a recent local one. Undated releases sort last. Stable sort (ES2019+) keeps
 // same-year cards in their original relative order.
-export function sortReleaseCards(cards: UnifiedRelease[]): UnifiedRelease[] {
+export const sortReleaseCards = (cards: UnifiedRelease[]): UnifiedRelease[] => {
   return [...cards].sort((a, b) => (a.year ?? Number.MAX_SAFE_INTEGER) - (b.year ?? Number.MAX_SAFE_INTEGER))
 }

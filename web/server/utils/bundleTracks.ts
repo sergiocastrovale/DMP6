@@ -30,7 +30,7 @@ export interface BundleLinkedLocalTrack {
   trackRelatedArtists: { artist: { name: string, slug: string } }[]
 }
 
-export function mapBundleMbTracks(mbTracks: BundleMbTrackRow[], linkedLocalTracks: BundleLinkedLocalTrack[]) {
+export const mapBundleMbTracks = (mbTracks: BundleMbTrackRow[], linkedLocalTracks: BundleLinkedLocalTrack[]) => {
   const linkedByMbTrackId = new Map(linkedLocalTracks.map(t => [t.mbTrackId, t]))
 
   return mbTracks.map((mbt) => {
@@ -65,4 +65,49 @@ export function mapBundleMbTracks(mbTracks: BundleMbTrackRow[], linkedLocalTrack
       mbTrackMusicbrainzId: mbt.musicbrainzId || null,
     }
   })
+}
+
+export interface BoxMbTrackRow {
+  id: string
+  discNumber: number | null
+  position: number | null
+  recordingId: string | null
+}
+
+export interface BoxDiscLocalTrack extends BundleLinkedLocalTrack {
+  boxMediumPosition: number | null
+  recordingId: string | null
+}
+
+// A dissolved box disc's tracks link (mbTrackId) to the standalone album it reprints, never to the
+// box's own tracks (docs/sync_decisions.md §9), so the box's tracklist can't find them by mbTrackId.
+// Re-links each disc track onto the box track it physically is: same medium (boxMediumPosition), then
+// same recording, else same position - a reissue often carries new recording ids (a remaster) and the
+// box pass itself bound the disc by title+length order. The folder's own disc tag is ignored in favour
+// of the box's medium number, since each disc folder is usually tagged as its own "disc 1".
+export const linkBoxDiscTracks = (boxTracks: BoxMbTrackRow[], discTracks: BoxDiscLocalTrack[]): BundleLinkedLocalTrack[] => {
+  const claimed = new Set<string>()
+  const linked: BundleLinkedLocalTrack[] = []
+  const claim = (t: BoxDiscLocalTrack, match: BoxMbTrackRow | undefined) => {
+    if (!match) { return }
+    claimed.add(match.id)
+    const { boxMediumPosition: _box, recordingId: _rec, ...rest } = t
+    linked.push({ ...rest, mbTrackId: match.id, discNumber: match.discNumber })
+  }
+  const onDisc = (t: BoxDiscLocalTrack) =>
+    boxTracks.filter(b => b.discNumber === t.boxMediumPosition && !claimed.has(b.id))
+
+  const pending: BoxDiscLocalTrack[] = []
+  for (const t of discTracks) {
+    const match = t.recordingId ? onDisc(t).find(b => b.recordingId === t.recordingId) : undefined
+    if (match) {
+      claim(t, match)
+    } else {
+      pending.push(t)
+    }
+  }
+  for (const t of pending) {
+    claim(t, t.trackNumber == null ? undefined : onDisc(t).find(b => b.position === t.trackNumber))
+  }
+  return linked
 }

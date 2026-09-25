@@ -1,10 +1,10 @@
 import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
-import { mapBundleMbTracks } from '~/server/utils/bundleTracks'
+import { linkBoxDiscTracks, mapBundleMbTracks } from '~/server/utils/bundleTracks'
 import { currentUserId } from '~/server/utils/libraryOwnership'
 import { trackPlaysByIds, withTrackPlay } from '~/server/utils/userPlays'
 
-function normalizeTitle(title: string): string {
+const normalizeTitle = (title: string): string => {
   return title
     .toLowerCase()
     .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D-]/g, '')
@@ -35,6 +35,7 @@ export default defineEventHandler(async (event) => {
           discNumber: true,
           durationMs: true,
           musicbrainzId: true,
+          recordingId: true,
         },
         orderBy: [{ discNumber: 'asc' }, { position: 'asc' }],
       },
@@ -53,36 +54,64 @@ export default defineEventHandler(async (event) => {
     // disc binds standalone (docs/sync_decisions.md). Resolve those directly by mbTrackId rather than
     // reusing getLocalReleaseTracks, which scopes by localReleaseId and would pull in every track of
     // whichever folder happened to match first.
-    const linkedLocalTracks = await prisma.localReleaseTrack.findMany({
+    const localTrackSelect = {
+      id: true,
+      title: true,
+      artist: true,
+      albumArtist: true,
+      album: true,
+      year: true,
+      genre: true,
+      duration: true,
+      trackNumber: true,
+      discNumber: true,
+      filePath: true,
+      localReleaseId: true,
+      mbTrackId: true,
+      trackRelatedArtists: {
+        select: { artist: { select: { name: true, slug: true } } },
+      },
+    } as const
+    const linkedByMbTrackId = await prisma.localReleaseTrack.findMany({
       where: { mbTrackId: { in: mbRelease.tracks.map(t => t.id) } },
+      select: localTrackSelect,
+    })
+    // A dissolved box's discs bind to the standalone albums they reprint, so their tracks never point
+    // at the box's own tracks - re-link them through the disc's boxMediumPosition instead.
+    const boxDiscs = await prisma.localRelease.findMany({
+      where: { boxReleaseId: mbRelease.id },
+      orderBy: { boxMediumPosition: 'asc' },
       select: {
-        id: true,
-        title: true,
-        artist: true,
-        albumArtist: true,
-        album: true,
-        year: true,
-        genre: true,
-        duration: true,
-        trackNumber: true,
-        discNumber: true,
-        filePath: true,
-        localReleaseId: true,
-        mbTrackId: true,
-        trackRelatedArtists: {
-          select: { artist: { select: { name: true, slug: true } } },
-        },
+        image: true,
+        imageUrl: true,
+        boxMediumPosition: true,
+        artists: { select: { artist: { select: { name: true, slug: true } } } },
+        tracks: { select: { ...localTrackSelect, mbTrack: { select: { recordingId: true } } } },
       },
     })
+    const alreadyLinked = new Set(linkedByMbTrackId.map(t => t.mbTrackId))
+    const boxLinked = linkBoxDiscTracks(
+      mbRelease.tracks.filter(t => !alreadyLinked.has(t.id)),
+      boxDiscs.flatMap(d => d.tracks.map(({ mbTrack, ...t }) => ({
+        ...t,
+        playCount: 0,
+        boxMediumPosition: d.boxMediumPosition,
+        recordingId: mbTrack?.recordingId ?? null,
+      }))),
+    )
+    const linkedLocalTracks = [...linkedByMbTrackId, ...boxLinked]
+    const firstDisc = boxDiscs[0]
+    const firstDiscArtist = firstDisc?.artists[0]?.artist
+    const boxImg = firstDisc ? verifyImage(firstDisc.image, firstDisc.imageUrl, 'releases') : null
     const linkedPlays = await trackPlaysByIds(userId, linkedLocalTracks.map(t => t.id))
     return {
       release: {
         id: mbRelease.id,
         title: mbRelease.title,
-        image: null,
-        imageUrl: null,
-        artistName: 'Unknown',
-        artistSlug: '',
+        image: boxImg?.image ?? null,
+        imageUrl: boxImg?.imageUrl ?? null,
+        artistName: firstDiscArtist?.name ?? 'Unknown',
+        artistSlug: firstDiscArtist?.slug ?? '',
       },
       tracks: mapBundleMbTracks(mbRelease.tracks ?? [], linkedLocalTracks.map(t => withTrackPlay(t, linkedPlays))),
     }
@@ -114,11 +143,11 @@ export default defineEventHandler(async (event) => {
   return getLocalReleaseTracks(userId, id, localRelease?.release?.tracks)
 })
 
-async function getLocalReleaseTracks(
+const getLocalReleaseTracks = async (
   userId: number,
   localReleaseId: string,
   mbTracks?: { id: string; title: string; position: number | null; discNumber: number | null; durationMs: number | null; musicbrainzId: string | null }[],
-) {
+) => {
   const release = await prisma.localRelease.findUnique({
     where: { id: localReleaseId },
     select: {

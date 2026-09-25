@@ -353,6 +353,41 @@ describe('buildLocalAndGapCards - box sets (docs/sync_decisions.md)', () => {
     // Raw stored position is 4 (3rd surviving audio medium), but display renumbers to 3 of 3.
     expect(localCard!.boxParent).toMatchObject({ mediumPosition: 3, mediumCount: 3 })
   })
+
+  it('the dissolved box itself stays a gap but borrows its discs\' cover, track count and plays - so it is playable', () => {
+    const box = mbRelease({ id: 'box1', title: 'Deliverance & Damnation', mediumCount: 2, tracks: Array.from({ length: 14 }, (_, i) => ({ id: `bt${i}` })) })
+    const deliverance = mbRelease({ id: 'album1', title: 'Deliverance' })
+    const damnation = mbRelease({ id: 'album2', title: 'Damnation' })
+    const disc2 = localRelease({
+      id: 'lr2', releaseId: 'album2', boxReleaseId: 'box1', boxMediumPosition: 2, image: 'disc2.jpg', totalPlayCount: 3,
+      tracks: Array.from({ length: 8 }, (_, i) => ({ id: `d2t${i}` })),
+    })
+    const disc1 = localRelease({
+      id: 'lr1', releaseId: 'album1', boxReleaseId: 'box1', boxMediumPosition: 1, image: 'disc1.jpg', totalPlayCount: 2,
+      tracks: Array.from({ length: 6 }, (_, i) => ({ id: `d1t${i}` })),
+    })
+    const { cards } = buildLocalAndGapCards({
+      localReleases: [disc2, disc1],
+      mbById: new Map([['album1', deliverance], ['album2', damnation], ['box1', box]]),
+      coArtistMap: new Map(), connectedArtistByRelease: new Map(), resolveImage,
+    })
+    expect(cards.find(c => c.id === 'box1')).toMatchObject({
+      hasLocal: false,
+      localReleaseId: null,
+      image: 'disc1.jpg',
+      localTrackCount: 14,
+      totalPlayCount: 5,
+      discCount: 2,
+    })
+  })
+
+  it('a plain gap with no dissolved discs keeps no cover, no local tracks and no plays', () => {
+    const { cards } = buildLocalAndGapCards({
+      localReleases: [], mbById: new Map([['mb1', mbRelease({ id: 'mb1' })]]),
+      coArtistMap: new Map(), connectedArtistByRelease: new Map(), resolveImage,
+    })
+    expect(cards[0]).toMatchObject({ image: null, imageUrl: null, localTrackCount: 0, totalPlayCount: 0 })
+  })
 })
 
 describe('buildLocalAndGapCards / buildAppearsOnCards - "Also part of" (docs/sync_decisions.md)', () => {
