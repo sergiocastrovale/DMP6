@@ -179,6 +179,23 @@ describe('useTerminalStore', () => {
     expect(bodies).toEqual(['./index', './sync'])
   })
 
+  it('runSequence() carries on past a failed stage by default, but stops there with stopOnFailure', async () => {
+    const fakeFetch = vi.fn().mockResolvedValue(sseResponse('event: done\ndata: 1\n\n'))
+    vi.stubGlobal('fetch', fakeFetch)
+    const store = useTerminalStore()
+    const steps = [
+      { command: './delete', args: ['--release', 'd1'], session: 'seq-f1' },
+      { command: './delete', args: ['--release', 'd2'], session: 'seq-f2' },
+    ]
+
+    await store.runSequence(steps)
+    expect(fakeFetch).toHaveBeenCalledTimes(2)
+
+    fakeFetch.mockClear()
+    await store.runSequence(steps, { stopOnFailure: true })
+    expect(fakeFetch).toHaveBeenCalledTimes(1)
+  })
+
   it('runSequence() tracks stageIndex/stageTotal while running and clears both when done', async () => {
     const seen: Array<[number | null, number | null]> = []
     const fakeFetch = vi.fn().mockImplementation(async () => {

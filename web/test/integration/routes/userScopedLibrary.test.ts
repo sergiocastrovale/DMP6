@@ -1,7 +1,8 @@
-import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getTestPrisma, resetDb } from '../../../test/setup/db'
-import { makeUser, makeLocalRelease, makeLocalTrack, makePlaylist } from '../../../test/factories'
+import { makeUser, makeLocalRelease, makeLocalTrack, makeMbRelease, makePlaylist } from '../../../test/factories'
 import { visiblePlaylistsWhere } from '../../../server/utils/libraryOwnership'
+import { favoriteReleaseCard, favoriteReleaseInclude } from '../../../server/utils/favorites'
 
 // Favorites and MANUAL playlists are per-user and private (CLAUDE.md Data Model). Exercised against
 // real Postgres because the FK/cascade and composite-unique behaviour the routes rely on is DB-level,
@@ -9,6 +10,11 @@ import { visiblePlaylistsWhere } from '../../../server/utils/libraryOwnership'
 // also guard this (raw migration SQL, see prisma/migrations/20260914000000_.../migration.sql) aren't
 // present here - `pushSchema` regenerates only from schema.prisma (see test/setup/db.ts) - so this
 // suite covers what the app-level code enforces on top of that.
+// verifyImage needs Nuxt's runtime config + settings cache; this suite is about rows, not image files.
+vi.mock('../../../server/utils/images', () => ({
+  verifyImage: (image: string | null, imageUrl: string | null) => ({ image, imageUrl }),
+}))
+
 const prisma = getTestPrisma()
 
 describe('user-scoped favorites and playlists (real Postgres)', () => {
@@ -42,6 +48,54 @@ describe('user-scoped favorites and playlists (real Postgres)', () => {
     await expect(
       prisma.favoriteRelease.create({ data: { userId: alice.id, releaseId: release.id } }),
     ).rejects.toThrow()
+  })
+
+  // A dissolved box has no LocalRelease of its own, so it is favorited via its MusicBrainzRelease
+  // (FavoriteRelease.boxReleaseId) - one row for the box, never one per disc. The either/or CHECK is raw
+  // migration SQL and absent here (see the header note), so this covers the schema-level behaviour.
+  describe('box favorites', () => {
+    const makeBox = async () => {
+      const box = await makeMbRelease(prisma, { title: 'Deliverance & Damnation', mediumCount: 2 })
+      const disc1 = await makeLocalRelease(prisma, { title: 'Deliverance', boxReleaseId: box.id, boxMediumPosition: 1, image: 'disc1.jpg' })
+      const disc2 = await makeLocalRelease(prisma, { title: 'Damnation', boxReleaseId: box.id, boxMediumPosition: 2 })
+      return { box, disc1, disc2 }
+    }
+
+    it('one favorite per user per box, independent of the per-release favorites', async () => {
+      const alice = await makeUser(prisma)
+      const { box, disc1 } = await makeBox()
+      await prisma.favoriteRelease.create({ data: { userId: alice.id, boxReleaseId: box.id } })
+      await prisma.favoriteRelease.create({ data: { userId: alice.id, releaseId: disc1.id } })
+
+      await expect(
+        prisma.favoriteRelease.create({ data: { userId: alice.id, boxReleaseId: box.id } }),
+      ).rejects.toThrow()
+      expect(await prisma.favoriteRelease.count({ where: { userId: alice.id } })).toBe(2)
+    })
+
+    it('deleting the box release cascades its favorites away', async () => {
+      const alice = await makeUser(prisma)
+      const { box } = await makeBox()
+      await prisma.favoriteRelease.create({ data: { userId: alice.id, boxReleaseId: box.id } })
+
+      await prisma.localRelease.deleteMany({ where: { boxReleaseId: box.id } })
+      await prisma.musicBrainzRelease.delete({ where: { id: box.id } })
+
+      expect(await prisma.favoriteRelease.count({ where: { userId: alice.id } })).toBe(0)
+    })
+
+    it('lists a box favorite as a card addressed by the box id, with the first disc\'s cover', async () => {
+      const alice = await makeUser(prisma)
+      const artist = await prisma.artist.create({ data: { name: 'Opeth', slug: 'opeth' } })
+      const { box, disc1 } = await makeBox()
+      await prisma.localReleaseArtist.create({ data: { localReleaseId: disc1.id, artistId: artist.id } })
+      await prisma.favoriteRelease.create({ data: { userId: alice.id, boxReleaseId: box.id } })
+
+      const rows = await prisma.favoriteRelease.findMany({ where: { userId: alice.id }, include: favoriteReleaseInclude })
+      expect(rows.map(favoriteReleaseCard)).toEqual([
+        expect.objectContaining({ id: box.id, title: 'Deliverance & Damnation', image: 'disc1.jpg', artist: expect.objectContaining({ slug: 'opeth' }) }),
+      ])
+    })
   })
 
   it('two users can each favorite the same track without colliding', async () => {

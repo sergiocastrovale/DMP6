@@ -17,11 +17,24 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    await prisma.favoriteRelease.upsert({
-      where: { userId_releaseId: { userId, releaseId: id } },
-      create: { userId, releaseId: id },
-      update: {},
-    })
+    // A LocalRelease id favorites that release; failing that, an id that is a dissolved box's
+    // MusicBrainzRelease (its discs' boxReleaseId) favorites the box itself - one row, not one per disc.
+    const isBox = !(await prisma.localRelease.findUnique({ where: { id }, select: { id: true } }))
+      && !!(await prisma.localRelease.findFirst({ where: { boxReleaseId: id }, select: { id: true } }))
+    if (isBox) {
+      await prisma.favoriteRelease.upsert({
+        where: { userId_boxReleaseId: { userId, boxReleaseId: id } },
+        create: { userId, boxReleaseId: id },
+        update: {},
+      })
+    }
+    else {
+      await prisma.favoriteRelease.upsert({
+        where: { userId_releaseId: { userId, releaseId: id } },
+        create: { userId, releaseId: id },
+        update: {},
+      })
+    }
   }
   catch (e) {
     if (isForeignKeyError(e)) {

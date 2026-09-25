@@ -168,8 +168,12 @@ export const useTerminalStore = defineStore('terminal', () => {
     await maybeAutoReconnect(resolvedSession)
   }
 
-  // Runs stages back to back, stopping at the first one the user cancels.
-  async function runSequence(steps: Array<{ command: string, args: string[], session?: string }>) {
+  // Runs stages back to back, stopping at the first one the user cancels. `stopOnFailure` also stops
+  // at the first stage that exits non-zero (a multi-disc delete must not carry on past a failed disc).
+  async function runSequence(
+    steps: Array<{ command: string, args: string[], session?: string }>,
+    options: { stopOnFailure?: boolean } = {},
+  ) {
     const gen = ++sequenceGeneration
     stageTotal.value = steps.length
     try {
@@ -178,6 +182,7 @@ export const useTerminalStore = defineStore('terminal', () => {
         stageIndex.value = i + 1
         await run(step.command, step.args, step.session)
         if (stoppedGeneration === gen) {return}
+        if (options.stopOnFailure && exitCode.value !== 0) {return}
       }
     }
     finally {

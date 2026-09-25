@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { acquireFailureMessage, artistScanFolders, boxRowDiscLabel, boxRowSubtitle, canRedownload, connectedArtistNames, dedupeLocalFolders, dlPollNeeded, favoriteTargetId, filterInFlight, findBundleParentRelease, isBoxSetRow, mergeDownloadStatus, tracksToPlayerTracks, viewQueryMatches } from '../../helpers/artistPageLogic'
+import { acquireFailureMessage, actionReleaseIds, artistScanFolders, boxRowDiscLabel, boxRowSubtitle, canRedownload, connectedArtistNames, dedupeLocalFolders, dlPollNeeded, favoriteLabel, favoriteTargetId, filterInFlight, findBundleParentRelease, isBoxSetRow, isDissolvedBoxRow, mergeDownloadStatus, tracksToPlayerTracks, viewQueryMatches } from '../../helpers/artistPageLogic'
 import type { UnifiedRelease } from '../../types/release'
 import type { Track } from '../../types/track'
 import type { DlStatusValue } from '../../types/download'
@@ -248,6 +248,32 @@ describe('favoriteTargetId', () => {
 
   it('is null for a plain gap release (neither id set)', () => {
     expect(favoriteTargetId(release({ localReleaseId: null, bundleParentReleaseId: null }))).toBeNull()
+  })
+
+  it('targets the box\'s own MusicBrainz release for a dissolved box - one favorite, not one per disc', () => {
+    expect(favoriteTargetId(release({ localReleaseId: null, mbReleaseRowId: 'box-mb', boxDiscReleaseIds: ['d1', 'd2'] }))).toBe('box-mb')
+  })
+})
+
+describe('dissolved box row (no LocalRelease of its own, its discs carry the files)', () => {
+  const box = release({ localReleaseId: null, mbReleaseRowId: 'box-mb', boxDiscReleaseIds: ['d1', 'd2'] })
+
+  it('isDissolvedBoxRow is true only without an own LocalRelease and with discs', () => {
+    expect(isDissolvedBoxRow(box)).toBe(true)
+    expect(isDissolvedBoxRow(release({ localReleaseId: 'lr1', boxDiscReleaseIds: ['d1'] }))).toBe(false)
+    expect(isDissolvedBoxRow(release({ localReleaseId: null }))).toBe(false)
+  })
+
+  it('actionReleaseIds is the row\'s own id, else every disc in order, else nothing', () => {
+    expect(actionReleaseIds(release({ localReleaseId: 'lr1' }))).toEqual(['lr1'])
+    expect(actionReleaseIds(box)).toEqual(['d1', 'd2'])
+    expect(actionReleaseIds(release({ localReleaseId: null }))).toEqual([])
+  })
+
+  it('favoriteLabel only says "bundled in" for the containment fallback', () => {
+    expect(favoriteLabel(box)).toBe('Toggle favorite')
+    expect(favoriteLabel(release({ localReleaseId: 'lr1' }))).toBe('Toggle favorite')
+    expect(favoriteLabel(release({ localReleaseId: null, bundleParentReleaseId: 'parent-lr' }))).toBe('Favorite the release this is bundled in')
   })
 })
 

@@ -1,7 +1,7 @@
 import { prisma } from '~/server/utils/prisma'
-import { verifyImage } from '~/server/utils/images'
 import { requirePermission } from '~/server/utils/permissions'
 import { currentUserId } from '~/server/utils/libraryOwnership'
+import { favoriteReleaseCard, favoriteReleaseInclude } from '~/server/utils/favorites'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'favorites.view')
@@ -14,27 +14,8 @@ export default defineEventHandler(async (event) => {
     where: { userId },
     take: limit,
     orderBy: { createdAt: 'desc' },
-    include: {
-      release: {
-        include: {
-          artists: {
-            take: 1,
-            select: { artist: { select: { id: true, name: true, slug: true } } },
-          },
-        },
-      },
-    },
+    include: favoriteReleaseInclude,
   })
 
-  return favorites.map((fav) => {
-    const img = verifyImage(fav.release.image, fav.release.imageUrl, 'releases')
-    return {
-      id: fav.release.id,
-      title: fav.release.title,
-      year: fav.release.year,
-      image: img.image,
-      imageUrl: img.imageUrl,
-      artist: fav.release.artists[0]?.artist ?? null,
-    }
-  })
+  return favorites.map(favoriteReleaseCard).filter(card => card !== null)
 })

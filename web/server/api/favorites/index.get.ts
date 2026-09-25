@@ -3,6 +3,7 @@ import { verifyImage } from '~/server/utils/images'
 import { parsePagination } from '~/server/utils/pagination'
 import { requirePermission } from '~/server/utils/permissions'
 import { currentUserId } from '~/server/utils/libraryOwnership'
+import { favoriteReleaseCard, favoriteReleaseInclude } from '~/server/utils/favorites'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'favorites.view')
@@ -23,35 +24,15 @@ export default defineEventHandler(async (event) => {
         where: { userId },
         skip,
         take: pageSize,
-        include: {
-          release: {
-            include: {
-              artists: {
-                take: 1,
-                select: { artist: { select: { id: true, name: true, slug: true } } },
-              },
-            },
-          },
-        },
+        include: favoriteReleaseInclude,
         orderBy: { createdAt: 'desc' },
       }),
       prisma.favoriteRelease.count({ where: { userId } }),
     ])
     totalReleases = count
-    releases = rawReleases.map((fav) => {
-      const img = verifyImage(fav.release.image, fav.release.imageUrl, 'releases')
-      return {
-        id: fav.id,
-        createdAt: fav.createdAt,
-        release: {
-          id: fav.release.id,
-          title: fav.release.title,
-          year: fav.release.year,
-          image: img.image,
-          imageUrl: img.imageUrl,
-          artist: fav.release.artists[0]?.artist ?? null,
-        },
-      }
+    releases = rawReleases.flatMap((fav) => {
+      const release = favoriteReleaseCard(fav)
+      return release ? [{ id: fav.id, createdAt: fav.createdAt, release }] : []
     })
   }
 

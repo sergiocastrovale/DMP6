@@ -1,3 +1,4 @@
+import type { AlsoPartOfEntry } from '~/types/release'
 import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
 import { parsePagination } from '~/server/utils/pagination'
@@ -116,7 +117,7 @@ export default defineEventHandler(async (event) => {
       select: { equivalentReleaseGroupId: true, releaseId: true, release: { select: { title: true, year: true, releaseGroupId: true } } },
     })
     : []
-  const alsoPartOfByGroupId = new Map<string, { title: string, year: number | null }[]>()
+  const alsoPartOfByGroupId = new Map<string, AlsoPartOfEntry[]>()
   const alsoPartOfSeen = new Map<string, Set<string>>()
   accumulateAlsoPartOf(alsoPartOfMedia, alsoPartOfByGroupId, alsoPartOfSeen)
 

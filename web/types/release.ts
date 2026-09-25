@@ -30,6 +30,9 @@ export interface UnifiedRelease {
   hasLocal: boolean
   localReleaseId: string | null
   bundleParentReleaseId?: string | null
+  // A dissolved box has no LocalRelease of its own: its discs (LocalRelease.boxReleaseId) do. Their ids
+  // in medium order, so refresh/delete on the box row act on every disc (docs/sync_decisions.md).
+  boxDiscReleaseIds?: string[]
   folderPath: string | null
   coArtists?: { name: string; slug: string }[]
   statusReason?: string | null
@@ -45,7 +48,15 @@ export interface UnifiedRelease {
   boxParent?: { releaseId: string, title: string, mediumPosition: number, mediumTitle: string | null, mediumCount: number } | null
   // Box sets in the catalogue that reprint this release's whole release group, regardless of whether
   // this artist owns a copy of them - a pure catalogue fact, not provenance (docs/sync_decisions.md).
-  alsoPartOf?: { title: string, year: number | null }[]
+  alsoPartOf?: AlsoPartOfEntry[]
+}
+
+// A box set reprinting a release group. `releaseId` is the box's MusicBrainzRelease id, so a dissolved
+// disc can tell its own box apart from the others (a disc is not "also part of" the box it lives in).
+export interface AlsoPartOfEntry {
+  releaseId?: string
+  title: string
+  year: number | null
 }
 
 export type ReleaseStatus =

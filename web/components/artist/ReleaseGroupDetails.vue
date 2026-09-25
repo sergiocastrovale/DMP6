@@ -4,7 +4,7 @@ import type { UnifiedRelease } from '~/types/release'
 import { useDownloadsStore } from '~/stores/downloads'
 import { useTerminalStore } from '~/stores/terminal'
 import { downloadStatusTone, statuses } from '~/helpers/constants'
-import { canRedownload } from '~/helpers/artistPageLogic'
+import { actionReleaseIds, canRedownload, favoriteLabel, favoriteTargetId } from '~/helpers/artistPageLogic'
 import { containmentContainerTitle } from '~/helpers/functions'
 import { cx, ICON_STROKE_WIDTH, surface, toneBg } from '~/helpers/ui'
 import DownloadProgress from '~/components/downloads/DownloadProgress.vue'
@@ -126,11 +126,11 @@ const alsoPartOfLabel = computed(() =>
           <span v-if="discLabel" class="shrink-0 text-xs text-stone-100/40">{{ discLabel }}</span>
           <span v-if="isBoxSet" :class="cx('shrink-0 rounded px-1.5 py-0.5 text-xs font-medium', toneBg.info)">Box Set</span>
           <ToggleFavorite
-            v-if="release.localReleaseId || release.bundleParentReleaseId"
+            v-if="favoriteTargetId(release)"
             class="hidden md:inline-flex"
             :size="16"
             :active="isFavorite"
-            :label="release.localReleaseId ? 'Toggle favorite' : 'Favorite the release this is bundled in'"
+            :label="favoriteLabel(release)"
             @toggle="emit('toggleFavorite')"
           />
           <button
@@ -253,7 +253,7 @@ const alsoPartOfLabel = computed(() =>
         </template>
 
         <DataTableAction
-          v-if="canScan && release.localReleaseId"
+          v-if="canScan && actionReleaseIds(release).length"
           :icon="RefreshCw"
           label="Refresh this release"
           :disabled="terminal.isRunning"

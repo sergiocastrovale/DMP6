@@ -77,14 +77,15 @@ export const getAlbumList2 = async (_event: H3Event, ctx: HandlerContext): Promi
     }
 
     case 'starred': {
+      // Box favorites (releaseId null) have no Subsonic album - only LocalReleases are albums there.
       const favs = await prisma.favoriteRelease.findMany({
-        where: { userId: ctx.user.id },
+        where: { userId: ctx.user.id, releaseId: { not: null } },
         orderBy: { createdAt: 'desc' },
         skip: offset,
         take: size,
         select: { release: { select: ALBUM_SELECT } },
       })
-      albums = favs.map(f => f.release)
+      albums = favs.flatMap(f => f.release ? [f.release] : [])
       break
     }
 
@@ -163,9 +164,9 @@ export const getRandomSongs = async (_event: H3Event, ctx: HandlerContext): Prom
 
 // No artist array - DMP has no per-user FavoriteArtist (see mappers.ts's toArtist comment).
 export const getStarred2 = async (_event: H3Event, ctx: HandlerContext): Promise<XmlObject> => {
-  const [favReleases, favTracks] = await Promise.all([
+  const [rawFavReleases, favTracks] = await Promise.all([
     prisma.favoriteRelease.findMany({
-      where: { userId: ctx.user.id },
+      where: { userId: ctx.user.id, releaseId: { not: null } },
       orderBy: { createdAt: 'desc' },
       select: { createdAt: true, release: { select: ALBUM_SELECT } },
     }),
@@ -176,6 +177,8 @@ export const getStarred2 = async (_event: H3Event, ctx: HandlerContext): Promise
     }),
   ])
 
+  // Box favorites are filtered out in the query (releaseId null); this narrows the type to match.
+  const favReleases = rawFavReleases.flatMap(f => f.release ? [{ createdAt: f.createdAt, release: f.release }] : [])
   const albumIds = favReleases.map(f => f.release.id)
   const trackIds = favTracks.map(f => f.track.id)
   const [plays, trackPlays] = await Promise.all([

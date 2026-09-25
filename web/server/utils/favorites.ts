@@ -2,6 +2,7 @@
 // bodies and the Subsonic star/unstar endpoints (server/utils/subsonic/endpoints/annotation.ts).
 // Error shaping (P2003 -> 404) stays at the call site, same as the existing favorites routes.
 import { prisma } from '~/server/utils/prisma'
+import { verifyImage } from '~/server/utils/images'
 
 export const favoriteTrackDates = async (userId: number, trackIds: string[]): Promise<Map<string, Date>> => {
   if (!trackIds.length) {return new Map()}
@@ -18,7 +19,7 @@ export const favoriteReleaseDates = async (userId: number, releaseIds: string[])
     where: { userId, releaseId: { in: releaseIds } },
     select: { releaseId: true, createdAt: true },
   })
-  return new Map(rows.map(r => [r.releaseId, r.createdAt]))
+  return new Map(rows.flatMap(r => r.releaseId ? [[r.releaseId, r.createdAt] as const] : []))
 }
 
 export const starTrack = (userId: number, trackId: string) =>
@@ -40,3 +41,43 @@ export const starRelease = (userId: number, releaseId: string) =>
 
 export const unstarRelease = (userId: number, releaseId: string) =>
   prisma.favoriteRelease.deleteMany({ where: { userId, releaseId } })
+
+const artistPick = { take: 1, select: { artist: { select: { id: true, name: true, slug: true } } } } as const
+
+// `include` for FavoriteRelease list reads: the LocalRelease a plain favorite points at, or the box a
+// box favorite points at (a dissolved box has no LocalRelease - its first disc supplies cover + artist).
+export const favoriteReleaseInclude = {
+  release: { include: { artists: artistPick } },
+  box: {
+    select: {
+      id: true,
+      title: true,
+      year: true,
+      boxDiscs: {
+        orderBy: { boxMediumPosition: 'asc' },
+        take: 1,
+        select: { image: true, imageUrl: true, artists: artistPick },
+      },
+    },
+  },
+} as const
+
+type FavoriteReleaseRow = Awaited<ReturnType<typeof prisma.favoriteRelease.findMany<{ include: typeof favoriteReleaseInclude }>>>[number]
+
+// One release card for a favorite, whichever kind it is. `id` is the id the artist page and player
+// address it by: the LocalRelease id, or the box's MusicBrainzRelease id (which /api/releases/[id]/tracks
+// resolves to every disc's tracks). Null when the target vanished mid-request.
+export const favoriteReleaseCard = (fav: FavoriteReleaseRow) => {
+  const source = fav.release ?? fav.box?.boxDiscs[0]
+  const target = fav.release ?? fav.box
+  if (!source || !target) {return null}
+  const img = verifyImage(source.image, source.imageUrl, 'releases')
+  return {
+    id: target.id,
+    title: target.title,
+    year: target.year,
+    image: img.image,
+    imageUrl: img.imageUrl,
+    artist: source.artists[0]?.artist ?? null,
+  }
+}

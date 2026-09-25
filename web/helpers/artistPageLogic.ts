@@ -65,11 +65,31 @@ export const canRedownload = (release: UnifiedRelease, downloadsEnabled: boolean
   && !!release.mbReleaseRowId
   && (release.status === 'MISSING_TRACKS' || release.status === 'INCOMPLETE')
 
-// Favoriting/refresh act on a real LocalRelease id. A gap that only notes containment (owned.rs, see
-// CLAUDE.md) has no LocalRelease of its own, so favoriting falls back to the container it names -
-// which is what the button says it does, since the gap itself is not owned.
+// A dissolved box (docs/sync_decisions.md): no LocalRelease of its own, but its discs are. The row
+// still acts as one release - one favorite, one refresh, one delete over every disc.
+export const isDissolvedBoxRow = (release: UnifiedRelease): boolean =>
+  !release.localReleaseId && !!release.boxDiscReleaseIds?.length
+
+// The LocalRelease ids a refresh/delete on this row runs against: its own, or every disc of a
+// dissolved box (in medium order), else none.
+export const actionReleaseIds = (release: UnifiedRelease): string[] =>
+  release.localReleaseId ? [release.localReleaseId] : release.boxDiscReleaseIds ?? []
+
+// Favoriting acts on a real LocalRelease id. A dissolved box favorites the box's own MusicBrainz
+// release id (FavoriteRelease.boxReleaseId) - one favorite, not one per disc. A gap that only notes
+// containment (owned.rs, see CLAUDE.md) has no LocalRelease of its own, so favoriting falls back to the
+// container it names - which is what the button says it does, since the gap itself is not owned.
 export const favoriteTargetId = (release: UnifiedRelease): string | null =>
-  release.localReleaseId || release.bundleParentReleaseId || null
+  release.localReleaseId
+  || (isDissolvedBoxRow(release) ? release.mbReleaseRowId : null)
+  || release.bundleParentReleaseId
+  || null
+
+// Tooltip for the favorite heart: only the containment fallback favorites something other than the row.
+export const favoriteLabel = (release: UnifiedRelease): string =>
+  favoriteTargetId(release) === release.bundleParentReleaseId && !release.localReleaseId && !isDissolvedBoxRow(release)
+    ? 'Favorite the release this is bundled in'
+    : 'Toggle favorite'
 
 // Resolves a gap's `Recordings inside "X"` note to the actual container UnifiedRelease card in the
 // current list, for expand/scroll navigation.

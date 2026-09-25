@@ -4,6 +4,7 @@ import type { UnifiedRelease } from '~/types/release'
 import { useTerminalStore } from '~/stores/terminal'
 import { useToastStore } from '~/stores/toast'
 import { scanSessionName } from '~/helpers/functions'
+import { actionReleaseIds } from '~/helpers/artistPageLogic'
 
 const props = defineProps<{
   release: UnifiedRelease
@@ -27,12 +28,23 @@ const removeFiles = ref(false)
 // This guard makes every click after the first a no-op.
 let removing = false
 
+// A dissolved box has no LocalRelease of its own - removing it removes every disc, one `./delete
+// --release` per disc.
+const releaseIds = computed(() => actionReleaseIds(props.release))
+const discCount = computed(() => releaseIds.value.length)
+
 const confirmLabel = computed(() => removeFiles.value ? 'Delete release and files' : 'Remove from catalogue')
 
 const note = computed(() =>
   removeFiles.value
-    ? 'This release\'s folder is deleted from disk, including cover art and other files in it. A folder that still holds another release\'s audio is kept. This cannot be undone by re-scanning.'
+    ? `${discCount.value > 1 ? 'Every disc\'s' : 'This release\'s'} folder is deleted from disk, including cover art and other files in it. A folder that still holds another release's audio is kept. This cannot be undone by re-scanning.`
     : 'Files on disk are kept, so a later scan brings this release back. Favorites and playlist entries for its tracks are removed either way. The rest of the catalogue is untouched.',
+)
+
+const message = computed(() =>
+  discCount.value > 1
+    ? `Remove “${props.release.title}” and its ${discCount.value} discs from the catalogue? This deletes their tracks, covers and, if nothing else uses them, their MusicBrainz editions.`
+    : `Remove “${props.release.title}” from the catalogue? This deletes its tracks, cover and, if nothing else uses it, its MusicBrainz edition.`,
 )
 
 const remove = async () => {
@@ -41,12 +53,16 @@ const remove = async () => {
   }
   removing = true
   open.value = false
-  const releaseId = props.release.localReleaseId!
-  const args = ['--release', releaseId, '--y', ...(removeFiles.value ? ['--files'] : [])]
+  const flags = ['--y', ...(removeFiles.value ? ['--files'] : [])]
   // Scoped per release (mirrors refreshRelease's scanSessionName use) rather than one fixed session
   // name shared by every release delete - two releases deleted in the same tab must not collide on
   // terminal's hasUnfinishedRun 409 guard the way a stray retry of this same release also must not.
-  await terminal.run('./delete', args, scanSessionName('delete-release', releaseId))
+  // stopOnFailure: a failed disc must not be followed by deleting the rest of the box.
+  await terminal.runSequence(releaseIds.value.map(id => ({
+    command: './delete',
+    args: ['--release', id, ...flags],
+    session: scanSessionName('delete-release', id),
+  })), { stopOnFailure: true })
   removing = false
   if (terminal.exitCode === 0) {
     toast.success(`${props.release.title} removed`)
@@ -61,7 +77,7 @@ const remove = async () => {
   <ConfirmDialog
     v-model="open"
     title="Remove release"
-    :message="`Remove “${release.title}” from the catalogue? This deletes its tracks, cover and, if nothing else uses it, its MusicBrainz edition.`"
+    :message="message"
     :note="note"
     :confirm-label="confirmLabel"
     :icon="Trash2"

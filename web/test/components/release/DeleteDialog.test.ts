@@ -6,14 +6,24 @@ import DeleteDialog from '../../../components/release/DeleteDialog.vue'
 import type { UnifiedRelease } from '../../../types/release'
 
 // Plain values, not refs: vi.hoisted runs before vue is imported.
-const { runMock, terminal, toast } = vi.hoisted(() => ({
+const { runMock, sequenceOptions, terminal, toast } = vi.hoisted(() => ({
   runMock: vi.fn().mockResolvedValue(undefined),
+  sequenceOptions: { value: undefined as unknown },
   terminal: { exitCode: 0 },
   toast: { success: vi.fn(), error: vi.fn() },
 }))
 
 vi.mock('~/stores/terminal', () => ({
-  useTerminalStore: () => ({ run: runMock, get exitCode() { return terminal.exitCode } }),
+  useTerminalStore: () => ({
+    // Mirrors the real runSequence's shape: one run() per step, in order.
+    runSequence: async (steps: { command: string, args: string[], session?: string }[], options?: unknown) => {
+      sequenceOptions.value = options
+      for (const step of steps) {
+        await runMock(step.command, step.args, step.session)
+      }
+    },
+    get exitCode() { return terminal.exitCode },
+  }),
 }))
 
 vi.mock('~/stores/toast', () => ({
@@ -80,6 +90,17 @@ describe('release/DeleteDialog.vue', () => {
     await nextTick()
     await clickText('Delete release and files')
     expect(runMock).toHaveBeenCalledWith('./delete', ['--release', 'lr1', '--y', '--files'], 'delete-release-lr1')
+  })
+
+  it('removes every disc of a dissolved box, one delete per disc, stopping on the first failure', async () => {
+    await mount({ localReleaseId: null, boxDiscReleaseIds: ['disc1', 'disc2'], title: 'Deliverance & Damnation' })
+    expect(document.body.textContent).toContain('and its 2 discs')
+    await clickText('Remove from catalogue')
+    expect(runMock.mock.calls).toEqual([
+      ['./delete', ['--release', 'disc1', '--y'], 'delete-release-disc1'],
+      ['./delete', ['--release', 'disc2', '--y'], 'delete-release-disc2'],
+    ])
+    expect(sequenceOptions.value).toEqual({ stopOnFailure: true })
   })
 
   it('emits removed and toasts success once the run succeeds', async () => {

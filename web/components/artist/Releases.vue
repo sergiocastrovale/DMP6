@@ -7,7 +7,7 @@ import { useTerminalStore } from '~/stores/terminal'
 import { useToastStore } from '~/stores/toast'
 import { useGlobalStore } from '~/stores/global'
 import { scanSessionName } from '~/helpers/functions'
-import { acquireFailureMessage, favoriteTargetId, findBundleParentRelease, viewQueryMatches } from '~/helpers/artistPageLogic'
+import { acquireFailureMessage, actionReleaseIds, favoriteTargetId, findBundleParentRelease, viewQueryMatches } from '~/helpers/artistPageLogic'
 import type { useArtistCatalogue } from '~/composables/useArtistCatalogue'
 
 const props = defineProps<{
@@ -215,8 +215,14 @@ async function confirmCancelDownload() {
   refreshDownloadStatus()
 }
 
+// One `./refresh --release` stage per LocalRelease - a dissolved box row carries one per disc, so a
+// single click refreshes the whole box as one run.
 function refreshRelease(edition: UnifiedRelease) {
-  terminal.run('./refresh', ['--release', edition.localReleaseId!, '--overwrite'], scanSessionName('refresh-release', edition.localReleaseId!))
+  terminal.runSequence(actionReleaseIds(edition).map(id => ({
+    command: './refresh',
+    args: ['--release', id, '--overwrite'],
+    session: scanSessionName('refresh-release', id),
+  })))
 }
 
 async function openInfoDialog(edition: UnifiedRelease) {

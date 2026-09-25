@@ -3,7 +3,7 @@ import { Disc3, DownloadCloud, Heart, Link, RefreshCw, Trash2 } from 'lucide-vue
 import type { UnifiedRelease, ReleaseInfoExtra } from '~/types/release'
 import { useTerminalStore } from '~/stores/terminal'
 import { useDownloadsStore } from '~/stores/downloads'
-import { canRedownload } from '~/helpers/artistPageLogic'
+import { actionReleaseIds, canRedownload, favoriteLabel, favoriteTargetId } from '~/helpers/artistPageLogic'
 import { containmentContainerTitle, musicBrainzUrl } from '~/helpers/functions'
 
 const props = withDefaults(defineProps<{
@@ -74,7 +74,7 @@ const ddClass = 'font-mono text-xs text-stone-100/60'
 
       <div class="flex items-center gap-1">
         <DataTableAction
-          v-if="removable && isAdmin && release.localReleaseId"
+          v-if="removable && isAdmin && actionReleaseIds(release).length"
           :icon="Trash2"
           label="Remove this release"
           :disabled="terminal.isRunning"
@@ -89,17 +89,17 @@ const ddClass = 'font-mono text-xs text-stone-100/60'
           @click="emit('redownload')"
         />
         <DataTableAction
-          v-if="canScan && release.localReleaseId"
+          v-if="canScan && actionReleaseIds(release).length"
           :icon="RefreshCw"
           label="Refresh this release"
           :disabled="terminal.isRunning"
           @click="emit('refresh')"
         />
         <DataTableAction
-          v-if="release.localReleaseId || release.bundleParentReleaseId"
+          v-if="favoriteTargetId(release)"
           :icon="Heart"
           :icon-class="isFavorite ? 'text-amber-400 fill-current' : ''"
-          :label="release.localReleaseId ? 'Toggle favorite' : 'Favorite the release this is bundled in'"
+          :label="favoriteLabel(release)"
           @click="emit('toggleFavorite')"
         />
       </div>

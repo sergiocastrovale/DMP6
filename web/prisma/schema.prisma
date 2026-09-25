@@ -159,6 +159,7 @@ model MusicBrainzRelease {
   updatedAt                  DateTime                   @updatedAt
   localReleases              LocalRelease[]
   boxDiscs                   LocalRelease[]             @relation("BoxDiscs")
+  favoriteBoxes              FavoriteRelease[]          @relation("FavoriteBoxes")
   artists                    MusicBrainzReleaseArtist[]
   type                       ReleaseType                @relation(fields: [typeId], references: [id])
   genres                     Genre[]                    @relation("ReleaseGenres")
@@ -604,17 +605,24 @@ model PlaylistTrack {
 // Favorites
 // ---------------------------------------------------------------------------
 
+// One favorite = exactly one of: a LocalRelease (releaseId) or a dissolved box (boxReleaseId, the box's
+// MusicBrainzRelease - a box has no LocalRelease of its own, docs/sync_decisions.md §9). The raw-SQL
+// CHECK in migration 20260925000000_favorite_box_release enforces the either/or; Prisma can't express it.
 model FavoriteRelease {
-  id        String       @id @default(cuid())
-  userId    Int
-  releaseId String
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
-  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  release   LocalRelease @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  id           String              @id @default(cuid())
+  userId       Int
+  releaseId    String?
+  boxReleaseId String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  release      LocalRelease?       @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  box          MusicBrainzRelease? @relation("FavoriteBoxes", fields: [boxReleaseId], references: [id], onDelete: Cascade)
 
   @@unique([userId, releaseId])
+  @@unique([userId, boxReleaseId])
   @@index([releaseId])
+  @@index([boxReleaseId])
   @@index([userId])
 }
 

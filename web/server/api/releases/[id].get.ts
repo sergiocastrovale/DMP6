@@ -1,3 +1,4 @@
+import type { AlsoPartOfEntry } from '~/types/release'
 import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
 import { accumulateAlsoPartOf, buildReleaseCard } from '~/server/utils/releaseAggregation'
@@ -93,13 +94,13 @@ export default defineEventHandler(async (event) => {
 
   // docs/sync_decisions.md: box sets in the catalogue that reprint this release's whole release group -
   // a pure catalogue fact, independent of whether this artist owns any copy of them.
-  let alsoPartOf: { title: string, year: number | null }[] | undefined
+  let alsoPartOf: AlsoPartOfEntry[] | undefined
   if (lr.release?.releaseGroupId) {
     const media = await prisma.musicBrainzReleaseMedium.findMany({
       where: { equivalentReleaseGroupId: lr.release.releaseGroupId },
       select: { equivalentReleaseGroupId: true, releaseId: true, release: { select: { title: true, year: true, releaseGroupId: true } } },
     })
-    const byGroupId = new Map<string, { title: string, year: number | null }[]>()
+    const byGroupId = new Map<string, AlsoPartOfEntry[]>()
     accumulateAlsoPartOf(media, byGroupId, new Map())
     alsoPartOf = byGroupId.get(lr.release.releaseGroupId)
   }

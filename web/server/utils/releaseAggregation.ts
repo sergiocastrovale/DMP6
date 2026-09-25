@@ -3,7 +3,7 @@
 // shared-releaseId dedup/coverage logic (the systemic sync-matcher bug this app has) for direct unit
 // testing without spinning up a database.
 
-import type { MbReleaseRow, LocalReleaseRow, ImageResolver, UnifiedRelease, LocalAndGapCardsResult } from '~/types/release'
+import type { AlsoPartOfEntry, MbReleaseRow, LocalReleaseRow, ImageResolver, UnifiedRelease, LocalAndGapCardsResult } from '~/types/release'
 import { containmentContainerTitle } from '~/helpers/functions'
 
 // Single-release field mapping shared by the batch card builders below and the single-release lookup
@@ -52,11 +52,22 @@ const computeBoxParent = (
   return null
 }
 
+// A dissolved disc lives in a box that reprints its release group, so that box shows up in the group's
+// alsoPartOf too - "Damnation - disc 2 of 2 - Also part of: Deliverance & Damnation" would just point at
+// itself. The box it lives in is already shown as the row's own subtitle/disc label; only other boxes stay.
+const alsoPartOfOtherBoxes = (
+  alsoPartOf: AlsoPartOfEntry[] | undefined,
+  boxParent: UnifiedRelease['boxParent'],
+): AlsoPartOfEntry[] | undefined => {
+  const others = boxParent && alsoPartOf ? alsoPartOf.filter(a => a.releaseId !== boxParent.releaseId) : alsoPartOf
+  return others?.length ? others : undefined
+}
+
 export const buildReleaseCard = (
   lr: LocalReleaseRow,
   mbr: MbReleaseRow | null,
   resolveImage: ImageResolver,
-  extras?: { coArtists?: { name: string, slug: string }[], connectedArtistName?: string, boxMbr?: MbReleaseRow | null, alsoPartOf?: { title: string, year: number | null }[] },
+  extras?: { coArtists?: { name: string, slug: string }[], connectedArtistName?: string, boxMbr?: MbReleaseRow | null, alsoPartOf?: AlsoPartOfEntry[] },
 ): UnifiedRelease => {
   const img = resolveImage(lr.image, lr.imageUrl, 'releases')
   if (!mbr) {
@@ -129,7 +140,7 @@ export const buildReleaseCard = (
     // pill belongs only on a folded multi-disc release's single survivor row (docs/sync_decisions.md).
     discCount: mbr.mediumCount > 1 && lr.mediumPosition == null ? mbr.mediumCount : null,
     boxParent,
-    alsoPartOf: extras?.alsoPartOf,
+    alsoPartOf: alsoPartOfOtherBoxes(extras?.alsoPartOf, boxParent),
   }
 }
 
@@ -173,7 +184,7 @@ export const buildConnectedArtistByRelease = (
 // accumulate into one shared map.
 export const accumulateAlsoPartOf = (
   media: { equivalentReleaseGroupId: string | null, releaseId: string, release: { title: string, year: number | null, releaseGroupId?: string | null } }[],
-  byGroupId: Map<string, { title: string, year: number | null }[]>,
+  byGroupId: Map<string, AlsoPartOfEntry[]>,
   seen: Map<string, Set<string>>,
 ): void => {
   for (const m of media) {
@@ -184,7 +195,7 @@ export const accumulateAlsoPartOf = (
     seen.set(groupId, seenForGroup)
     if (seenForGroup.has(m.releaseId)) {continue}
     seenForGroup.add(m.releaseId)
-    const entry = { title: m.release.title, year: m.release.year }
+    const entry = { releaseId: m.releaseId, title: m.release.title, year: m.release.year }
     const list = byGroupId.get(groupId)
     if (list) { list.push(entry) } else { byGroupId.set(groupId, [entry]) }
   }
@@ -202,7 +213,7 @@ export const buildLocalAndGapCards = (params: {
   coArtistMap: Map<string, { name: string, slug: string }[]>
   connectedArtistByRelease: Map<string, string>
   resolveImage: ImageResolver
-  alsoPartOfByGroupId?: Map<string, { title: string, year: number | null }[]>
+  alsoPartOfByGroupId?: Map<string, AlsoPartOfEntry[]>
 }): LocalAndGapCardsResult => {
   const { localReleases, mbById, coArtistMap, connectedArtistByRelease, resolveImage, alsoPartOfByGroupId } = params
   const cards: UnifiedRelease[] = []
@@ -280,6 +291,7 @@ export const buildLocalAndGapCards = (params: {
       hasLocal: false,
       localReleaseId: null,
       bundleParentReleaseId,
+      boxDiscReleaseIds: boxDiscs.length ? boxDiscs.map(d => d.id) : undefined,
       folderPath: null,
       statusReason: mbr.statusReason,
       discCount: mbr.mediumCount > 1 ? mbr.mediumCount : null,
@@ -300,7 +312,7 @@ export const buildAppearsOnCards = (params: {
   coArtistMap: Map<string, { name: string, slug: string }[]>
   connectedArtistByRelease: Map<string, string>
   resolveImage: ImageResolver
-  alsoPartOfByGroupId?: Map<string, { title: string, year: number | null }[]>
+  alsoPartOfByGroupId?: Map<string, AlsoPartOfEntry[]>
 }): UnifiedRelease[] => {
   const { appearsOnLocal, appearsOnMbById, coArtistMap, connectedArtistByRelease, resolveImage, alsoPartOfByGroupId } = params
   return appearsOnLocal.map((lr) => {

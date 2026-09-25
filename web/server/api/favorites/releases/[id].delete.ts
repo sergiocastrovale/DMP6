@@ -15,10 +15,10 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // deleteMany, not delete: no unique-by-releaseId key exists anymore (favorites are per-user), and
+  // deleteMany, not delete: no unique-by-releaseId key exists anymore (favorites are per-user; an id is either a LocalRelease or a dissolved box's MusicBrainzRelease), and
   // a missing row (already unfavorited, or never this user's) should no-op rather than 500.
   await prisma.favoriteRelease.deleteMany({
-    where: { userId, releaseId: id },
+    where: { userId, OR: [{ releaseId: id }, { boxReleaseId: id }] },
   })
 
   return { success: true, message: 'Release unfavorited' }

@@ -7,7 +7,7 @@ import {
   buildLocalAndGapCards,
   sortReleaseCards,
 } from '../../../server/utils/releaseAggregation'
-import type { UnifiedRelease, LocalReleaseRow, MbReleaseRow } from '../../../types/release'
+import type { AlsoPartOfEntry, UnifiedRelease, LocalReleaseRow, MbReleaseRow } from '../../../types/release'
 
 const resolveImage = (image: string | null, imageUrl: string | null) => ({ image, imageUrl })
 
@@ -378,7 +378,39 @@ describe('buildLocalAndGapCards - box sets (docs/sync_decisions.md)', () => {
       localTrackCount: 14,
       totalPlayCount: 5,
       discCount: 2,
+      boxDiscReleaseIds: ['lr1', 'lr2'],
     })
+  })
+
+  it('a dissolved disc does not list the box it lives in under "Also part of" (would point at itself)', () => {
+    const box = mbRelease({ id: 'box1', title: 'Deliverance & Damnation', mediumCount: 2, media: [
+      { position: 1, title: 'Deliverance', equivalentReleaseId: null, equivalentReleaseGroupId: null },
+      { position: 2, title: 'Damnation', equivalentReleaseId: null, equivalentReleaseGroupId: null },
+    ] })
+    const damnation = mbRelease({ id: 'album2', title: 'Damnation', releaseGroupId: 'rg-damnation' })
+    const lr = localRelease({ id: 'lr2', releaseId: 'album2', boxReleaseId: 'box1', boxMediumPosition: 2 })
+    const { cards } = buildLocalAndGapCards({
+      localReleases: [lr],
+      mbById: new Map([['album2', damnation], ['box1', box]]),
+      coArtistMap: new Map(), connectedArtistByRelease: new Map(), resolveImage,
+      alsoPartOfByGroupId: new Map([['rg-damnation', [
+        { releaseId: 'box1', title: 'Deliverance & Damnation', year: 2015 },
+        { releaseId: 'other-box', title: 'The Other Box', year: 2020 },
+      ]]]),
+    })
+    expect(cards.find(c => c.hasLocal)!.alsoPartOf).toEqual([{ releaseId: 'other-box', title: 'The Other Box', year: 2020 }])
+  })
+
+  it('a dissolved disc whose only "also part of" box is its own has no alsoPartOf at all', () => {
+    const box = mbRelease({ id: 'box1', mediumCount: 1, media: [{ position: 1, title: 'D', equivalentReleaseId: null, equivalentReleaseGroupId: null }] })
+    const album = mbRelease({ id: 'album1', releaseGroupId: 'rg1' })
+    const lr = localRelease({ id: 'lr1', releaseId: 'album1', boxReleaseId: 'box1', boxMediumPosition: 1 })
+    const { cards } = buildLocalAndGapCards({
+      localReleases: [lr], mbById: new Map([['album1', album], ['box1', box]]),
+      coArtistMap: new Map(), connectedArtistByRelease: new Map(), resolveImage,
+      alsoPartOfByGroupId: new Map([['rg1', [{ releaseId: 'box1', title: 'Box', year: 2015 }]]]),
+    })
+    expect(cards.find(c => c.hasLocal)!.alsoPartOf).toBeUndefined()
   })
 
   it('a plain gap with no dissolved discs keeps no cover, no local tracks and no plays', () => {
@@ -387,6 +419,7 @@ describe('buildLocalAndGapCards - box sets (docs/sync_decisions.md)', () => {
       coArtistMap: new Map(), connectedArtistByRelease: new Map(), resolveImage,
     })
     expect(cards[0]).toMatchObject({ image: null, imageUrl: null, localTrackCount: 0, totalPlayCount: 0 })
+    expect(cards[0]!.boxDiscReleaseIds).toBeUndefined()
   })
 })
 
@@ -443,9 +476,9 @@ describe('accumulateAlsoPartOf', () => {
       { equivalentReleaseGroupId: 'rg1', releaseId: 'box1', release: box },
       { equivalentReleaseGroupId: 'rg1', releaseId: 'box1', release: box },
     ]
-    const byGroupId = new Map<string, { title: string, year: number | null }[]>()
+    const byGroupId = new Map<string, AlsoPartOfEntry[]>()
     accumulateAlsoPartOf(media, byGroupId, new Map())
-    expect(byGroupId.get('rg1')).toEqual([box])
+    expect(byGroupId.get('rg1')).toEqual([{ releaseId: 'box1', ...box }])
   })
 
   it('keeps two distinct boxes reprinting the same release group as two entries', () => {
@@ -456,33 +489,33 @@ describe('accumulateAlsoPartOf', () => {
       { equivalentReleaseGroupId: 'rg1', releaseId: 'boxA', release: boxA },
       { equivalentReleaseGroupId: 'rg1', releaseId: 'boxB', release: boxB },
     ]
-    const byGroupId = new Map<string, { title: string, year: number | null }[]>()
+    const byGroupId = new Map<string, AlsoPartOfEntry[]>()
     accumulateAlsoPartOf(media, byGroupId, new Map())
-    expect(byGroupId.get('rg1')).toEqual([boxA, boxB])
+    expect(byGroupId.get('rg1')).toEqual([{ releaseId: 'boxA', ...boxA }, { releaseId: 'boxB', ...boxB }])
   })
 
   it('accumulates across two calls sharing the same seen map, still deduping', () => {
     const box = { title: 'Box Set', year: 2011 }
-    const byGroupId = new Map<string, { title: string, year: number | null }[]>()
+    const byGroupId = new Map<string, AlsoPartOfEntry[]>()
     const seen = new Map<string, Set<string>>()
     accumulateAlsoPartOf([{ equivalentReleaseGroupId: 'rg1', releaseId: 'box1', release: box }], byGroupId, seen)
     accumulateAlsoPartOf([{ equivalentReleaseGroupId: 'rg1', releaseId: 'box1', release: box }], byGroupId, seen)
-    expect(byGroupId.get('rg1')).toEqual([box])
+    expect(byGroupId.get('rg1')).toEqual([{ releaseId: 'box1', ...box }])
   })
 
   it('skips a medium whose own release is an edition of the group it points at', () => {
-    const byGroupId = new Map<string, { title: string, year: number | null }[]>()
+    const byGroupId = new Map<string, AlsoPartOfEntry[]>()
     const album = { title: 'Album', year: 1990, releaseGroupId: 'rg1' }
     const box = { title: 'Box', year: 2011, releaseGroupId: 'rgBox' }
     accumulateAlsoPartOf([
       { equivalentReleaseGroupId: 'rg1', releaseId: 'album1', release: album },
       { equivalentReleaseGroupId: 'rg1', releaseId: 'box1', release: box },
     ], byGroupId, new Map())
-    expect(byGroupId.get('rg1')).toEqual([{ title: 'Box', year: 2011 }])
+    expect(byGroupId.get('rg1')).toEqual([{ releaseId: 'box1', title: 'Box', year: 2011 }])
   })
 
   it('ignores rows with a null equivalentReleaseGroupId', () => {
-    const byGroupId = new Map<string, { title: string, year: number | null }[]>()
+    const byGroupId = new Map<string, AlsoPartOfEntry[]>()
     accumulateAlsoPartOf([{ equivalentReleaseGroupId: null, releaseId: 'box1', release: { title: 'X', year: null } }], byGroupId, new Map())
     expect(byGroupId.size).toBe(0)
   })
