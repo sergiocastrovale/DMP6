@@ -114,3 +114,42 @@ test('the world map paints a country with its covers and opens its artists on cl
   await expect(page.getByRole('dialog')).toContainText('Portugal (2)')
   await expect(page.getByRole('dialog')).toContainText('Map Artist One')
 })
+
+// The artist network end to end with a stubbed graph: nodes and links are drawn, hovering a node shows its tooltip,
+// and clicking a node asks for that artist's own graph.
+test('the artist network draws its graph and re-centres on a clicked node', async ({ page }) => {
+  const requests: string[] = []
+  await page.route('**/api/labs/network/graph**', (route) => {
+    requests.push(new URL(route.request().url()).search)
+    const focused = requests.length > 1
+    return route.fulfill({
+      json: {
+        nodes: [
+          { id: 'n1', name: 'Node One', slug: 'node-one', trackCount: 12, isFocus: focused },
+          { id: 'n2', name: 'Node Two', slug: 'node-two', trackCount: 6 },
+          { id: 'n3', name: 'Node Three', slug: 'node-three', trackCount: 3 },
+        ],
+        links: [
+          { source: 'n1', target: 'n2', sharedTracks: 4, tracks: [{ title: 'Shared Song' }] },
+          { source: 'n1', target: 'n3', sharedTracks: 2, tracks: [] },
+        ],
+      },
+    })
+  })
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.goto('/labs/network')
+  await waitForHydration(page)
+
+  const circles = page.locator('svg g circle')
+  await expect(circles).toHaveCount(3, { timeout: 15_000 })
+  await expect(page.locator('svg g line')).toHaveCount(2)
+  await expect(page.getByText('3 artists · 2 connections')).toBeVisible()
+  expect(requests[0]).toContain('minShared=2')
+
+  await circles.nth(1).dispatchEvent('mouseover', { clientX: 400, clientY: 400 })
+  await expect(page.getByText('6 tracks')).toBeVisible()
+
+  await circles.nth(1).dispatchEvent('click')
+  await expect.poll(() => requests.length).toBe(2)
+  expect(requests[1]).toContain('artistId=n2')
+})
