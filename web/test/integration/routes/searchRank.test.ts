@@ -124,6 +124,10 @@ describe('search rankers (real Postgres, migrated schema)', () => {
     for (const [index, sql] of cases) {
       const plan = await prisma.$transaction(async (tx) => {
         await tx.$executeRawUnsafe('SET LOCAL enable_seqscan = off')
+        // Bitmap scans only: an unrelated btree (e.g. the track stats list's title index) can otherwise win on this
+        // tiny table with a full index scan, which says nothing about whether the trigram index matches.
+        await tx.$executeRawUnsafe('SET LOCAL enable_indexscan = off')
+        await tx.$executeRawUnsafe('SET LOCAL enable_indexonlyscan = off')
         const rows = await tx.$queryRawUnsafe<Record<string, string>[]>(`EXPLAIN ${sql}`)
         return rows.map(r => r['QUERY PLAN']).join('\n')
       })
