@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { apiErrorMessage } from '~/helpers/apiError'
 const props = defineProps<{
   modelValue: boolean
   trackId: string | null
@@ -45,8 +46,8 @@ const save = async () => {
     emit('update:modelValue', false)
     emit('created')
   }
-  catch (e: any) {
-    error.value = e?.data?.statusMessage || 'Failed to create playlist'
+  catch (e) {
+    error.value = apiErrorMessage(e, 'Failed to create playlist')
   }
   finally {
     saving.value = false

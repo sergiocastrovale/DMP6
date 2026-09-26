@@ -1,4 +1,5 @@
 import { mkdir, readdir, rename, unlink, rm, rmdir, access } from 'node:fs/promises'
+import { errorCode, errorMessage } from '~/helpers/functions'
 import { join, basename, dirname, relative, sep } from 'node:path'
 import { Prisma } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
@@ -37,8 +38,8 @@ const moveDir = async (src: string, dest: string): Promise<void> => {
     await rename(src, dest)
     return
   }
-  catch (e: any) {
-    if (!['EXDEV', 'EACCES', 'EPERM', 'ENOTEMPTY'].includes(e?.code)) {throw e}
+  catch (e) {
+    if (!['EXDEV', 'EACCES', 'EPERM', 'ENOTEMPTY'].includes(errorCode(e) ?? '')) {throw e}
   }
   // Cross-device / permission fallback: copy file-by-file then remove the source tree (see
   // safeMove.ts's streamCopyFile for why this isn't fs.copyFile).
@@ -217,9 +218,9 @@ const stampMerged = async (row: MergeRow, music: string, rel: string, maxDownloa
       if (row.artistId) {args.push('--artist-hint', row.artistId)}
       await runReconciler('sync', args)
     }
-    catch (e: any) {
+    catch (e) {
       reconcilerFailed = true
-      monitorLog('error', `merge: sync --release failed for "${row.artist?.name ?? '?'} - ${row.title}": ${e?.message ?? e}`)
+      monitorLog('error', `merge: sync --release failed for "${row.artist?.name ?? '?'} - ${row.title}": ${errorMessage(e)}`)
     }
   }
 
@@ -255,11 +256,11 @@ const stampMerged = async (row: MergeRow, music: string, rel: string, maxDownloa
             : []),
       ])
     }
-    catch (e: any) {
+    catch (e) {
       // P2002: another DownloadedRelease already owns this LocalRelease (duplicate download of the
       // same release, or a re-merge of a previously-promoted row). The library copy is fine — just
       // mark this row PROMOTED without the localReleaseId link so it leaves the ready queue.
-      if (e?.code === 'P2002' && e?.meta?.target?.includes?.('localReleaseId')) {
+      if (errorCode(e) === 'P2002' && (e as { meta?: { target?: string[] } }).meta?.target?.includes('localReleaseId')) {
         await prisma.downloadedRelease.update({
           where: { id: row.id },
           data: { status: 'PROMOTED', stagingPath: join(music, rel) },
@@ -417,8 +418,8 @@ export const mergeManyDownloadedReleases = async (ids: string[], emit?: (line: s
         await purgeReplacedRelease(row, music)
         moved.push({ row, rel: await moveIntoLibrary(row, music, downloadsReadyPath) })
       }
-      catch (e: any) {
-        const msg = `Move failed "${row.title}": ${e?.message || e}`
+      catch (e) {
+        const msg = `Move failed "${row.title}": ${errorMessage(e)}`
         monitorLog('error', `merge: ${msg}`)
         clearMergeProgress(row.id)
         errors.push(msg)

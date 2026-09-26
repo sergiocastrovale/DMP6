@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { apiErrorMessage } from '~/helpers/apiError'
 import { Plus, Trash2, Copy, Check, AlertCircle } from 'lucide-vue-next'
 import { cx, data, form } from '~/helpers/ui'
 
@@ -46,8 +47,8 @@ const createKey = async () => {
     showCreate.value = false
     newKeyName.value = ''
     await refresh()
-  } catch (e: any) {
-    createError.value = e.data?.message || 'Failed to create key'
+  } catch (e) {
+    createError.value = apiErrorMessage(e, 'Failed to create key')
   } finally {
     creating.value = false
   }
@@ -58,8 +59,8 @@ const revokeKey = async (id: string) => {
   try {
     await $fetch(`/api/me/api-keys/${id}`, { method: 'DELETE' })
     await refresh()
-  } catch (e: any) {
-    deleteError.value = e.data?.message || 'Failed to revoke key'
+  } catch (e) {
+    deleteError.value = apiErrorMessage(e, 'Failed to revoke key')
   }
 }
 

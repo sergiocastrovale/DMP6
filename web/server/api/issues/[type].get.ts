@@ -2,11 +2,23 @@ import { prisma } from '~/server/utils/prisma'
 import { paged, parsePagination } from '~/server/utils/pagination'
 import { requirePermission } from '~/server/utils/permissions'
 import { firstArtist } from '~/server/utils/releaseTiles'
-import { requireIssueType } from '~/server/utils/issueTypes'
+import { requireIssueType, type IssueStatus } from '~/server/utils/issueTypes'
 import type { PaginatedResponse } from '~/types/api'
 import type { IssueType } from '~/types/issues'
 
-const VALID_STATUSES = ['DETECTED', 'PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED'] as const
+const VALID_STATUSES: readonly IssueStatus[] = ['DETECTED', 'PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED']
+
+// The duplicate-release and mismatched-release-id tables share this shape but not a Prisma type.
+interface ReleasePairSide {
+  _count?: { tracks: number }
+  artists?: { artist: { name: string, slug: string } }[]
+  [key: string]: unknown
+}
+interface ReleasePairRow { releaseA: ReleasePairSide | null, releaseB: ReleasePairSide | null, [key: string]: unknown }
+interface ReleasePairModel {
+  findMany: (args: unknown) => Promise<ReleasePairRow[]>
+  count: (args: unknown) => Promise<number>
+}
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'issues.view')
@@ -17,7 +29,7 @@ export default defineEventHandler(async (event) => {
   const rawQuery = getQuery(event)
   const { sort, order = 'asc', q } = rawQuery
   const statusParam = (rawQuery.status as string) || 'DETECTED'
-  const status = VALID_STATUSES.includes(statusParam as any) ? statusParam : 'DETECTED'
+  const status: IssueStatus = VALID_STATUSES.find(s => s === statusParam) ?? 'DETECTED'
   const { page: p, pageSize: ps, skip } = parsePagination(rawQuery, { defaultSize: 50, maxSize: 100 })
 
   const orderDir = order === 'desc' ? 'desc' : 'asc'
@@ -25,7 +37,8 @@ export default defineEventHandler(async (event) => {
   const [items, total] = await fetchType(type, skip, ps, sort as string, orderDir, q as string, status)
 
   if (status === 'RESOLVED' && ['corrupted', 'missing'].includes(type)) {
-    const issueIds = (items as any[]).map((i: any) => i.id)
+    const rows = items as { id: string, fixHistory?: unknown }[]
+    const issueIds = rows.map(i => i.id)
     if (issueIds.length > 0) {
       const history = await prisma.fixHistory.findMany({
         where: { issueId: { in: issueIds }, revertedAt: null },
@@ -37,7 +50,7 @@ export default defineEventHandler(async (event) => {
         arr.push(h)
         historyByIssue.set(h.issueId, arr)
       }
-      for (const item of items as any[]) {
+      for (const item of rows) {
         item.fixHistory = historyByIssue.get(item.id) || []
       }
     }
@@ -53,13 +66,13 @@ const fetchType = async (
   sort: string | undefined,
   order: 'asc' | 'desc',
   q: string | undefined,
-  status: string,
+  status: IssueStatus,
 ): Promise<[unknown[], number]> => {
   switch (type) {
     case 'corrupted': {
       const where = q
-        ? { OR: [{ currentValue: { contains: q, mode: 'insensitive' as const } }, { proposedValue: { contains: q, mode: 'insensitive' as const } }], status: status as any }
-        : { status: status as any }
+        ? { OR: [{ currentValue: { contains: q, mode: 'insensitive' as const } }, { proposedValue: { contains: q, mode: 'insensitive' as const } }], status }
+        : { status }
       const orderBy = sort === 'confidence' ? { confidence: order } : sort === 'currentValue' ? { currentValue: order } : { createdAt: order }
       const [raw, total] = await Promise.all([
         prisma.issueCorruptedTpe2.findMany({
@@ -91,8 +104,8 @@ const fetchType = async (
 
     case 'orphans': {
       const where = q
-        ? { artist: { name: { contains: q, mode: 'insensitive' as const } }, status: status as any }
-        : { status: status as any }
+        ? { artist: { name: { contains: q, mode: 'insensitive' as const } }, status }
+        : { status }
       const orderBy = sort === 'reason' ? { reason: order } : sort === 'name' ? { artist: { name: order } } : { createdAt: order }
       const [items, total] = await Promise.all([
         prisma.issueOrphanArtist.findMany({
@@ -109,8 +122,8 @@ const fetchType = async (
 
     case 'duplicates': {
       const where = q
-        ? { OR: [{ artistA: { name: { contains: q, mode: 'insensitive' as const } } }, { artistB: { name: { contains: q, mode: 'insensitive' as const } } }], status: status as any }
-        : { status: status as any }
+        ? { OR: [{ artistA: { name: { contains: q, mode: 'insensitive' as const } } }, { artistB: { name: { contains: q, mode: 'insensitive' as const } } }], status }
+        : { status }
       const [items, total] = await Promise.all([
         prisma.issueDuplicateArtist.findMany({
           where,
@@ -129,8 +142,8 @@ const fetchType = async (
 
     case 'missing': {
       const where = q
-        ? { track: { OR: [{ title: { contains: q, mode: 'insensitive' as const } }, { album: { contains: q, mode: 'insensitive' as const } }] }, status: status as any }
-        : { status: status as any }
+        ? { track: { OR: [{ title: { contains: q, mode: 'insensitive' as const } }, { album: { contains: q, mode: 'insensitive' as const } }] }, status }
+        : { status }
       const [items, total] = await Promise.all([
         prisma.issueMissingMetadata.findMany({
           where,
@@ -148,8 +161,8 @@ const fetchType = async (
 
     case 'enrichment': {
       const where = q
-        ? { localRelease: { title: { contains: q, mode: 'insensitive' as const } }, status: status as any }
-        : { status: status as any }
+        ? { localRelease: { title: { contains: q, mode: 'insensitive' as const } }, status }
+        : { status }
       const orderBy = sort === 'title'
         ? { localRelease: { title: order } }
         : sort === 'year' ? { localRelease: { year: order } }
@@ -187,8 +200,8 @@ const fetchType = async (
     case 'mismatched-release-id': {
       const model = type === 'duplicate-release' ? prisma.issueDuplicateRelease : prisma.issueMismatchedReleaseId
       const where = q
-        ? { OR: [{ releaseA: { title: { contains: q, mode: 'insensitive' as const } } }, { releaseB: { title: { contains: q, mode: 'insensitive' as const } } }], status: status as any }
-        : { status: status as any }
+        ? { OR: [{ releaseA: { title: { contains: q, mode: 'insensitive' as const } } }, { releaseB: { title: { contains: q, mode: 'insensitive' as const } } }], status }
+        : { status }
       const releaseSelect = {
         id: true,
         title: true,
@@ -199,22 +212,23 @@ const fetchType = async (
         _count: { select: { tracks: true } },
         release: type === 'mismatched-release-id' ? { select: { title: true } } : false,
       } as const
+      const pairModel = model as unknown as ReleasePairModel
       const [raw, total] = await Promise.all([
-        (model as any).findMany({
+        pairModel.findMany({
           where,
           skip,
           take,
           orderBy: { createdAt: order },
           include: { releaseA: { select: releaseSelect }, releaseB: { select: releaseSelect } },
         }),
-        (model as any).count({ where }),
+        pairModel.count({ where }),
       ])
-      const flattenRelease = (r: any) => r && {
+      const flattenRelease = (r: ReleasePairSide | null) => r && {
         ...r,
         trackCount: r._count?.tracks ?? 0,
-        artist: r.artists ? firstArtist(r) : null,
+        artist: r.artists ? firstArtist({ artists: r.artists }) : null,
       }
-      const items = (raw as any[]).map(item => ({
+      const items = raw.map(item => ({
         ...item,
         releaseA: flattenRelease(item.releaseA),
         releaseB: flattenRelease(item.releaseB),

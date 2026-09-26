@@ -1,6 +1,6 @@
 import type { AutoScanSettings } from '~/types/scan'
 import { prisma } from '~/server/utils/prisma'
-import { envInt } from '~/helpers/functions'
+import { envInt, errorMessage } from '~/helpers/functions'
 import { getSettingsRow, invalidateSettings } from '~/server/utils/settings'
 import { runExclusive } from '~/server/utils/scriptLock'
 import { runScript } from '~/server/utils/runScript'
@@ -65,8 +65,8 @@ export const runAutoScan = async (): Promise<void> => {
       await runStep('sync')
       await runStep('tidy')
     }
-    catch (e: any) {
-      monitorLog('error', `auto-scan failed: ${e?.message ?? e}`)
+    catch (e) {
+      monitorLog('error', `auto-scan failed: ${errorMessage(e)}`)
     }
     finally {
       await prisma.settings.update({

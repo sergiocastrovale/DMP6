@@ -1,4 +1,5 @@
 import { runGapsCycle, runAutoMergeCycle, reconcileDownloads } from '~/server/utils/monitorLoop'
+import { errorMessage } from '~/helpers/functions'
 import { sweepDanglingDownloads } from '~/server/utils/promote'
 import { topUpDownloads } from '~/server/utils/autoDownload'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
@@ -52,7 +53,7 @@ export default defineNitroPlugin(() => {
   monitorLog('notice', `enabled: base tick ${tickSec}s; cadences/caps from Settings (DB overrides env)`)
 
   setInterval(() => {
-    tick().catch(e => monitorLog('error', `tick crashed (recovered, retrying next tick): ${e?.message || e}`))
+    tick().catch(e => monitorLog('error', `tick crashed (recovered, retrying next tick): ${errorMessage(e)}`))
   }, tickSec * 1000)
 
   // Whole tick body wrapped by the setInterval callback's .catch() above - a bare unguarded await
@@ -68,11 +69,11 @@ export default defineNitroPlugin(() => {
 
     if (Date.now() - lastSweepAt > SWEEP_INTERVAL_MS) {
       lastSweepAt = Date.now()
-      sweepDanglingDownloads().catch(e => monitorLog('error', `dangling-download sweep error: ${e?.message || e}`))
+      sweepDanglingDownloads().catch(e => monitorLog('error', `dangling-download sweep error: ${errorMessage(e)}`))
     }
 
     // Always reconcile (cheap, bounded, internally guarded).
-    reconcileDownloads().catch(e => monitorLog('error', `reconcile error: ${e?.message || e}`))
+    reconcileDownloads().catch(e => monitorLog('error', `reconcile error: ${errorMessage(e)}`))
 
     // Unattended library scan. Deliberately ahead of the monitorEnabled gate below: it is a library
     // concern, not a downloader one, so it still runs with acquisition disabled. Off unless the user
@@ -82,7 +83,7 @@ export default defineNitroPlugin(() => {
       if (scan && shouldRunAutoScan(scan, new Date())) {
         autoScanRunning = true
         runAutoScan()
-          .catch(e => monitorLog('error', `auto-scan error: ${e?.message || e}`))
+          .catch(e => monitorLog('error', `auto-scan error: ${errorMessage(e)}`))
           .finally(() => { autoScanRunning = false })
       }
     }
@@ -98,7 +99,7 @@ export default defineNitroPlugin(() => {
 
     // Auto-merge finalizes already-downloaded READY releases into the library — source-independent, so
     // it runs regardless of acquisition state (no-op + off by default anyway).
-    runAutoMergeCycle().catch(e => monitorLog('error', `auto-merge error: ${e?.message || e}`))
+    runAutoMergeCycle().catch(e => monitorLog('error', `auto-merge error: ${errorMessage(e)}`))
 
     // Poll gate: only run the acquisition workers (trickle + catalogue-gap refresh) when downloads are
     // switched on. With downloads off, there's nothing to gain from searching/refreshing on a fixed
@@ -117,7 +118,7 @@ export default defineNitroPlugin(() => {
     }
 
     // Fire-and-forget; each self-throttles + self-guards against overlap.
-    topUpDownloads().catch(e => monitorLog('error', `topUp error: ${e?.message || e}`))
-    runGapsCycle().catch(e => monitorLog('error', `gaps error: ${e?.message || e}`))
+    topUpDownloads().catch(e => monitorLog('error', `topUp error: ${errorMessage(e)}`))
+    runGapsCycle().catch(e => monitorLog('error', `gaps error: ${errorMessage(e)}`))
   }
 })

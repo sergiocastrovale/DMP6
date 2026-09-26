@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { apiErrorMessage } from '~/helpers/apiError'
 import { CheckCircle2, AlertCircle, ExternalLink, Unlink } from 'lucide-vue-next'
 import { grid } from '~/helpers/ui'
 
@@ -67,8 +68,8 @@ const connect = async () => {
     }
     const { url } = await $fetch<{ url: string }>('/api/scrobble/connect')
     window.location.href = url
-  } catch (e: any) {
-    lastfmError.value = e.data?.message || 'Failed to start Last.fm auth'
+  } catch (e) {
+    lastfmError.value = apiErrorMessage(e, 'Failed to start Last.fm auth')
     connecting.value = false
   }
 }
@@ -86,8 +87,8 @@ const disconnect = async () => {
       },
     })
     await refresh()
-  } catch (e: any) {
-    lastfmError.value = e.data?.message || 'Failed to disconnect'
+  } catch (e) {
+    lastfmError.value = apiErrorMessage(e, 'Failed to disconnect')
   } finally {
     disconnecting.value = false
   }

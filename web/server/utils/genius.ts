@@ -1,4 +1,5 @@
 import { fetchWithTimeout } from '~/server/utils/fetchWithTimeout'
+import { errorMessage } from '~/helpers/functions'
 import type { Artist } from '@prisma/client'
 import { getCachedSettings } from '~/server/utils/settingsCache'
 import { cachedResponse } from '~/server/utils/cache'
@@ -39,8 +40,8 @@ const geniusGet = async <T>(path: string): Promise<T | null> => {
       const body = await res.json()
       return body.response as T
     }
-    catch (e: any) {
-      console.error(`[genius] ${path} failed: ${e?.message || e}`)
+    catch (e) {
+      console.error(`[genius] ${path} failed: ${errorMessage(e)}`)
       return null
     }
   })

@@ -1,4 +1,5 @@
 import { fetchWithTimeout } from '~/server/utils/fetchWithTimeout'
+import { errorMessage } from '~/helpers/functions'
 import { createHash } from 'node:crypto'
 import type { LastfmSettings } from '~/types/api'
 import { monitorLog } from '~/server/utils/monitorLog'
@@ -55,8 +56,8 @@ export const callLastFm = async (
       body: new URLSearchParams(fullParams).toString(),
     })
     return (await res.json()) as Record<string, unknown>
-  } catch (e: any) {
-    monitorLog('error', `Last.fm ${method} request failed: ${e?.message ?? e}`)
+  } catch (e) {
+    monitorLog('error', `Last.fm ${method} request failed: ${errorMessage(e)}`)
     return null
   }
 }

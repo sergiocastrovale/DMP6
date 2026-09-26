@@ -1,4 +1,5 @@
 import { mkdir, writeFile, rm, access } from 'node:fs/promises'
+import { errorMessage } from '~/helpers/functions'
 import { join, basename } from 'node:path'
 import { prisma } from '~/server/utils/prisma'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
@@ -203,8 +204,8 @@ const reconcileWorker = createWorker({ name: 'reconcile', run: async () => {
         failed++
       }
     }
-    catch (e: any) {
-      await failAttempt(row, maxAttempts, String(e?.message || e).slice(0, 500))
+    catch (e) {
+      await failAttempt(row, maxAttempts, errorMessage(e).slice(0, 500))
       await purgeDownloadedSourceFiles(settings.downloadsPath, files).catch(() => {})
       failed++
     }
@@ -230,10 +231,10 @@ const settleFinished = async (id: string, stagingPath: string, error: string | n
   try {
     await moveToReady(id)
   }
-  catch (e: any) {
+  catch (e) {
     const row = await prisma.downloadedRelease.findUnique({ where: { id }, select: { attempts: true, priority: true } })
     const { maxDownloadAttempts } = await resolveMonitorSettings()
-    const msg = `move-to-ready failed (files safe at ${stagingPath}): ${e?.message || e}`
+    const msg = `move-to-ready failed (files safe at ${stagingPath}): ${errorMessage(e)}`
     logErr(`settleFinished ${id}: ${msg}`)
     await failAttempt(
       { id, attempts: row?.attempts ?? 0, priority: row?.priority ?? 10 },
@@ -296,8 +297,8 @@ const drainEnriching = async (
       done++
       log(`reconcile: ${row.title} -> ready (${enriched ? 'enriched' : 'enrich timed out'})`)
     }
-    catch (e: any) {
-      const msg = `layout transform failed: ${String(e?.message || e).slice(0, 300)}`
+    catch (e) {
+      const msg = `layout transform failed: ${errorMessage(e).slice(0, 300)}`
       logErr(`reconcile: ${row.title} ${msg}`)
       // Route through the attempts cap instead of leaving the row ENRICHING forever — once timedOut
       // flips true this branch would otherwise re-enter (and re-fail) every single tick, uncapped.
@@ -343,13 +344,13 @@ const gapsWorker = createWorker({
       // Serialized against merges/other script runs so it never hits the binaries' exclusive lock.
       await runScript('sync', ['--catalogue-gaps', '--only', batch.map(a => a.name).join(';'), '--exact'], { exclusive: true })
     }
-    catch (e: any) {
+    catch (e) {
       const output = String((e as ScriptError).tail?.join('\n') ?? '')
-      const detail = `${String(e?.message || e).split('\n')[0]}`
+      const detail = `${errorMessage(e).split('\n')[0]}`
       // Lock contention = another script (a merge here, or a manual ./index/./sync run outside this
       // process) held the Rust DB lock. Nothing was actually checked, so DON'T stamp — leave these
       // artists at the front of the round-robin so the very next tick retries them once the lock frees.
-      const lockHeld = /lock held|Cannot start/i.test(`${e?.message || ''} ${output}`)
+      const lockHeld = /lock held|Cannot start/i.test(`${errorMessage(e)} ${output}`)
       if (lockHeld) {
         logWarn(`gaps batch skipped (lock busy), will retry: ${detail}`)
         return

@@ -1,4 +1,5 @@
 import { monitorLog } from '~/server/utils/monitorLog'
+import { errorMessage } from '~/helpers/functions'
 
 // The monitor loop's independent workers (reconcile, top-up, gaps, auto-merge) all followed the same recipe by hand: a
 // module-level "running" flag so ticks never overlap, a "last run" stamp so the work is throttled to its own cadence,
@@ -42,8 +43,8 @@ export const createWorker = ({ name, minIntervalMs = 0, shouldRun, run, log = mo
     try {
       await run()
     }
-    catch (e: any) {
-      log('error', `${name} failed: ${e?.message || e}`)
+    catch (e) {
+      log('error', `${name} failed: ${errorMessage(e)}`)
     }
     finally {
       running = false

@@ -1,14 +1,17 @@
 import { isAbortError } from '~/helpers/functions'
 
-// The message worth showing for a failed $fetch: what the server said (createError's message or statusMessage travel in
-// `data`), else the caller's own wording. Never ofetch's default "[POST] /api/x: 500 Internal Server Error", which
-// names a route and helps nobody.
+// The message worth showing for a failure: what the server said (createError's message or statusMessage travel in
+// `data`), else the message of an error the app itself threw (validation and the like), else the caller's own wording.
+// Never ofetch's default "[POST] /api/x: 500 Internal Server Error" (a FetchError), which names a route and helps nobody.
 export const apiErrorMessage = (e: unknown, fallback: string): string => {
   const data = (e as { data?: { message?: unknown, statusMessage?: unknown } } | null)?.data
   for (const candidate of [data?.message, data?.statusMessage]) {
     if (typeof candidate === 'string' && candidate.trim()) {
       return candidate.trim()
     }
+  }
+  if (e instanceof Error && e.name !== 'FetchError' && e.message.trim()) {
+    return e.message.trim()
   }
   return fallback
 }

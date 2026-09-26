@@ -22,7 +22,7 @@ describe('useApi', () => {
   })
 
   it('run falls back to the caller wording', async () => {
-    await useApi().run(async () => { throw new Error('[POST] /api/x: 500') }, 'Could not favorite the track')
+    await useApi().run(async () => { throw Object.assign(new Error('[POST] /api/x: 500'), { name: 'FetchError' }) }, 'Could not favorite the track')
     expect(useToastStore().toasts.map(t => t.message)).toEqual(['Could not favorite the track'])
   })
 
@@ -30,7 +30,7 @@ describe('useApi', () => {
     const api = useApi()
     expect(await api.load(async () => [1, 2], 'Could not load')).toEqual([1, 2])
     expect(await api.load(async () => { throw new Error('nope') }, 'Could not load')).toBeNull()
-    expect(useToastStore().toasts.map(t => t.message)).toEqual(['Could not load'])
+    expect(useToastStore().toasts.map(t => t.message)).toEqual(['nope'])
   })
 
   it('an aborted request is not reported', async () => {

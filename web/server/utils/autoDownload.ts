@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client'
+import { errorMessage } from '~/helpers/functions'
 import { prisma } from '~/server/utils/prisma'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
@@ -82,7 +83,7 @@ export const forceRetryDownload = async (id: string): Promise<void> => {
         data: { status: 'UNAVAILABLE', attempts: 1, priority: 9, error: 'no Soulseek result (search miss)' },
       }).catch(() => {})
     }
-  })().catch(e => monitorLog('error', `force-retry ${row.title}: ${e?.message || e}`))
+  })().catch(e => monitorLog('error', `force-retry ${row.title}: ${errorMessage(e)}`))
 }
 
 /**

@@ -1,3 +1,4 @@
+import { errorMessage } from '~/helpers/functions'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { access, readdir, rename, unlink } from 'node:fs/promises'
@@ -73,12 +74,12 @@ export const transcodeDirToMp3320 = async (dir: string, bitrate = 320, signal?: 
       if (src !== out) {await unlink(src).catch(e => warn(`could not delete source ${basename(src)}: ${e.message}`))}
       converted++
     }
-    catch (e: any) {
+    catch (e) {
       await unlink(part).catch(() => {})
       if (signal?.aborted) {throw e}
       failed++
       await unlink(part).catch(() => {})
-      warn(`failed ${basename(src)}: ${e.message?.split('\n')[0] || e}`)
+      warn(`failed ${basename(src)}: ${errorMessage(e).split('\n')[0]}`)
     }
   }
 

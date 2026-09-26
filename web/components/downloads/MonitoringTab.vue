@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { apiErrorMessage } from '~/helpers/apiError'
 import { Loader2, Radar, EyeOff, CircleHelp, ChevronUp, ChevronDown, ChevronsUpDown, CheckCircle2 } from 'lucide-vue-next'
 import type { SortDirection } from '~/types/common'
 import type { MonitoringArtistRow as ArtistRow } from '~/types/artist'
@@ -180,8 +181,8 @@ const confirmBulk = async () => {
     selected.value = new Set()
     toast.success(`${monitor ? 'Monitoring' : 'Unmonitored'} ${ids.length} artist${ids.length === 1 ? '' : 's'}`)
   }
-  catch (e: any) {
-    toast.error(e?.data?.message || e?.message || 'Bulk monitor failed')
+  catch (e) {
+    toast.error(apiErrorMessage(e, 'Bulk monitor failed'))
   }
   finally {
     bulkBusy.value = false

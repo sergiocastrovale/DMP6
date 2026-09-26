@@ -1,4 +1,5 @@
 import { prisma } from '~/server/utils/prisma'
+import { errorMessage } from '~/helpers/functions'
 import { getCachedSettings } from '~/server/utils/settingsCache'
 import { callLastFm, describeLastfmProblem, isLastfmConfigured } from '~/server/utils/lastfm'
 import { monitorLog } from '~/server/utils/monitorLog'
@@ -41,6 +42,6 @@ export const scrobbleTrack = async (trackId: string, startedAtMs: number): Promi
 // Fire-and-forget: a slow or failing Last.fm never delays or fails the request that counted the play.
 export const scrobbleInBackground = (trackId: string, startedAtMs: number): void => {
   scrobbleTrack(trackId, startedAtMs).catch((e: any) => {
-    monitorLog('warn', `scrobble failed: ${e?.message || e}`)
+    monitorLog('warn', `scrobble failed: ${errorMessage(e)}`)
   })
 }

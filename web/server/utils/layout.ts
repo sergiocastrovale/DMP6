@@ -1,4 +1,5 @@
 import { readdir, rmdir } from 'node:fs/promises'
+import { errorMessage } from '~/helpers/functions'
 import { join, dirname, basename, sep } from 'node:path'
 import { prisma } from '~/server/utils/prisma'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
@@ -111,8 +112,8 @@ export const transformToLibraryLayout = async (
       await safeMoveFile(file, dest)
       moved++
     }
-    catch (e: any) {
-      monitorLog('warn', `layout: failed to move ${basename(file)}: ${e?.message || e}`)
+    catch (e) {
+      monitorLog('warn', `layout: failed to move ${basename(file)}: ${errorMessage(e)}`)
     }
   }
 

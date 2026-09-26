@@ -294,3 +294,17 @@ export const envInt = (name: string, fallback: number): number => {
 
 // The browser's IANA time zone ("Europe/Lisbon"); the server resolves "today/month/year" boundaries in it.
 export const browserTimeZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone
+
+// The message of anything that was thrown: an Error's, the `message` of an error-like object (h3's createError result,
+// a Prisma error), else the value itself as text.
+export const errorMessage = (e: unknown): string => {
+  if (e instanceof Error) {return e.message}
+  const message = (e as { message?: unknown } | null)?.message
+  return typeof message === 'string' ? message : String(e)
+}
+
+// The `code` of a thrown error (a Node errno like 'EXDEV', a Prisma code like 'P2002'), or undefined.
+export const errorCode = (e: unknown): string | undefined => {
+  const code = (e as { code?: unknown } | null)?.code
+  return typeof code === 'string' ? code : undefined
+}

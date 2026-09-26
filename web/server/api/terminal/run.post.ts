@@ -1,3 +1,4 @@
+import { errorMessage } from '~/helpers/functions'
 import fs from 'fs'
 import { requirePermission, requireRole } from '~/server/utils/permissions'
 import {
@@ -89,8 +90,8 @@ export default defineEventHandler(async (event) => {
     await killTmuxSession(session)
     await startTmuxSession(session, scriptFile)
   }
-  catch (e: any) {
-    sse.send(`Failed to start tmux session: ${e.message}`)
+  catch (e) {
+    sse.send(`Failed to start tmux session: ${errorMessage(e)}`)
     sse.done(1)
     return
   }

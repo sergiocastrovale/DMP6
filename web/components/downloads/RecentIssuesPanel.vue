@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { apiErrorMessage } from '~/helpers/apiError'
 import { AlertTriangle, Archive, CircleAlert, ChevronUp, ChevronDown, List, RefreshCw } from 'lucide-vue-next'
 import type { IssueEvent } from '~/types/download'
 import { timeAgo } from '~/helpers/functions'
@@ -71,8 +72,8 @@ const clearShown = async () => {
     toast.success(`Cleared ${n} issue${n === 1 ? '' : 's'}`)
     await fetchEvents()
   }
-  catch (e: any) {
-    toast.error(e?.data?.message || e?.message || 'Could not clear issues')
+  catch (e) {
+    toast.error(apiErrorMessage(e, 'Could not clear issues'))
   }
   finally { clearing.value = false }
 }

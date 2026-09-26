@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { apiErrorMessage } from '~/helpers/apiError'
 import { LucideArrowLeft, LucidePlus, LucidePencil, LucideRefreshCw, LucideTrash2 } from 'lucide-vue-next'
 import type { PlaylistGeneratorRow } from '~/types/playlistGenerator'
 import { cx, data, layout } from '~/helpers/ui'
@@ -41,8 +42,8 @@ const confirmDelete = async () => {
     rows.value = rows.value.filter(r => r.id !== target.id)
     toast.success(`Removed "${target.name}"`)
   }
-  catch (e: any) {
-    toast.error(e?.data?.statusMessage || e?.data?.message || 'Failed to remove playlist generator')
+  catch (e) {
+    toast.error(apiErrorMessage(e, 'Failed to remove playlist generator'))
   }
   finally {
     deleteTarget.value = null

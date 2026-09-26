@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { apiErrorMessage } from '~/helpers/apiError'
 import type { MbArtistSearchRow } from '~/types/artist'
 import { useTerminalStore } from '~/stores/terminal'
 import { useToastStore } from '~/stores/toast'
@@ -35,8 +36,8 @@ const search = async () => {
     const data = await $fetch<{ items: MbArtistSearchRow[] }>('/api/artists/mb-search', { query: { q } })
     results.value = data.items
   }
-  catch (e: any) {
-    const message = e?.data?.message || e?.message || ''
+  catch (e) {
+    const message = apiErrorMessage(e, '')
     if (message.includes('503')) {
       rateLimited.value = true
     }
@@ -64,8 +65,9 @@ const add = async (row: MbArtistSearchRow) => {
     showAlreadyExists(existing.name, existing.slug)
     return
   }
-  catch (e: any) {
-    if (e?.statusCode !== 404 && e?.response?.status !== 404) {
+  catch (e) {
+    const failure = e as { statusCode?: number, response?: { status?: number } }
+    if (failure.statusCode !== 404 && failure.response?.status !== 404) {
       toast.error('Could not check the library - try again')
       return
     }

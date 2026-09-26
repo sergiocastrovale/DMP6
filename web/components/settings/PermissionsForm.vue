@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { apiErrorMessage } from '~/helpers/apiError'
 import type { PermissionsMatrixResponse } from '~/types/auth'
 import { cx, data as tableCell } from '~/helpers/ui'
 
@@ -55,8 +56,8 @@ const save = async () => {
     saved.value = true
     await refresh()
     setTimeout(() => { saved.value = false }, 2000)
-  } catch (e: any) {
-    error.value = e.data?.message || 'Failed to save permissions'
+  } catch (e) {
+    error.value = apiErrorMessage(e, 'Failed to save permissions')
   } finally {
     saving.value = false
   }

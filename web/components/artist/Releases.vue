@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { apiErrorMessage } from '~/helpers/apiError'
 import type { UnifiedRelease, ReleaseGroup, ReleaseInfoExtra, ReleaseStatus } from '~/types/release'
 import type { Track } from '~/types/track'
 import type { TrackListColumn } from '~/types/ui'
@@ -176,8 +177,8 @@ const acquireRelease = async (release: UnifiedRelease, replacesLocalReleaseId?: 
     }
     refreshDownloadStatus()
   }
-  catch (e: any) {
-    toast.error(e?.data?.message || e?.message || 'Download request failed')
+  catch (e) {
+    toast.error(apiErrorMessage(e, 'Download request failed'))
   }
   finally {
     const next = new Set(acquiringIds.value)

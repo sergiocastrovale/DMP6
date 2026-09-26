@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { apiErrorMessage } from '~/helpers/apiError'
 import { Plus, Trash2, Pencil, KeyRound, Save, X, AlertCircle, Eye, EyeOff } from 'lucide-vue-next'
 import type { AdminUser } from '~/types/auth'
 import type { Tone } from '~/types/ui'
@@ -33,8 +34,8 @@ const createUser = async () => {
     newUser.password = ''
     newUser.role = 'VIEWER'
     await refresh()
-  } catch (e: any) {
-    createError.value = e.data?.message || 'Failed to create user'
+  } catch (e) {
+    createError.value = apiErrorMessage(e, 'Failed to create user')
   } finally {
     creating.value = false
   }
@@ -63,8 +64,8 @@ const saveEdit = async (id: number) => {
     await $fetch(`/api/users/${id}`, { method: 'PATCH', body })
     editingId.value = null
     await refresh()
-  } catch (e: any) {
-    editError.value = e.data?.message || 'Failed to update user'
+  } catch (e) {
+    editError.value = apiErrorMessage(e, 'Failed to update user')
   } finally {
     saving.value = false
   }
@@ -75,8 +76,8 @@ const deleteUser = async (id: number) => {
   try {
     await $fetch(`/api/users/${id}`, { method: 'DELETE' })
     await refresh()
-  } catch (e: any) {
-    deleteError.value = e.data?.message || 'Failed to delete user'
+  } catch (e) {
+    deleteError.value = apiErrorMessage(e, 'Failed to delete user')
   }
 }
 

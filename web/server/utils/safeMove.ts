@@ -1,3 +1,4 @@
+import { errorCode } from '~/helpers/functions'
 import { mkdir, rename, unlink } from 'node:fs/promises'
 import { createReadStream, createWriteStream } from 'node:fs'
 import { pipeline } from 'node:stream/promises'
@@ -25,8 +26,8 @@ export const safeMoveFile = async (src: string, dest: string): Promise<void> => 
     await rename(src, dest)
     return
   }
-  catch (e: any) {
-    if (!['EXDEV', 'EACCES', 'EPERM'].includes(e?.code)) {throw e}
+  catch (e) {
+    if (!['EXDEV', 'EACCES', 'EPERM'].includes(errorCode(e) ?? '')) {throw e}
   }
   await streamCopyFile(src, dest)
   await unlink(src).catch(() => {})

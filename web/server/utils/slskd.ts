@@ -1,3 +1,4 @@
+import { errorCode, errorMessage } from '~/helpers/functions'
 import { readdir, mkdir, rename, rmdir, unlink, stat } from 'node:fs/promises'
 import { basename, join, dirname, sep, extname } from 'node:path'
 import { resolveDownloadSettings, resolveDownloadDir } from '~/server/utils/downloadSettings'
@@ -65,8 +66,8 @@ export const checkSlskdConnection = async (): Promise<{ ok: boolean; error?: str
     if (data?.isLoggedIn === false) {return { ok: false, error: 'slskd is not logged in to Soulseek' }}
     return { ok: true }
   }
-  catch (e: any) {
-    return { ok: false, error: e.message || 'Connection failed' }
+  catch (e) {
+    return { ok: false, error: errorMessage(e) || 'Connection failed' }
   }
 }
 
@@ -253,10 +254,10 @@ export const relocateDownloadedFiles = async (args: SlskdMoveArgs, signal?: Abor
       movedFromDirs.add(dirname(srcPath))
       movedCount++
     }
-    catch (e: any) {
+    catch (e) {
       // SMB/drvfs mounts often refuse cross-directory rename. Fall back to copy+unlink (streamed -
       // see safeMove.ts's streamCopyFile for why this isn't fs.copyFile).
-      if (e?.code === 'EACCES' || e?.code === 'EXDEV' || e?.code === 'EPERM') {
+      if (['EACCES', 'EXDEV', 'EPERM'].includes(errorCode(e) ?? '')) {
         try {
           await streamCopyFile(srcPath, destPath)
           // The copy is what matters: the file is now in the target. slskd writes sources as its own
@@ -271,7 +272,7 @@ export const relocateDownloadedFiles = async (args: SlskdMoveArgs, signal?: Abor
         }
       }
       else {
-        monitorLog('warn', `slskd move: failed to move ${srcPath} -> ${destPath}: ${e.message}`)
+        monitorLog('warn', `slskd move: failed to move ${srcPath} -> ${destPath}: ${errorMessage(e)}`)
       }
     }
   }
@@ -373,8 +374,8 @@ export const purgeDownloadedSourceFiles = async (downloadsPath: string, files: {
       fromDirs.add(dirname(srcPath))
       removed++
     }
-    catch (e: any) {
-      monitorLog('warn', `slskd purge: failed to delete ${srcPath}: ${e.message}`)
+    catch (e) {
+      monitorLog('warn', `slskd purge: failed to delete ${srcPath}: ${errorMessage(e)}`)
     }
   }
   for (const dir of fromDirs) {

@@ -535,3 +535,21 @@ describe('describeUserAgent', () => {
     expect(describeUserAgent(ua)).toBe('Browser · Linux')
   })
 })
+
+describe('errorMessage / errorCode', () => {
+  it('errorMessage reads an Error, an error-like object, or any value', async () => {
+    const { errorMessage } = await import('../../helpers/functions')
+    expect(errorMessage(new Error('boom'))).toBe('boom')
+    expect(errorMessage({ message: 'from h3' })).toBe('from h3')
+    expect(errorMessage('plain')).toBe('plain')
+    expect(errorMessage(null)).toBe('null')
+    expect(errorMessage({ message: 5 })).toBe('[object Object]')
+  })
+
+  it('errorCode reads a string code only', async () => {
+    const { errorCode } = await import('../../helpers/functions')
+    expect(errorCode(Object.assign(new Error('x'), { code: 'EXDEV' }))).toBe('EXDEV')
+    expect(errorCode({ code: 42 })).toBeUndefined()
+    expect(errorCode(null)).toBeUndefined()
+  })
+})

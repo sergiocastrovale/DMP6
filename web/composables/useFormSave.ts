@@ -1,3 +1,4 @@
+import { apiErrorMessage } from '~/helpers/apiError'
 export const useFormSave = (saveFn: () => Promise<void>) => {
   const saving = ref(false)
   const saved = ref(false)
@@ -12,8 +13,8 @@ export const useFormSave = (saveFn: () => Promise<void>) => {
       saved.value = true
       setTimeout(() => { saved.value = false }, 3000)
     }
-    catch (e: any) {
-      error.value = e?.data?.message || e?.message || 'Save failed'
+    catch (e) {
+      error.value = apiErrorMessage(e, 'Save failed')
     }
     finally {
       saving.value = false

@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { apiErrorMessage } from '~/helpers/apiError'
 import { useTerminalStore } from '~/stores/terminal'
 import { createPoller } from '~/helpers/poller'
 import { QUEUE_POLL_ACTIVE_MS, QUEUE_POLL_IDLE_MS } from '~/helpers/constants'
@@ -230,9 +231,9 @@ export const useDownloadsStore = defineStore('downloads', () => {
       await fetchQueue()
       return null
     }
-    catch (e: any) {
+    catch (e) {
       await fetchQueue()
-      return e?.data?.message || e?.message || 'Failed to update pause state'
+      return apiErrorMessage(e, 'Failed to update pause state')
     }
   }
 

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { apiErrorMessage } from '~/helpers/apiError'
 import { storeToRefs } from 'pinia'
 import { Brush, Pause, Play } from 'lucide-vue-next'
 import type { TabItem } from '~/types/ui'
@@ -58,7 +59,7 @@ const cleanup = async () => {
     if (r.danglingRemoved) {parts.push(`${r.danglingRemoved} stale download row${r.danglingRemoved === 1 ? '' : 's'}`)}
     toast.success(parts.length ? `Removed ${parts.join(' + ')}` : `No orphans — all ${r.checked} ready release${r.checked === 1 ? '' : 's'} have their files`)
   }
-  catch (e: any) { toast.error(e?.data?.message || e?.message || 'Cleanup failed') }
+  catch (e) { toast.error(apiErrorMessage(e, 'Cleanup failed')) }
   finally { cleanupBusy.value = false }
 }
 

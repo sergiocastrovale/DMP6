@@ -1,4 +1,5 @@
 import { storeToRefs } from 'pinia'
+import { apiErrorMessage } from '~/helpers/apiError'
 import type { DownloadedReleaseItem } from '~/types/download'
 import type { UnifiedRelease } from '~/types/release'
 
@@ -21,8 +22,8 @@ export const useDownloadQueueActions = () => {
     try {
       await fn()
     }
-    catch (e: any) {
-      actionMsg.value = e?.data?.message || e?.message || failMsg
+    catch (e) {
+      actionMsg.value = apiErrorMessage(e, failMsg)
       toast.error(actionMsg.value!)
     }
     finally {
@@ -42,12 +43,12 @@ export const useDownloadQueueActions = () => {
       const requeued = await store.requeueAll(ids)
       toast.success(`Moved ${requeued} download${requeued === 1 ? '' : 's'} back to queue`)
     }
-    catch (e: any) {
-      toast.error(e?.data?.message || e?.message || 'Move to queue failed')
+    catch (e) {
+      toast.error(apiErrorMessage(e, 'Move to queue failed'))
     }
   }
   const merge = (id: string) => store.merge(id).catch((e: any) => {
-    actionMsg.value = e?.data?.message || e?.message || 'Merge failed'
+    actionMsg.value = apiErrorMessage(e, 'Merge failed')
     toast.error(actionMsg.value!)
   })
   const mergeMany = (ids: string[]) => store.mergeSelected(ids)
@@ -99,8 +100,8 @@ export const useDownloadQueueActions = () => {
         toast.error(`${failed} download${failed === 1 ? '' : 's'} could not be retried`)
       }
     }
-    catch (e: any) {
-      toast.error(e?.data?.message || e?.message || 'Retry failed')
+    catch (e) {
+      toast.error(apiErrorMessage(e, 'Retry failed'))
     }
     finally {
       bulkBusy.value = false
@@ -128,8 +129,8 @@ export const useDownloadQueueActions = () => {
       const rejected = await store.rejectAll(ids)
       toast.success(`Rejected ${rejected} download${rejected === 1 ? '' : 's'}`)
     }
-    catch (e: any) {
-      toast.error(e?.data?.message || e?.message || 'Reject failed')
+    catch (e) {
+      toast.error(apiErrorMessage(e, 'Reject failed'))
     }
     finally {
       bulkBusy.value = false

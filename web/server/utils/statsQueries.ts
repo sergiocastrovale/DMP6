@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client'
+import { Prisma, type ReleaseStatus } from '@prisma/client'
 import { paged } from '~/server/utils/pagination'
 import { firstArtist } from '~/server/utils/releaseTiles'
 import { db } from '~/server/utils/statementTimeout'
@@ -104,7 +104,7 @@ const pageFromRows = async <T extends { total: bigint | number }>(
 const queryArtists = async (type: string, search: string, skip: number, pageSize: number, page: number, _sort: string, order: 'asc' | 'desc') => {
   // Matches artists/index.get.ts's base filter: connected (duplicate) artists are aggregated onto
   // their primary - counting them here inflated the stat beyond what /browse actually lists (audit #82).
-  const where: any = { primaryArtistId: null, localReleases: { some: {} } }
+  const where: Prisma.ArtistWhereInput = { primaryArtistId: null, localReleases: { some: {} } }
   if (search) { where.name = { contains: search, mode: 'insensitive' } }
   if (type === 'artists-synced') { where.musicbrainzId = { not: null } }
   if (type === 'artists-with-art') { where.OR = [{ image: { not: null } }, { imageUrl: { not: null } }] }
@@ -124,7 +124,7 @@ const queryArtists = async (type: string, search: string, skip: number, pageSize
 }
 
 const queryReleases = async (type: string, search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
-  const where: any = {}
+  const where: Prisma.LocalReleaseWhereInput = {}
   if (search) { where.title = { contains: search, mode: 'insensitive' } }
   if (type === 'releases-with-art') { where.OR = [{ image: { not: null } }, { imageUrl: { not: null } }] }
 
@@ -159,7 +159,7 @@ const queryReleases = async (type: string, search: string, skip: number, pageSiz
 }
 
 const queryTracks = async (search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
-  const where: any = {}
+  const where: Prisma.LocalReleaseTrackWhereInput = {}
   if (search) { where.title = { contains: search, mode: 'insensitive' } }
 
   const orderBy = sort === 'artist' ? { artist: order } : { title: order }
@@ -183,7 +183,7 @@ const queryTracks = async (search: string, skip: number, pageSize: number, page:
 }
 
 const queryGenres = async (search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
-  const where: any = {}
+  const where: Prisma.GenreWhereInput = {}
   if (search) { where.name = { contains: search, mode: 'insensitive' } }
 
   const orderBy = sort === 'artistCount' ? { artists: { _count: order } } : { name: order }
@@ -211,10 +211,10 @@ const queryGenres = async (search: string, skip: number, pageSize: number, page:
 }
 
 const queryPlays = async (userId: number, search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
-  const where: any = { userId, playCount: { gt: 0 } }
+  const where: Prisma.LocalReleaseTrackPlayWhereInput = { userId, playCount: { gt: 0 } }
   if (search) { where.track = { title: { contains: search, mode: 'insensitive' } } }
 
-  const sortMap: Record<string, any> = {
+  const sortMap: Record<string, Prisma.LocalReleaseTrackPlayOrderByWithRelationInput> = {
     title: { track: { title: order } },
     artist: { track: { artist: order } },
   }
@@ -242,10 +242,10 @@ const queryPlays = async (userId: number, search: string, skip: number, pageSize
 // Backs the Recent Plays panel's detail subpages (pages/statistics/recent-plays/[period].vue) - the
 // individual PlayEvent rows within the period, not the per-track aggregate `queryPlays` above uses.
 const queryRecentPlays = async (userId: number, period: PlayPeriod, timeZone: string, search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
-  const where: any = { userId, counted: true, startedAt: { gte: periodStart(period, new Date(), timeZone) } }
+  const where: Prisma.PlayEventWhereInput = { userId, counted: true, startedAt: { gte: periodStart(period, new Date(), timeZone) } }
   if (search) { where.track = { title: { contains: search, mode: 'insensitive' } } }
 
-  const sortMap: Record<string, any> = {
+  const sortMap: Record<string, Prisma.PlayEventOrderByWithRelationInput> = {
     title: { track: { title: order } },
     artist: { track: { artist: order } },
     playedAt: { startedAt: order },
@@ -308,11 +308,11 @@ const querySize = async (search: string, skip: number, pageSize: number, page: n
   return paged(items.map(r => ({ id: r.id, name: r.name, slug: r.slug, totalSize: Number(r.totalSize) })), total, { page, pageSize, skip })
 }
 
-const queryReleasesByStatus = async (statuses: string[], search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
-  const where: any = { matchStatus: { in: statuses } }
+const queryReleasesByStatus = async (statuses: ReleaseStatus[], search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
+  const where: Prisma.LocalReleaseWhereInput = { matchStatus: { in: statuses } }
   if (search) { where.title = { contains: search, mode: 'insensitive' } }
 
-  const sortMap: Record<string, any> = { year: { year: order }, matchStatus: { matchStatus: order } }
+  const sortMap: Record<string, Prisma.LocalReleaseOrderByWithRelationInput> = { year: { year: order }, matchStatus: { matchStatus: order } }
   const orderBy = sortMap[sort] ?? { title: order }
 
   const [items, total] = await Promise.all([
@@ -343,10 +343,10 @@ const queryReleasesByStatus = async (statuses: string[], search: string, skip: n
 }
 
 const queryLowBitrate = async (search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
-  const where: any = { bitrate: { lt: 256, gt: 0 } }
+  const where: Prisma.LocalReleaseTrackWhereInput = { bitrate: { lt: 256, gt: 0 } }
   if (search) { where.title = { contains: search, mode: 'insensitive' } }
 
-  const sortMap: Record<string, any> = { title: { title: order }, artist: { artist: order } }
+  const sortMap: Record<string, Prisma.LocalReleaseTrackOrderByWithRelationInput> = { title: { title: order }, artist: { artist: order } }
   const orderBy = sortMap[sort] ?? { bitrate: order }
 
   const [items, total] = await Promise.all([
@@ -412,10 +412,10 @@ const querySingleRelease = async (search: string, skip: number, pageSize: number
 }
 
 const queryShortest = async (search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
-  const where: any = {}
+  const where: Prisma.LocalReleaseWhereInput = {}
   if (search) { where.title = { contains: search, mode: 'insensitive' } }
 
-  const sortMap: Record<string, any> = { title: { title: order } }
+  const sortMap: Record<string, Prisma.LocalReleaseOrderByWithRelationInput> = { title: { title: order } }
   const orderBy = sortMap[sort] ?? { totalDuration: order }
 
   const [items, total] = await Promise.all([
@@ -446,7 +446,7 @@ const queryShortest = async (search: string, skip: number, pageSize: number, pag
 }
 
 const queryMissingArt = async (search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
-  const where: any = { image: null, imageUrl: null }
+  const where: Prisma.LocalReleaseWhereInput = { image: null, imageUrl: null }
   if (search) { where.title = { contains: search, mode: 'insensitive' } }
 
   const orderBy = sort === 'year' ? { year: order } : { title: order }
@@ -477,7 +477,7 @@ const queryMissingArt = async (search: string, skip: number, pageSize: number, p
 }
 
 const queryReleasesSynced = async (search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
-  const where: any = {}
+  const where: Prisma.MusicBrainzReleaseWhereInput = {}
   if (search) { where.title = { contains: search, mode: 'insensitive' } }
 
   const orderBy = sort === 'year' ? { year: order } : { title: order }

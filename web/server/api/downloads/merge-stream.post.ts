@@ -1,4 +1,5 @@
 import { requirePermission } from '~/server/utils/permissions'
+import { errorMessage } from '~/helpers/functions'
 import { openSse } from '~/server/utils/sse'
 import { readBodyOf } from '~/server/utils/requestValidation'
 import { optionalIdsBodySchema } from '~/server/schemas/common'
@@ -31,8 +32,8 @@ export default defineEventHandler(async (event) => {
     // errors are already emitted line-by-line via send() during the run
     sse.done(0)
   }
-  catch (e: any) {
-    sse.send(`Error: ${e?.message || e}`)
+  catch (e) {
+    sse.send(`Error: ${errorMessage(e)}`)
     sse.done(1)
   }
 })

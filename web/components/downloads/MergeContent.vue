@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { apiErrorMessage } from '~/helpers/apiError'
 import { storeToRefs } from 'pinia'
 import { FolderInput, Trash2 } from 'lucide-vue-next'
 import { filterQueue } from '~/helpers/functions'
@@ -39,8 +40,8 @@ const mergeAll = async () => {
       toast.error(`${n} release${n === 1 ? '' : 's'} failed to merge`)
     }
   }
-  catch (e: any) {
-    actionMsg.value = e?.data?.message || e?.message || 'Merge all failed'
+  catch (e) {
+    actionMsg.value = apiErrorMessage(e, 'Merge all failed')
     toast.error(actionMsg.value!)
   }
 }

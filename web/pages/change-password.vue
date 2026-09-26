@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { apiErrorMessage } from '~/helpers/apiError'
 import { surface } from '~/helpers/ui'
 
 definePageMeta({ layout: 'auth' })
@@ -36,8 +37,8 @@ const handleSubmit = async () => {
     await loadMe()
     await navigateTo('/')
   }
-  catch (e: any) {
-    fieldErrors.value.current = e.data?.message || 'Failed to change password'
+  catch (e) {
+    fieldErrors.value.current = apiErrorMessage(e, 'Failed to change password')
   }
   finally {
     loading.value = false

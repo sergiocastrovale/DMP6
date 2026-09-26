@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { apiErrorMessage } from '~/helpers/apiError'
 import { Archive, AlertTriangle, CircleAlert, Trash2, Undo2 } from 'lucide-vue-next'
 import type { MonitorEventItem } from '~/types/download'
 import { timeAgo } from '~/helpers/functions'
@@ -57,8 +58,8 @@ const run = async (action: () => Promise<number>, describe: (n: number) => strin
     toast.success(describe(n))
     await load()
   }
-  catch (e: any) {
-    toast.error(e?.data?.message || e?.message || 'Action failed')
+  catch (e) {
+    toast.error(apiErrorMessage(e, 'Action failed'))
   }
   finally { busy.value = false }
 }
