@@ -3,6 +3,8 @@ import { hashPassword, verifyPassword } from '~/server/utils/password'
 import { createSession } from '~/server/utils/auth'
 import { SESSION_MAX_AGE_SECONDS } from '~/helpers/constants'
 import { invalidateAuthUserCache } from '~/server/utils/userCache'
+import { readBodyOf } from '~/server/utils/requestValidation'
+import { changePasswordBodySchema } from '~/server/schemas/auth'
 
 export default defineEventHandler(async (event) => {
   const user = event.context.user
@@ -10,13 +12,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, message: 'Unauthorized' })
   }
 
-  const { currentPassword, newPassword } = (await readBody(event)) ?? {}
-  if (!currentPassword || !newPassword) {
-    throw createError({ statusCode: 400, message: 'Missing fields' })
-  }
-  if (typeof newPassword !== 'string' || newPassword.length < 6) {
-    throw createError({ statusCode: 400, message: 'Password must be at least 6 characters' })
-  }
+  const { currentPassword, newPassword } = await readBodyOf(event, changePasswordBodySchema)
 
   const dbUser = await prisma.user.findUnique({ where: { id: user.id } })
   if (!dbUser) {

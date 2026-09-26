@@ -1,18 +1,14 @@
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
 import { generateSlug } from '~/server/utils/slug'
-import { parseTerms, validateGenerator } from '~/helpers/playlistGenerators'
-import type { PlaylistGeneratorType } from '~/types/playlistGenerator'
+import { validateGenerator } from '~/helpers/playlistGenerators'
+import { readBodyOf } from '~/server/utils/requestValidation'
+import { createGeneratorBodySchema } from '~/server/schemas/playlistGenerators'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'playlists.generate')
 
-  const body = await readBody(event)
-
-  const type: PlaylistGeneratorType = body?.type
-  const name: string = typeof body?.name === 'string' ? body.name.trim() : ''
-  const description: string | null = typeof body?.description === 'string' && body.description.trim() ? body.description.trim() : null
-  const terms = parseTerms(Array.isArray(body?.terms) ? body.terms.join('\n') : String(body?.terms ?? ''))
+  const { type, name, description, terms } = await readBodyOf(event, createGeneratorBodySchema)
 
   const error = validateGenerator({ type, name, terms })
   if (error) {

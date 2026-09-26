@@ -3,18 +3,12 @@ import { createSession } from '~/server/utils/auth'
 import { SESSION_MAX_AGE_SECONDS } from '~/helpers/constants'
 import { DUMMY_PASSWORD_HASH, verifyPassword } from '~/server/utils/password'
 import { clientIp } from '~/server/utils/clientIp'
+import { readBodyOf } from '~/server/utils/requestValidation'
+import { loginBodySchema } from '~/server/schemas/auth'
 import { clearLoginFailures, isLoginLocked, registerLoginFailure } from '~/server/utils/loginThrottle'
 
 export default defineEventHandler(async (event) => {
-  const body = await readBody(event)
-  const { username, password, rememberMe } = body ?? {}
-  // Defaults to true so an existing session's lifetime is unchanged; unchecking it downgrades the
-  // cookie to a session one, which the browser drops when it closes.
-  const persist = rememberMe !== false
-
-  if (!username || !password) {
-    throw createError({ statusCode: 400, message: 'Missing credentials' })
-  }
+  const { username, password, rememberMe: persist } = await readBodyOf(event, loginBodySchema)
 
   const throttleKey = `${username}:${clientIp(event)}`
   if (isLoginLocked(throttleKey)) {

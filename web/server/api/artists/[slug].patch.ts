@@ -1,6 +1,8 @@
 import { prisma } from '~/server/utils/prisma'
 import { invalidateShared } from '~/server/utils/cache'
 import { requirePermission } from '~/server/utils/permissions'
+import { readBodyOf } from '~/server/utils/requestValidation'
+import { monitorArtistBodySchema } from '~/server/schemas/artists'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'downloads.crud')
@@ -8,10 +10,7 @@ export default defineEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug')
   if (!slug) {throw createError({ statusCode: 400, statusMessage: 'Missing slug' })}
 
-  const body = await readBody(event)
-  if (typeof body?.monitored !== 'boolean') {
-    throw createError({ statusCode: 400, message: 'monitored (boolean) required' })
-  }
+  const body = await readBodyOf(event, monitorArtistBodySchema)
 
   const artist = await prisma.artist.update({
     where: { slug },

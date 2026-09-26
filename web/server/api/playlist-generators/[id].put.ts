@@ -1,7 +1,9 @@
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
 import { generateSlug } from '~/server/utils/slug'
-import { parseTerms, validateGenerator } from '~/helpers/playlistGenerators'
+import { validateGenerator } from '~/helpers/playlistGenerators'
+import { readBodyOf } from '~/server/utils/requestValidation'
+import { updateGeneratorBodySchema } from '~/server/schemas/playlistGenerators'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'playlists.generate')
@@ -16,11 +18,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Playlist generator not found' })
   }
 
-  const body = await readBody(event)
-
-  const name: string = typeof body?.name === 'string' ? body.name.trim() : ''
-  const description: string | null = typeof body?.description === 'string' && body.description.trim() ? body.description.trim() : null
-  const terms = parseTerms(Array.isArray(body?.terms) ? body.terms.join('\n') : String(body?.terms ?? ''))
+  const { name, description, terms } = await readBodyOf(event, updateGeneratorBodySchema)
 
   // Type is fixed at creation - genre/region matching logic is entirely different, so switching
   // it on an existing generator would silently repurpose whatever playlist it already produced.
