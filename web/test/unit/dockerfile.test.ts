@@ -26,4 +26,8 @@ describe('Dockerfile pins', () => {
     const majors = new Set([...dockerfile.matchAll(/^FROM node:(\d+)/gm)].map(m => m[1]))
     expect(majors.size).toBe(1)
   })
+
+  it('the container healthcheck uses the deep probe, so a dead database pool turns it unhealthy', () => {
+    expect(dockerfile).toMatch(/HEALTHCHECK[\s\S]*\/api\/health\?deep=1/)
+  })
 })

@@ -164,6 +164,6 @@ ENV SCRIPTS_DIR=/usr/local/bin
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD node -e "fetch('http://localhost:3000/api/health').then(r=>{if(!r.ok)throw 1;process.exit(0)}).catch(()=>process.exit(1))"
+    CMD node -e "fetch('http://localhost:3000/api/health?deep=1').then(r=>{if(!r.ok)throw 1;process.exit(0)}).catch(()=>process.exit(1))"
 
 CMD ["node", ".output/server/index.mjs"]
