@@ -19,13 +19,13 @@ export default defineNuxtPlugin(() => {
     delay: () => ORPHAN_POLL_MS,
   })
 
-  function start() {
+  const start = () => {
     if (poller.active) {return}
     terminal.autoReconnectOrphan()
     poller.start()
   }
 
-  function stop() {
+  const stop = () => {
     poller.stop()
   }
 

@@ -19,7 +19,7 @@ export const usePlayerActions = () => {
   const infoRelease = ref<UnifiedRelease | null>(null)
   const infoExtra = ref<ReleaseInfoExtra | null>(null)
 
-  async function openTrackInfo() {
+  const openTrackInfo = async () => {
     const localReleaseId = player.currentTrack?.localReleaseId
     if (!localReleaseId) {
       return
@@ -44,7 +44,7 @@ export const usePlayerActions = () => {
     showInfoDialog.value = false
   })
 
-  async function loadPlaylists() {
+  const loadPlaylists = async () => {
     try {
       const [all, slugs] = await Promise.all([
         $fetch<any[]>('/api/playlists', { query: { type: 'manual' } }),
@@ -61,7 +61,7 @@ export const usePlayerActions = () => {
     }
   }
 
-  async function togglePlaylist(playlistSlug: string) {
+  const togglePlaylist = async (playlistSlug: string) => {
     if (!player.currentTrack) {
       return
     }
@@ -86,12 +86,12 @@ export const usePlayerActions = () => {
     }
   }
 
-  function openNewPlaylistDialog() {
+  const openNewPlaylistDialog = () => {
     showPlaylistMenu.value = false
     showNewPlaylistDialog.value = true
   }
 
-  async function onPlaylistCreated() {
+  const onPlaylistCreated = async () => {
     global.stats.playlists++
     await loadPlaylists()
   }

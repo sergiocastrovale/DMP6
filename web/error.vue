@@ -32,7 +32,7 @@ const description = computed(() => {
   }
 })
 
-function handleError() {
+const handleError = () => {
   clearError({ redirect: '/' })
 }
 </script>

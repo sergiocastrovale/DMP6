@@ -8,7 +8,7 @@ import type { SseEvent } from '~/types/common'
 // Splits a growing text buffer on the `\n\n` frame separator. The trailing partial frame (if any) is
 // returned as `remainder` - the caller should prepend it to the next decoded chunk before calling
 // again, exactly like `buffer = parts.pop()` in the original store code.
-export function parseSseEvents(buffer: string): { events: SseEvent[], remainder: string } {
+export const parseSseEvents = (buffer: string): { events: SseEvent[], remainder: string } => {
   const parts = buffer.split('\n\n')
   const remainder = parts.pop() ?? ''
   const events: SseEvent[] = []
@@ -27,7 +27,7 @@ export function parseSseEvents(buffer: string): { events: SseEvent[], remainder:
 }
 
 // `event: done` carries the process exit code as its data payload. Non-numeric/missing -> 0.
-export function parseDoneExitCode(data: string): number {
+export const parseDoneExitCode = (data: string): number => {
   return parseInt(data, 10) || 0
 }
 
@@ -37,7 +37,7 @@ export function parseDoneExitCode(data: string): number {
 // thousands of lines; growing `lines` unbounded balloons the reactive array and every re-render that
 // scans it (audit #92). Overwriting the last line never grows the array, so only the two push cases
 // need the cap check.
-export function appendTerminalLine(lines: string[], text: string, cap = TERMINAL_LINES_CAP): void {
+export const appendTerminalLine = (lines: string[], text: string, cap = TERMINAL_LINES_CAP): void => {
   if (text.startsWith('\r')) {
     const cleaned = text.slice(1)
     const last = lines[lines.length - 1]

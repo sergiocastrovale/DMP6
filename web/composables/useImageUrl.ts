@@ -1,14 +1,14 @@
-export function useImageUrl() {
+export const useImageUrl = () => {
   const settingsStore = useSettingsStore()
   const useS3 = computed(() =>
     settingsStore.imageStorage === 's3' || settingsStore.imageStorage === 'both',
   )
 
-  function resolve(
+  const resolve = (
     image: string | null | undefined,
     imageUrl: string | null | undefined,
     type: 'artists' | 'releases',
-  ): string | null {
+  ): string | null => {
     if (useS3.value && imageUrl) {
       return imageUrl
     }
@@ -18,11 +18,11 @@ export function useImageUrl() {
     return null
   }
 
-  function artistImage(artist: { image?: string | null; imageUrl?: string | null }): string | null {
+  const artistImage = (artist: { image?: string | null; imageUrl?: string | null }): string | null => {
     return resolve(artist.image, artist.imageUrl, 'artists')
   }
 
-  function releaseImage(release: { image?: string | null; imageUrl?: string | null }): string | null {
+  const releaseImage = (release: { image?: string | null; imageUrl?: string | null }): string | null => {
     return resolve(release.image, release.imageUrl, 'releases')
   }
 
