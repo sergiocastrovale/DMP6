@@ -108,13 +108,24 @@ export const periodStart = (period: PlayPeriod, now: Date = new Date(), timeZone
 // itself increments on) starting in each period, for the index page's Recent Plays tiles.
 export const recentPlayCounts = async (userId: number, timeZone: string = DEFAULT_TIME_ZONE): Promise<Record<PlayPeriod, number>> => {
   const now = new Date()
-  const [today, week, month, year] = await Promise.all([
-    prisma.playEvent.count({ where: { userId, counted: true, startedAt: { gte: periodStart('today', now, timeZone) } } }),
-    prisma.playEvent.count({ where: { userId, counted: true, startedAt: { gte: periodStart('week', now, timeZone) } } }),
-    prisma.playEvent.count({ where: { userId, counted: true, startedAt: { gte: periodStart('month', now, timeZone) } } }),
-    prisma.playEvent.count({ where: { userId, counted: true, startedAt: { gte: periodStart('year', now, timeZone) } } }),
-  ])
-  return { today, week, month, year }
+  const start = {
+    today: periodStart('today', now, timeZone),
+    week: periodStart('week', now, timeZone),
+    month: periodStart('month', now, timeZone),
+    year: periodStart('year', now, timeZone),
+  }
+  // One pass over the user's recent counted plays instead of four separate counts. The scan is bounded by the earliest
+  // boundary (the year start, or the week window in early January), and each period is a FILTERed count over it.
+  const earliest = new Date(Math.min(...Object.values(start).map(d => d.getTime())))
+  const [row] = await prisma.$queryRaw<{ today: number, week: number, month: number, year: number }[]>`
+    SELECT
+      count(*) FILTER (WHERE "startedAt" >= ${start.today})::int AS today,
+      count(*) FILTER (WHERE "startedAt" >= ${start.week})::int AS week,
+      count(*) FILTER (WHERE "startedAt" >= ${start.month})::int AS month,
+      count(*) FILTER (WHERE "startedAt" >= ${start.year})::int AS year
+    FROM "PlayEvent"
+    WHERE "userId" = ${userId} AND counted = true AND "startedAt" >= ${earliest}`
+  return { today: row?.today ?? 0, week: row?.week ?? 0, month: row?.month ?? 0, year: row?.year ?? 0 }
 }
 
 const RECENT_SKIP_WINDOW_DAYS = 90
