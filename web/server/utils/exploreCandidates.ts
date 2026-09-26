@@ -6,8 +6,6 @@ import { sampleIds } from '~/server/utils/randomSample'
 import { trackPlaysByIds, withTrackPlay, recentSkipsByIds } from '~/server/utils/userPlays'
 
 const POOL_SIZE = 500
-// The client sends its whole explorer history; a hostile or buggy one must not become a giant NOT IN list.
-export const MAX_EXCLUDE_IDS = 200
 
 interface CandidateRow {
   id: string

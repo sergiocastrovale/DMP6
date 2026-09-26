@@ -1,6 +1,8 @@
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
 import { isForeignKeyError, isUniqueConstraintError } from '~/server/utils/prismaErrors'
+import { readBodyOf } from '~/server/utils/requestValidation'
+import { addPlaylistTrackBodySchema } from '~/server/schemas/playlists'
 import { currentUserId, findOwnManualPlaylist } from '~/server/utils/libraryOwnership'
 
 export default defineEventHandler(async (event) => {
@@ -16,14 +18,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const body = await readBody(event)
-
-  if (!body.trackId || typeof body.trackId !== 'string') {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid track ID',
-    })
-  }
+  const body = await readBodyOf(event, addPlaylistTrackBodySchema)
 
   const playlist = await findOwnManualPlaylist(slug, userId)
 

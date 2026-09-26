@@ -1,20 +1,15 @@
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
 import { generateSlug } from '~/server/utils/slug'
+import { readBodyOf } from '~/server/utils/requestValidation'
+import { createPlaylistBodySchema } from '~/server/schemas/playlists'
 import { currentUserId, visiblePlaylistsWhere } from '~/server/utils/libraryOwnership'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'playlists.crud')
   const userId = currentUserId(event)
 
-  const body = await readBody(event)
-
-  if (!body.name || typeof body.name !== 'string') {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid playlist name',
-    })
-  }
+  const body = await readBodyOf(event, createPlaylistBodySchema)
 
   const slug = generateSlug(body.name)
 
@@ -44,7 +39,7 @@ export default defineEventHandler(async (event) => {
     data: {
       name: body.name,
       slug,
-      description: body.description || null,
+      description: body.description,
       userId,
     },
   })

@@ -4,29 +4,14 @@ import {
   scoreTrack, weightedRandomPick,
   getPoolCacheKey, getCachedPool, setCachedPool, removeFromPool,
 } from '~/server/utils/explore'
-import { fetchExplorePool, MAX_EXCLUDE_IDS } from '~/server/utils/exploreCandidates'
+import { fetchExplorePool } from '~/server/utils/exploreCandidates'
+import { readBodyOf } from '~/server/utils/requestValidation'
+import { exploreBodySchema } from '~/server/schemas/playback'
 import { currentUserId } from '~/server/utils/libraryOwnership'
 
 export default defineEventHandler(async (event) => {
   const userId = currentUserId(event)
-  const body = (await readBody<{
-    energy?: number
-    era?: number
-    familiarity?: number
-    sound?: number
-    excludeIds?: string[]
-  }>(event)) ?? {}
-
-  const params: ExploreParams = {
-    energy: Math.min(9, Math.max(0, Math.round(body.energy ?? 5))),
-    era: Math.min(9, Math.max(0, Math.round(body.era ?? 5))),
-    familiarity: Math.min(9, Math.max(0, Math.round(body.familiarity ?? 4))),
-    sound: Math.min(9, Math.max(0, Math.round(body.sound ?? 4))),
-  }
-
-  const excludeIds = (Array.isArray(body.excludeIds) ? body.excludeIds : [])
-    .filter((id): id is string => typeof id === 'string')
-    .slice(-MAX_EXCLUDE_IDS)
+  const { excludeIds, ...params }: { excludeIds: string[] } & ExploreParams = await readBodyOf(event, exploreBodySchema)
   const cacheKey = getPoolCacheKey(userId, params)
 
   // Try cached pool first

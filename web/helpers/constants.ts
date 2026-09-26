@@ -452,3 +452,6 @@ export const SCAN_STATUS_POLL_MS = 3000
 // Tracks returned for one playlist page (/api/playlists/[slug]). The generated GENRE/REGION playlists are capped at
 // exactly 500 by `./playlists` itself, so this matches them; a manual playlist longer than this is truncated.
 export const PLAYLIST_PAGE_CAP = 500
+
+// The client sends its whole explorer history; a hostile or buggy one must not become a giant NOT IN list.
+export const MAX_EXCLUDE_IDS = 200
