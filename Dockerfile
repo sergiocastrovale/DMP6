@@ -82,7 +82,7 @@ RUN cargo build --profile scan -p problems
 # =============================================================================
 # Stage 2: Build Nuxt app
 # =============================================================================
-FROM node:20-bookworm AS web-builder
+FROM node:22-bookworm AS web-builder
 
 WORKDIR /build
 
@@ -108,7 +108,7 @@ RUN pnpm build
 # =============================================================================
 # Stage 3: Production
 # =============================================================================
-FROM node:20-bookworm-slim
+FROM node:22-bookworm-slim
 
 WORKDIR /app
 
@@ -118,7 +118,9 @@ COPY --from=web-builder /build/prisma/schema.prisma prisma/schema.prisma
 COPY --from=web-builder /build/prisma/migrations prisma/migrations/
 
 # Prisma CLI for migrate deploy on deploy (pinned to match project version)
-RUN npm install -g prisma@6
+# Pinned to the exact version pnpm-lock.yaml installs (test/unit/dockerfile.test.ts fails if they drift): the CLI
+# that runs `migrate deploy` must match the @prisma/client the app was generated with.
+RUN npm install -g prisma@6.19.2
 
 # tmux for persistent terminal sessions + ca-certificates for HTTPS (MusicBrainz, S3)
 # ffmpeg to normalize Soulseek downloads to MP3-320 (see docs/feature_monitoring.md)

@@ -5,7 +5,7 @@ Local development setup. Conventions, data model, commands and API/page inventor
 
 ## Stack
 
-- **Node.js 20+** and **pnpm** (for Prisma): `npm install -g pnpm`
+- **Node.js 22+** and **pnpm** (for Prisma): `npm install -g pnpm`
 - **Framework**: Nuxt 4 + Vue 3 + TypeScript
 - **Styling**: Tailwind CSS v4, on the token/recipe layer described in [design_system.md](design_system.md) (`web/assets/css/theme.css` + `web/helpers/ui.ts`). Zero `<style>` blocks anywhere in `web/components/**`/`web/pages/**` — the two cases that genuinely need raw CSS (animated conic-gradient border, Leaflet control overrides) live as global rules in `main.css` instead, see design_system.md
 - **Icons**: Lucide (`lucide-vue-next`)
