@@ -1,4 +1,5 @@
-import { createReadStream, statSync } from 'node:fs'
+import { createReadStream } from 'node:fs'
+import { stat as statFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { H3Event } from 'h3'
 import { prisma } from '~/server/utils/prisma'
@@ -27,7 +28,7 @@ export const serveTrackFile = async (event: H3Event, id: string, options: ServeT
 
   let stat
   try {
-    stat = statSync(filePath)
+    stat = await statFile(filePath)
   }
   catch {
     const remoteServerUrl = useRuntimeConfig().remoteServerUrl

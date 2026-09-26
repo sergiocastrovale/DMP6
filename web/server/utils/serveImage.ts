@@ -1,4 +1,5 @@
-import { createReadStream, statSync } from 'node:fs'
+import { createReadStream } from 'node:fs'
+import { stat as statFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import type { H3Event } from 'h3'
 
@@ -24,7 +25,7 @@ export const serveLocalImage = async (
   const ext = filename.split('.').pop()?.toLowerCase() || 'jpg'
 
   try {
-    const stat = statSync(filePath)
+    const stat = await statFile(filePath)
     setResponseHeaders(event, {
       'Content-Type': MIME_TYPES[ext] || 'image/jpeg',
       'Content-Length': String(stat.size),

@@ -1,6 +1,6 @@
 import { prisma } from '~/server/utils/prisma'
 import { cachedResponse } from '~/server/utils/cache'
-import { verifyImage } from '~/server/utils/images'
+import { verifyImage, primeImageExistence } from '~/server/utils/images'
 import { parsePagination } from '~/server/utils/pagination'
 import { withReleaseCounts } from '~/server/utils/artistReleaseStats'
 import { artistListWhere, rankedArtistPage, releaseCountsByArtist, type ArtistListFilters } from '~/server/utils/artistList'
@@ -61,6 +61,7 @@ export default defineEventHandler(async (event) => {
     ])
     const byId = new Map(rows.map(r => [r.id, r]))
     const ordered = ranked.ids.flatMap(id => byId.get(id) ?? [])
+    await primeImageExistence('artists', ordered.map(a => a.image))
 
     const items = withReleaseCounts(ordered, counts).map(a => ({
       ...a,
@@ -120,6 +121,7 @@ export default defineEventHandler(async (event) => {
     ])
 
     const counts = await releaseCountsByArtist(items.map(a => a.id))
+    await primeImageExistence('artists', items.map(a => a.image))
     const verifiedItems = withReleaseCounts(items, counts).map(a => ({
       ...a,
       ...verifyImage(a.image, a.imageUrl, 'artists'),

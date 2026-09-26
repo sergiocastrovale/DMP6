@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { access } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { getCachedSettings } from '~/server/utils/settingsCache'
 
@@ -11,28 +12,63 @@ function getImageDir(): string {
   return _imageDir
 }
 
-const existsCache = new Map<string, boolean>()
-const CACHE_TTL = 60_000
-let lastCacheClear = Date.now()
+// Existence of local image files. A bounded map with a per-entry TTL (the oldest entry goes when it is full),
+// so expiry is spread out instead of a global clear every minute followed by a burst of stat calls.
+const EXISTS_TTL_MS = 60_000
+const EXISTS_MAX_ENTRIES = 20_000
+const existsCache = new Map<string, { exists: boolean, at: number }>()
 
-function cachedExists(filePath: string): boolean {
-  const now = Date.now()
-  if (now - lastCacheClear > CACHE_TTL) {
-    existsCache.clear()
-    lastCacheClear = now
+const remember = (filePath: string, exists: boolean): void => {
+  existsCache.delete(filePath)
+  existsCache.set(filePath, { exists, at: Date.now() })
+  if (existsCache.size > EXISTS_MAX_ENTRIES) {
+    const oldest = existsCache.keys().next().value
+    if (oldest !== undefined) {
+      existsCache.delete(oldest)
+    }
   }
-  const cached = existsCache.get(filePath)
-  if (cached !== undefined) {return cached}
+}
+
+const freshEntry = (filePath: string): { exists: boolean, at: number } | undefined => {
+  const entry = existsCache.get(filePath)
+  return entry && Date.now() - entry.at < EXISTS_TTL_MS ? entry : undefined
+}
+
+// Synchronous fallback for a path nobody primed. Lists prime first (primeImageExistence), so on the hot paths this
+// only ever answers from the cache; a lone lookup (a single release card) costs one stat.
+function cachedExists(filePath: string): boolean {
+  const entry = freshEntry(filePath)
+  if (entry) {return entry.exists}
   const exists = existsSync(filePath)
-  existsCache.set(filePath, exists)
+  remember(filePath, exists)
   return exists
+}
+
+const imagePath = (type: 'artists' | 'releases', filename: string): string => resolve(join(getImageDir(), type, filename))
+
+// Checks a whole list's image files at once without blocking the event loop, so the synchronous verifyImage() calls
+// that follow all hit the cache. Only relevant when images are served from local disk.
+export const primeImageExistence = async (
+  type: 'artists' | 'releases',
+  filenames: (string | null | undefined)[],
+): Promise<void> => {
+  const storage = getCachedSettings().imageStorage
+  if (storage !== 'local' && storage !== 'both') {return}
+  const pending = new Set<string>()
+  for (const filename of filenames) {
+    if (!filename || filename.includes('..') || filename.includes('/')) {continue}
+    const filePath = imagePath(type, filename)
+    if (!freshEntry(filePath)) {pending.add(filePath)}
+  }
+  await Promise.all([...pending].map(async (filePath) => {
+    remember(filePath, await access(filePath).then(() => true, () => false))
+  }))
 }
 
 export function localImageExists(type: 'artists' | 'releases', filename: string): boolean {
   if (!filename) {return false}
   if (filename.includes('..') || filename.includes('/')) {return false}
-  const filePath = resolve(join(getImageDir(), type, filename))
-  return cachedExists(filePath)
+  return cachedExists(imagePath(type, filename))
 }
 
 // A file written after its `existsSync === false` result was cached (e.g. `./artist-photos --id`
@@ -40,7 +76,7 @@ export function localImageExists(type: 'artists' | 'releases', filename: string)
 // very next verifyImage() call re-stats disk instead of trusting the stale negative.
 export function forgetImageExists(type: 'artists' | 'releases', filename: string | null | undefined): void {
   if (!filename) {return}
-  existsCache.delete(resolve(join(getImageDir(), type, filename)))
+  existsCache.delete(imagePath(type, filename))
 }
 
 /**

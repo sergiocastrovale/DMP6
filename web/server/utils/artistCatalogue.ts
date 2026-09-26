@@ -1,6 +1,6 @@
 import type { AlsoPartOfEntry, UnifiedRelease } from '~/types/release'
 import { prisma } from '~/server/utils/prisma'
-import { verifyImage } from '~/server/utils/images'
+import { verifyImage, primeImageExistence } from '~/server/utils/images'
 import {
   accumulateAlsoPartOf,
   buildAppearsOnCards,
@@ -52,6 +52,10 @@ export const buildArtistCatalogue = async (slug: string): Promise<UnifiedRelease
   // Deduplicated by id: one MB release credits several of this page's artists (the artist and its duplicates).
   const mbById = new Map(mbReleaseLinks.map(l => [l.release.id, l.release]))
   const connectedArtistByRelease = buildConnectedArtistByRelease(releaseLinks, connectedArtistById)
+
+  // A large catalogue is thousands of covers; check them together (off the event loop) before the card builders
+  // call verifyImage() for each.
+  await primeImageExistence('releases', localReleases.map(r => r.image))
 
   const localRows = localReleases.map(r => ({ ...r, totalPlayCount: 0 }))
   const connectedSlugs = new Set(connectedArtists.map(a => a.slug))

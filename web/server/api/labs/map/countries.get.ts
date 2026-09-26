@@ -2,7 +2,7 @@ import { prisma } from '~/server/utils/prisma'
 import { cachedResponse } from '~/server/utils/cache'
 import { COUNTRY_NAMES } from '~/server/utils/countries'
 import { fetchCountryRows } from '~/server/utils/countryCovers'
-import { verifyImage } from '~/server/utils/images'
+import { verifyImage, primeImageExistence } from '~/server/utils/images'
 import type { MapCountry } from '~/types/labs'
 
 export default defineEventHandler(async (event) => {
@@ -14,6 +14,7 @@ export default defineEventHandler(async (event) => {
   return cachedResponse<Record<string, MapCountry>>('map:countries:v2', 86400, async () => {
     const rows = await fetchCountryRows(prisma)
 
+    await primeImageExistence('releases', rows.flatMap(row => (row.images ?? []).map(cover => cover.image)))
     const result: Record<string, MapCountry> = {}
     for (const row of rows) {
       const verified = (row.images ?? []).map(cover => verifyImage(cover.image, cover.imageUrl, 'releases'))

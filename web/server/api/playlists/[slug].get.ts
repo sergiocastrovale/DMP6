@@ -1,5 +1,5 @@
 import { prisma } from '~/server/utils/prisma'
-import { verifyImage } from '~/server/utils/images'
+import { verifyImage, primeImageExistence } from '~/server/utils/images'
 import { requirePermission } from '~/server/utils/permissions'
 import { currentUserId, visiblePlaylistsWhere } from '~/server/utils/libraryOwnership'
 import { PLAYLIST_PAGE_CAP } from '~/helpers/constants'
@@ -64,6 +64,8 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Playlist not found',
     })
   }
+
+  await primeImageExistence('releases', playlist.tracks.map(pt => pt.track.localRelease?.image))
 
   return {
     id: playlist.id,

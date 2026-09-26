@@ -5,6 +5,7 @@ import { artistListWhere, rankedArtistPage, releaseCountsByArtist, type ArtistLi
 
 vi.mock('../../../server/utils/images', () => ({
   verifyImage: (image: string | null, imageUrl: string | null) => ({ image, imageUrl }),
+  primeImageExistence: async () => {},
 }))
 
 const prisma = getTestPrisma()
