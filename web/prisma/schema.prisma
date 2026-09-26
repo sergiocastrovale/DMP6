@@ -640,16 +640,6 @@ model FavoriteTrack {
 // Settings & Statistics
 // ---------------------------------------------------------------------------
 
-model SearchSource {
-  id            String   @id @default(cuid())
-  name          String   @unique
-  baseUrl       String
-  queryTemplate String
-  isDefault     Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-}
-
 model Settings {
   id                     String    @id @default("main")
   // Library
@@ -671,9 +661,6 @@ model Settings {
   flacToMp3Bitrate       Int?      @default(320) // target kbps for the FLAC->MP3 conversion (FLAC_TO_MP3_BITRATE)
   // Monitoring (all override the matching env var; null = use env/default)
   monitorEnabled         Boolean?
-  monitorIntervalMin     Int?
-  monitorCap             Int?
-  monitorGapsHours       Int?
   retryCooldownDays      Int? // days to wait before retrying a FAILED/UNAVAILABLE/INVALID release; null = env/default
   noProgressSec          Int?
   maxDownloadAttempts    Int?
@@ -784,7 +771,6 @@ model Statistics {
   lastScanStartedAt             DateTime?
   lastScanEndedAt               DateTime?
   lastSyncedArtist              String?
-  lastSyncArgs                  Json?
   lastIndexedFolder             String?
   scanLockedBy                  String?
   scanLockedAt                  DateTime?

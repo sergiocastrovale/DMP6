@@ -373,7 +373,6 @@ async fn main() {
         "Artist",
         "Genre",
         "ReleaseType",
-        "SearchSource",
         "Statistics",
         "FolderScan",
         "FixHistory",

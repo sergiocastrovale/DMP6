@@ -26,9 +26,6 @@ export type MonitorLevel = 'error' | 'warn' | 'notice'
 
 export interface ResolvedMonitorSettings {
   monitorEnabled: boolean
-  monitorIntervalMin: number
-  monitorCap: number
-  monitorGapsHours: number
   retryCooldownDays: number
   noProgressSec: number
   maxDownloadAttempts: number

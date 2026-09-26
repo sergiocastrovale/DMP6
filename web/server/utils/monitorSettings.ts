@@ -13,9 +13,6 @@ export async function resolveMonitorSettings(): Promise<ResolvedMonitorSettings>
 
   return {
     monitorEnabled: s?.monitorEnabled ?? envEnabled,
-    monitorIntervalMin: s?.monitorIntervalMin ?? envInt('MONITOR_INTERVAL_MIN', 15),
-    monitorCap: s?.monitorCap ?? envInt('MONITOR_CAP', 10),
-    monitorGapsHours: s?.monitorGapsHours ?? envInt('MONITOR_GAPS_HOURS', 24),
     retryCooldownDays: s?.retryCooldownDays ?? envInt('RETRY_COOLDOWN_DAYS', 7),
     noProgressSec: s?.noProgressSec ?? envInt('NO_PROGRESS_SEC', 300),
     maxDownloadAttempts: s?.maxDownloadAttempts ?? envInt('MAX_DOWNLOAD_ATTEMPTS', 3),

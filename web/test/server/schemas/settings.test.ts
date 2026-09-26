@@ -8,16 +8,16 @@ describe('settingsBodySchema', () => {
   })
 
   it('keeps a real 0 and clears null/blank integers', () => {
-    const out = settingsBodySchema.parse({ monitorCap: 0, retryCooldownDays: null, noProgressSec: '' })
-    expect(out.monitorCap).toBe(0)
+    const out = settingsBodySchema.parse({ maxDownloadAttempts: 0, retryCooldownDays: null, noProgressSec: '' })
+    expect(out.maxDownloadAttempts).toBe(0)
     expect(out.retryCooldownDays).toBeNull()
     expect(out.noProgressSec).toBeNull()
   })
 
   it('rejects a non-numeric integer', () => {
-    const r = settingsBodySchema.safeParse({ monitorCap: 'abc' })
+    const r = settingsBodySchema.safeParse({ maxDownloadAttempts: 'abc' })
     expect(r.success).toBe(false)
-    expect(!r.success && r.error.issues[0]?.path).toEqual(['monitorCap'])
+    expect(!r.success && r.error.issues[0]?.path).toEqual(['maxDownloadAttempts'])
   })
 
   it('treats null booleans as a clear and non-booleans as invalid', () => {
