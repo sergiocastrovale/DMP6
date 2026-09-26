@@ -67,10 +67,12 @@ export const unstarRelease = (userId: number, releaseId: string) =>
 
 const artistPick = { take: 1, select: { artist: { select: { id: true, name: true, slug: true } } } } as const
 
-// `include` for FavoriteRelease list reads: the LocalRelease a plain favorite points at, or the box a
+// `select` for FavoriteRelease list reads: the LocalRelease a plain favorite points at, or the box a
 // box favorite points at (a dissolved box has no LocalRelease - its first disc supplies cover + artist).
-export const favoriteReleaseInclude = {
-  release: { include: { artists: artistPick } },
+export const favoriteReleaseSelect = {
+  id: true,
+  createdAt: true,
+  release: { select: { id: true, title: true, year: true, image: true, imageUrl: true, artists: artistPick } },
   box: {
     select: {
       id: true,
@@ -85,7 +87,7 @@ export const favoriteReleaseInclude = {
   },
 } as const
 
-type FavoriteReleaseRow = Awaited<ReturnType<typeof prisma.favoriteRelease.findMany<{ include: typeof favoriteReleaseInclude }>>>[number]
+type FavoriteReleaseRow = Awaited<ReturnType<typeof prisma.favoriteRelease.findMany<{ select: typeof favoriteReleaseSelect }>>>[number]
 
 // One release card for a favorite, whichever kind it is. `id` is the id the artist page and player
 // address it by: the LocalRelease id, or the box's MusicBrainzRelease id (which /api/releases/[id]/tracks

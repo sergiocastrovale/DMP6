@@ -1,6 +1,6 @@
 import { prisma } from '~/server/utils/prisma'
 import { cachedResponse } from '~/server/utils/cache'
-import { verifyImage } from '~/server/utils/images'
+import { RELEASE_TILE_SELECT_NO_GENRE, toReleaseTile } from '~/server/utils/releaseTiles'
 
 export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'private, max-age=300, stale-while-revalidate=60')
@@ -35,16 +35,7 @@ export default defineEventHandler(async (event) => {
         skip,
         take: limit,
         orderBy: [{ year: 'asc' }, { title: 'asc' }],
-        include: {
-          artists: { select: { artist: { select: { id: true, name: true, slug: true } } } },
-          release: {
-            select: {
-              id: true,
-              title: true,
-              type: { select: { name: true } },
-            },
-          },
-        },
+        select: RELEASE_TILE_SELECT_NO_GENRE,
       }),
       prisma.localRelease.count({ where }),
     ])
@@ -60,14 +51,10 @@ export default defineEventHandler(async (event) => {
       .map(y => ({ year: y.year!, count: y._count }))
 
     return {
-      releases: releases.map(r => ({
-        id: r.id,
-        title: r.title || r.release?.title || 'Unknown Release',
-        releaseType: r.release?.type?.name || null,
-        year: r.year,
-        ...verifyImage(r.image, r.imageUrl, 'releases'),
-        artist: r.artists[0]?.artist ?? null,
-      })),
+      releases: releases.map((r) => {
+        const { genre: _genre, musicBrainzId: _mb, ...tile } = toReleaseTile(r)
+        return tile
+      }),
       total,
       page,
       hasMore: skip + limit < total,

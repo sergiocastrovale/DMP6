@@ -3,7 +3,9 @@ import { verifyImage } from '~/server/utils/images'
 import { parsePagination } from '~/server/utils/pagination'
 import { requirePermission } from '~/server/utils/permissions'
 import { currentUserId } from '~/server/utils/libraryOwnership'
-import { favoriteReleaseCard, favoriteReleaseInclude } from '~/server/utils/favorites'
+import { favoriteReleaseCard, favoriteReleaseSelect } from '~/server/utils/favorites'
+
+const artistFirst = { take: 1, select: { artist: { select: { id: true, name: true, slug: true } } } } as const
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'favorites.view')
@@ -24,7 +26,7 @@ export default defineEventHandler(async (event) => {
         where: { userId },
         skip,
         take: pageSize,
-        include: favoriteReleaseInclude,
+        select: favoriteReleaseSelect,
         orderBy: { createdAt: 'desc' },
       }),
       prisma.favoriteRelease.count({ where: { userId } }),
@@ -40,16 +42,25 @@ export default defineEventHandler(async (event) => {
     const [rawTracks, count] = await Promise.all([
       prisma.favoriteTrack.findMany({
         where: { userId },
-        skip: type === 'all' ? skip : skip,
+        skip,
         take: pageSize,
-        include: {
+        select: {
+          id: true,
+          createdAt: true,
           track: {
-            include: {
+            select: {
+              id: true,
+              title: true,
+              trackNumber: true,
+              duration: true,
               localRelease: {
-                include: {
-                  artists: {
-                    select: { artist: { select: { id: true, name: true, slug: true } } },
-                  },
+                select: {
+                  id: true,
+                  title: true,
+                  year: true,
+                  image: true,
+                  imageUrl: true,
+                  artists: artistFirst,
                 },
               },
             },

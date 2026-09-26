@@ -1,6 +1,6 @@
 import { prisma } from '~/server/utils/prisma'
 import { cachedResponse } from '~/server/utils/cache'
-import { verifyImage } from '~/server/utils/images'
+import { RELEASE_TILE_SELECT, toReleaseTile } from '~/server/utils/releaseTiles'
 import { currentUserId } from '~/server/utils/libraryOwnership'
 
 export default defineEventHandler(async (event) => {
@@ -27,23 +27,7 @@ export default defineEventHandler(async (event) => {
     const releaseIds = plays.map(p => p.localReleaseId)
     const releases = await prisma.localRelease.findMany({
       where: { id: { in: releaseIds } },
-      include: {
-        artists: {
-          select: { artist: { select: { id: true, name: true, slug: true } } },
-        },
-        release: {
-          select: {
-            id: true,
-            title: true,
-            type: { select: { name: true } },
-          },
-        },
-        tracks: {
-          where: { genre: { not: null } },
-          select: { genre: true },
-          take: 1,
-        },
-      },
+      select: RELEASE_TILE_SELECT,
     })
     const byId = new Map(releases.map(r => [r.id, r]))
 
@@ -51,16 +35,9 @@ export default defineEventHandler(async (event) => {
       const release = byId.get(p.localReleaseId)
       if (!release) {return null}
       return {
-        id: release.id,
-        title: release.title || release.release?.title || 'Unknown Release',
-        releaseType: release.release?.type?.name || null,
-        year: release.year,
-        ...verifyImage(release.image, release.imageUrl, 'releases'),
+        ...toReleaseTile(release),
         lastPlayedAt: p.lastPlayedAt,
         playCount: Number(p.playCount),
-        genre: release.tracks[0]?.genre || null,
-        artist: release.artists[0]?.artist ?? null,
-        musicBrainzId: release.release?.id || null,
       }
     }).filter((r): r is NonNullable<typeof r> => r !== null)
   })

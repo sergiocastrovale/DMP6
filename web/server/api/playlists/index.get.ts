@@ -18,27 +18,20 @@ export default defineEventHandler(async (event) => {
       ...visiblePlaylistsWhere(userId),
       ...(typeFilter ? { type: typeFilter } : {}),
     },
-    include: {
-      _count: {
-        select: {
-          tracks: true,
-        },
-      },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      description: true,
+      type: true,
+      createdAt: true,
+      updatedAt: true,
+      _count: { select: { tracks: true } },
+      // The cover mosaic only needs the first four tracks' release art.
       tracks: {
         take: 4,
         orderBy: { position: 'asc' },
-        include: {
-          track: {
-            include: {
-              localRelease: {
-                select: {
-                  image: true,
-                  imageUrl: true,
-                },
-              },
-            },
-          },
-        },
+        select: { track: { select: { localRelease: { select: { image: true, imageUrl: true } } } } },
       },
     },
     orderBy: { createdAt: 'desc' },

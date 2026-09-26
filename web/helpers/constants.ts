@@ -448,3 +448,7 @@ export const QUEUE_POLL_ACTIVE_MS = 2000
 export const QUEUE_POLL_IDLE_MS = 15_000
 // Settings → Library scan status while a script is running (components/settings/RealTimeStatus.vue).
 export const SCAN_STATUS_POLL_MS = 3000
+
+// Tracks returned for one playlist page (/api/playlists/[slug]). The generated GENRE/REGION playlists are capped at
+// exactly 500 by `./playlists` itself, so this matches them; a manual playlist longer than this is truncated.
+export const PLAYLIST_PAGE_CAP = 500

@@ -1,6 +1,6 @@
 import { prisma } from '~/server/utils/prisma'
 import { cachedResponse } from '~/server/utils/cache'
-import { verifyImage } from '~/server/utils/images'
+import { RELEASE_TILE_SELECT, toReleaseTile } from '~/server/utils/releaseTiles'
 import { shuffleArray } from '~/helpers/playerLogic'
 import { currentUserId } from '~/server/utils/libraryOwnership'
 
@@ -38,36 +38,11 @@ export default defineEventHandler(async (event) => {
       },
       take: 50,
       orderBy: { createdAt: 'desc' },
-      include: {
-        artists: {
-          select: { artist: { select: { id: true, name: true, slug: true } } },
-        },
-        release: {
-          select: {
-            id: true,
-            title: true,
-            type: { select: { name: true } },
-          },
-        },
-        tracks: {
-          where: { genre: { not: null } },
-          select: { genre: true },
-          take: 1,
-        },
-      },
+      select: RELEASE_TILE_SELECT,
     })
   })
 
   const shuffled = shuffleArray([...releases]).slice(0, limit)
 
-  return shuffled.map(release => ({
-    id: release.id,
-    title: release.title || release.release?.title || 'Unknown Release',
-    releaseType: release.release?.type?.name || null,
-    year: release.year,
-    ...verifyImage(release.image, release.imageUrl, 'releases'),
-    genre: release.tracks[0]?.genre || null,
-    artist: release.artists[0]?.artist ?? null,
-    musicBrainzId: release.release?.id || null,
-  }))
+  return shuffled.map(toReleaseTile)
 })

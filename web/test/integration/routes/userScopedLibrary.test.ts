@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getTestPrisma, resetDb } from '../../../test/setup/db'
 import { makeUser, makeLocalRelease, makeLocalTrack, makeMbRelease, makePlaylist } from '../../../test/factories'
 import { visiblePlaylistsWhere } from '../../../server/utils/libraryOwnership'
-import { favoriteReleaseCard, favoriteReleaseInclude } from '../../../server/utils/favorites'
+import { favoriteReleaseCard, favoriteReleaseSelect } from '../../../server/utils/favorites'
 
 // Favorites and MANUAL playlists are per-user and private (CLAUDE.md Data Model). Exercised against
 // real Postgres because the FK/cascade and composite-unique behaviour the routes rely on is DB-level,
@@ -90,7 +90,7 @@ describe('user-scoped favorites and playlists (real Postgres)', () => {
       await prisma.localReleaseArtist.create({ data: { localReleaseId: disc1.id, artistId: artist.id } })
       await prisma.favoriteRelease.create({ data: { userId: alice.id, boxReleaseId: box.id } })
 
-      const rows = await prisma.favoriteRelease.findMany({ where: { userId: alice.id }, include: favoriteReleaseInclude })
+      const rows = await prisma.favoriteRelease.findMany({ where: { userId: alice.id }, select: favoriteReleaseSelect })
       expect(rows.map(favoriteReleaseCard)).toEqual([
         expect.objectContaining({ id: box.id, title: 'Deliverance & Damnation', image: 'disc1.jpg', artist: expect.objectContaining({ slug: 'opeth' }) }),
       ])

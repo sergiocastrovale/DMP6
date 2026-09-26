@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
+import { RELEASE_TILE_SELECT_NO_GENRE, toReleaseTile } from '~/server/utils/releaseTiles'
 import { SEARCH_MIN_CHARS, SEARCH_TIER_CAP, SEARCH_TOTAL_CAP } from '~/helpers/constants'
 
 // Escapes LIKE/ILIKE metacharacters so a query containing %, _ or \ is matched literally instead
@@ -139,20 +140,13 @@ export const hydrateReleases = async (ids: string[]) => {
   if (!ids.length) {return []}
   const rows = await prisma.localRelease.findMany({
     where: { id: { in: ids } },
-    include: {
-      artists: { select: { artist: { select: { id: true, name: true, slug: true } } } },
-      release: { select: { title: true, type: { select: { name: true } } } },
-    },
+    select: RELEASE_TILE_SELECT_NO_GENRE,
   })
   const byId = new Map(rows.map(r => [r.id, r]))
-  return ids.map(id => byId.get(id)).filter((r): r is NonNullable<typeof r> => !!r).map(release => ({
-    id: release.id,
-    title: release.title || release.release?.title || 'Unknown Release',
-    releaseType: release.release?.type?.name || null,
-    year: release.year,
-    ...verifyImage(release.image, release.imageUrl, 'releases'),
-    artist: release.artists[0]?.artist ?? null,
-  }))
+  return ids.map(id => byId.get(id)).filter((r): r is NonNullable<typeof r> => !!r).map((release) => {
+    const { genre: _genre, musicBrainzId: _mb, ...tile } = toReleaseTile(release)
+    return tile
+  })
 }
 
 export const hydrateTracks = async (ids: string[]) => {

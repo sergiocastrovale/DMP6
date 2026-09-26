@@ -1,7 +1,7 @@
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
 import { currentUserId } from '~/server/utils/libraryOwnership'
-import { favoriteReleaseCard, favoriteReleaseInclude } from '~/server/utils/favorites'
+import { favoriteReleaseCard, favoriteReleaseSelect } from '~/server/utils/favorites'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'favorites.view')
@@ -14,7 +14,7 @@ export default defineEventHandler(async (event) => {
     where: { userId },
     take: limit,
     orderBy: { createdAt: 'desc' },
-    include: favoriteReleaseInclude,
+    select: favoriteReleaseSelect,
   })
 
   return favorites.map(favoriteReleaseCard).filter(card => card !== null)

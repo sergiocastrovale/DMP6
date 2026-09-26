@@ -2,6 +2,7 @@ import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
 import { requirePermission } from '~/server/utils/permissions'
 import { currentUserId, visiblePlaylistsWhere } from '~/server/utils/libraryOwnership'
+import { PLAYLIST_PAGE_CAP } from '~/helpers/constants'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'playlists.view')
@@ -19,20 +20,35 @@ export default defineEventHandler(async (event) => {
   const playlist = await prisma.playlist.findFirst({
     where: { slug, ...visiblePlaylistsWhere(userId) },
     orderBy: { userId: { sort: 'desc', nulls: 'last' } },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      description: true,
+      type: true,
+      createdAt: true,
+      updatedAt: true,
       tracks: {
-        take: 500,
+        take: PLAYLIST_PAGE_CAP,
         orderBy: { position: 'asc' },
-        include: {
+        select: {
+          id: true,
+          position: true,
+          createdAt: true,
           track: {
-            include: {
+            select: {
+              id: true,
+              title: true,
+              trackNumber: true,
+              duration: true,
               localRelease: {
-                include: {
-                  artists: {
-                    select: {
-                      artist: { select: { id: true, name: true, slug: true } },
-                    },
-                  },
+                select: {
+                  id: true,
+                  title: true,
+                  year: true,
+                  image: true,
+                  imageUrl: true,
+                  artists: { take: 1, select: { artist: { select: { id: true, name: true, slug: true } } } },
                 },
               },
             },

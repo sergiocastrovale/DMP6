@@ -36,4 +36,19 @@ export default withNuxt(
       'vue/multi-word-component-names': 'warn',
     },
   },
+  {
+    // Prisma `include` selects EVERY scalar of the model and of each included relation. On this schema that means
+    // LocalReleaseTrack.metadata (~3.3 KB of JSON per track), LocalRelease.folderPath/statusReason/groupKey...
+    // for rows a list only shows a title and a cover from. Use an explicit `select` (see
+    // server/utils/releaseTiles.ts). Warn, not error: a handful of small-table uses remain and are converted as
+    // they are touched; where `include` is genuinely right, disable the line with a reason.
+    files: ['server/**/*.ts'],
+    rules: {
+      'no-restricted-syntax': ['warn', {
+        selector: "Property[key.name='include']",
+        message: 'Use an explicit `select` instead of `include` - include pulls every column (incl. large JSON) of every included row.',
+      }],
+    },
+  },
 )
+
