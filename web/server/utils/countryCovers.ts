@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client'
+import type { Db } from '~/server/utils/statementTimeout'
 import type { CountryRow } from '~/types/labs'
 
 export const MAP_COVERS_PER_COUNTRY = 150
@@ -10,7 +10,7 @@ export const MAP_COVERS_PER_COUNTRY = 150
 //
 // An "artist" here is one that owns at least one release and isn't a connected duplicate - the same rule as
 // /browse and /api/labs/map/artists, so the number on the map matches the list it opens.
-export const fetchCountryRows = (prisma: PrismaClient): Promise<CountryRow[]> =>
+export const fetchCountryRows = (prisma: Db): Promise<CountryRow[]> =>
   prisma.$queryRaw<CountryRow[]>`
     WITH candidates AS (
       SELECT

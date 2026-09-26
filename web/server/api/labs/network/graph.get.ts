@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client'
-import { prisma } from '~/server/utils/prisma'
+import { db, withStatementTimeout } from '~/server/utils/statementTimeout'
+import { LABS_STATEMENT_TIMEOUT_MS } from '~/helpers/constants'
 import { cachedResponse } from '~/server/utils/cache'
 import type { NetworkGraph, NetworkNode, NetworkLink, FullPairRow, FocusPairRow, NetworkTrackRow } from '~/types/labs'
 
@@ -13,15 +14,15 @@ export default defineEventHandler(async (event): Promise<NetworkGraph> => {
   if (artistId) {
     // artistId is caller-supplied text that would become part of a Redis key: only well-formed ids are cached.
     if (!/^[a-z0-9]{8,40}$/.test(artistId)) {
-      return getFocusedGraph(artistId)
+      return withStatementTimeout(LABS_STATEMENT_TIMEOUT_MS, () => getFocusedGraph(artistId))
     }
-    return cachedResponse(`labs:network:focus:${artistId}`, 600, () => getFocusedGraph(artistId), { shared: true })
+    return cachedResponse(`labs:network:focus:${artistId}`, 600, () => withStatementTimeout(LABS_STATEMENT_TIMEOUT_MS, () => getFocusedGraph(artistId)), { shared: true })
   }
-  return cachedResponse(`labs:network:full:${minShared}`, 86400, () => getFullGraph(minShared), { shared: true })
+  return cachedResponse(`labs:network:full:${minShared}`, 86400, () => withStatementTimeout(LABS_STATEMENT_TIMEOUT_MS, () => getFullGraph(minShared)), { shared: true })
 })
 
 const getFullGraph = async (minShared: number): Promise<NetworkGraph> => {
-  const pairs = await prisma.$queryRaw<FullPairRow[]>`
+  const pairs = await db().$queryRaw<FullPairRow[]>`
     SELECT
       lra."artistId" AS main_artist_id,
       tra."artistId" AS related_artist_id,
@@ -57,7 +58,7 @@ const getFullGraph = async (minShared: number): Promise<NetworkGraph> => {
     return { nodes: [], links: [] }
   }
 
-  const artists = await prisma.artist.findMany({
+  const artists = await db().artist.findMany({
     where: { id: { in: [...nodeIds] } },
     select: {
       id: true,
@@ -80,7 +81,7 @@ const getFullGraph = async (minShared: number): Promise<NetworkGraph> => {
 }
 
 const getFocusedGraph = async (artistId: string): Promise<NetworkGraph> => {
-  const pairs = await prisma.$queryRaw<FocusPairRow[]>`
+  const pairs = await db().$queryRaw<FocusPairRow[]>`
     SELECT
       tra."artistId" AS other_artist_id,
       COUNT(DISTINCT tra."trackId") AS shared_tracks
@@ -96,7 +97,7 @@ const getFocusedGraph = async (artistId: string): Promise<NetworkGraph> => {
   `
 
   if (pairs.length === 0) {
-    const focusArtist = await prisma.artist.findUnique({
+    const focusArtist = await db().artist.findUnique({
       where: { id: artistId },
       select: { id: true, name: true, slug: true, totalTracks: true },
     })
@@ -117,7 +118,7 @@ const getFocusedGraph = async (artistId: string): Promise<NetworkGraph> => {
 
   const otherIds = pairs.map((p) => p.other_artist_id)
 
-  const trackRows = await prisma.$queryRaw<NetworkTrackRow[]>`
+  const trackRows = await db().$queryRaw<NetworkTrackRow[]>`
     SELECT
       tra."artistId" AS artist_id,
       tra."trackId" AS track_id,
@@ -139,7 +140,7 @@ const getFocusedGraph = async (artistId: string): Promise<NetworkGraph> => {
   }
 
   const allIds = [artistId, ...otherIds]
-  const artists = await prisma.artist.findMany({
+  const artists = await db().artist.findMany({
     where: { id: { in: allIds } },
     select: {
       id: true,

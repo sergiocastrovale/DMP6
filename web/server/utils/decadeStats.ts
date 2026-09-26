@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client'
+import type { Db } from '~/server/utils/statementTimeout'
 import type { DecadeRow, DecadeStats, GenreRow } from '~/types/labs'
 
 // Labs → Decade DNA. Split in two on purpose:
@@ -10,7 +10,7 @@ import type { DecadeRow, DecadeStats, GenreRow } from '~/types/labs'
 // owners counted each play twice. The play total is now one row per play.
 export type DecadeAggregate = Omit<DecadeStats, 'totalPlayCount'>
 
-export const decadeAggregates = async (prisma: PrismaClient): Promise<DecadeAggregate[]> => {
+export const decadeAggregates = async (prisma: Db): Promise<DecadeAggregate[]> => {
   const [rows, genreRows] = await Promise.all([
     prisma.$queryRaw<Omit<DecadeRow, 'total_play_count'>[]>`
       SELECT
@@ -73,7 +73,7 @@ export const decadeAggregates = async (prisma: PrismaClient): Promise<DecadeAggr
 }
 
 // Plays per decade for one user, keyed by the decade's label ("1990s").
-export const decadePlayTotals = async (prisma: PrismaClient, userId: number): Promise<Map<string, number>> => {
+export const decadePlayTotals = async (prisma: Db, userId: number): Promise<Map<string, number>> => {
   const rows = await prisma.$queryRaw<{ decade: number, plays: bigint }[]>`
     SELECT (FLOOR(lr.year / 10) * 10)::int AS decade, SUM(p."playCount")::bigint AS plays
     FROM "LocalReleaseTrackPlay" p

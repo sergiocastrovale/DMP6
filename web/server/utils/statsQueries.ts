@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client'
-import { prisma } from '~/server/utils/prisma'
+import { db } from '~/server/utils/statementTimeout'
 import { escapeLike } from '~/server/utils/searchRank'
 import { releaseTypeBucketSql } from '~/server/utils/releaseTypeBuckets'
 import { releaseTypeBuckets, playPeriods } from '~/helpers/constants'
@@ -108,14 +108,14 @@ async function queryArtists(type: string, search: string, skip: number, pageSize
   if (type === 'artists-with-art') { where.OR = [{ image: { not: null } }, { imageUrl: { not: null } }] }
 
   const [items, total] = await Promise.all([
-    prisma.artist.findMany({
+    db().artist.findMany({
       where,
       select: { id: true, name: true, slug: true },
       orderBy: { name: order },
       skip,
       take: pageSize,
     }),
-    prisma.artist.count({ where }),
+    db().artist.count({ where }),
   ])
 
   return {
@@ -135,7 +135,7 @@ async function queryReleases(type: string, search: string, skip: number, pageSiz
   const orderBy = sort === 'year' ? { year: order } : { title: order }
 
   const [items, total] = await Promise.all([
-    prisma.localRelease.findMany({
+    db().localRelease.findMany({
       where,
       select: {
         id: true,
@@ -150,7 +150,7 @@ async function queryReleases(type: string, search: string, skip: number, pageSiz
       skip,
       take: pageSize,
     }),
-    prisma.localRelease.count({ where }),
+    db().localRelease.count({ where }),
   ])
 
   return {
@@ -175,14 +175,14 @@ async function queryTracks(search: string, skip: number, pageSize: number, page:
   const orderBy = sort === 'artist' ? { artist: order } : { title: order }
 
   const [items, total] = await Promise.all([
-    prisma.localReleaseTrack.findMany({
+    db().localReleaseTrack.findMany({
       where,
       select: { id: true, title: true, artist: true },
       orderBy,
       skip,
       take: pageSize,
     }),
-    prisma.localReleaseTrack.count({ where }),
+    db().localReleaseTrack.count({ where }),
   ])
 
   return {
@@ -205,7 +205,7 @@ async function queryGenres(search: string, skip: number, pageSize: number, page:
   const orderBy = sort === 'artistCount' ? { artists: { _count: order } } : { name: order }
 
   const [items, total] = await Promise.all([
-    prisma.genre.findMany({
+    db().genre.findMany({
       where,
       select: {
         id: true,
@@ -216,7 +216,7 @@ async function queryGenres(search: string, skip: number, pageSize: number, page:
       skip,
       take: pageSize,
     }),
-    prisma.genre.count({ where }),
+    db().genre.count({ where }),
   ])
 
   return {
@@ -243,14 +243,14 @@ async function queryPlays(userId: number, search: string, skip: number, pageSize
   const orderBy = sortMap[sort] ?? { playCount: order }
 
   const [items, total] = await Promise.all([
-    prisma.localReleaseTrackPlay.findMany({
+    db().localReleaseTrackPlay.findMany({
       where,
       select: { playCount: true, track: { select: { id: true, title: true, artist: true } } },
       orderBy,
       skip,
       take: pageSize,
     }),
-    prisma.localReleaseTrackPlay.count({ where }),
+    db().localReleaseTrackPlay.count({ where }),
   ])
 
   return {
@@ -281,14 +281,14 @@ async function queryRecentPlays(userId: number, period: PlayPeriod, timeZone: st
   const orderBy = sortMap[sort] ?? { startedAt: 'desc' }
 
   const [items, total] = await Promise.all([
-    prisma.playEvent.findMany({
+    db().playEvent.findMany({
       where,
       select: { id: true, startedAt: true, track: { select: { id: true, title: true, artist: true } } },
       orderBy,
       skip,
       take: pageSize,
     }),
-    prisma.playEvent.count({ where }),
+    db().playEvent.count({ where }),
   ])
 
   return {
@@ -313,7 +313,7 @@ async function querySize(search: string, skip: number, pageSize: number, page: n
   // every one of the 1.9M LocalReleaseTrack rows twice (once to count, once for the page). Connected duplicate
   // artists roll up onto their primary like every other artist stat; DISTINCT stops a release owned by both a
   // primary and its duplicate from counting twice.
-  const rows = await prisma.$queryRaw<{ id: string, name: string, slug: string, totalSize: bigint, total: bigint }[]>`
+  const rows = await db().$queryRaw<{ id: string, name: string, slug: string, totalSize: bigint, total: bigint }[]>`
     SELECT a.id, a."name", a."slug", SUM(x."totalFileSize") AS "totalSize", COUNT(*) OVER() AS total
     FROM (
       SELECT DISTINCT COALESCE(src."primaryArtistId", src.id) AS artist_id, lr.id AS release_id, lr."totalFileSize"
@@ -329,7 +329,7 @@ async function querySize(search: string, skip: number, pageSize: number, page: n
     OFFSET ${skip} LIMIT ${pageSize}
   `
   const { items, total } = await paged(rows, skip, async () => {
-    const [r] = await prisma.$queryRaw<{ n: bigint }[]>`
+    const [r] = await db().$queryRaw<{ n: bigint }[]>`
       SELECT COUNT(DISTINCT COALESCE(src."primaryArtistId", src.id)) AS n
       FROM "LocalReleaseArtist" lra
       JOIN "Artist" src ON src.id = lra."artistId"
@@ -356,7 +356,7 @@ async function queryReleasesByStatus(statuses: string[], search: string, skip: n
   const orderBy = sortMap[sort] ?? { title: order }
 
   const [items, total] = await Promise.all([
-    prisma.localRelease.findMany({
+    db().localRelease.findMany({
       where,
       select: {
         id: true,
@@ -369,7 +369,7 @@ async function queryReleasesByStatus(statuses: string[], search: string, skip: n
       skip,
       take: pageSize,
     }),
-    prisma.localRelease.count({ where }),
+    db().localRelease.count({ where }),
   ])
 
   return {
@@ -396,14 +396,14 @@ async function queryLowBitrate(search: string, skip: number, pageSize: number, p
   const orderBy = sortMap[sort] ?? { bitrate: order }
 
   const [items, total] = await Promise.all([
-    prisma.localReleaseTrack.findMany({
+    db().localReleaseTrack.findMany({
       where,
       select: { id: true, title: true, artist: true, bitrate: true },
       orderBy,
       skip,
       take: pageSize,
     }),
-    prisma.localReleaseTrack.count({ where }),
+    db().localReleaseTrack.count({ where }),
   ])
 
   return {
@@ -426,7 +426,7 @@ async function querySingleRelease(search: string, skip: number, pageSize: number
 
   // Artists (primaries only) that own exactly one release. Size is the denormalized LocalRelease.totalFileSize;
   // the track count is a correlated index lookup per candidate rather than a join over every track.
-  const rows = await prisma.$queryRaw<{ id: string, name: string, slug: string, releaseTitle: string, trackCount: bigint, totalSize: bigint, total: bigint }[]>`
+  const rows = await db().$queryRaw<{ id: string, name: string, slug: string, releaseTitle: string, trackCount: bigint, totalSize: bigint, total: bigint }[]>`
     SELECT x.*, COUNT(*) OVER() AS total FROM (
       SELECT a.id, a."name", a."slug", lr."title" AS "releaseTitle", lr."totalFileSize" AS "totalSize",
              (SELECT COUNT(*) FROM "LocalReleaseTrack" t WHERE t."localReleaseId" = lr.id) AS "trackCount"
@@ -444,7 +444,7 @@ async function querySingleRelease(search: string, skip: number, pageSize: number
     OFFSET ${skip} LIMIT ${pageSize}
   `
   const { items, total } = await paged(rows, skip, async () => {
-    const [r] = await prisma.$queryRaw<{ n: bigint }[]>`
+    const [r] = await db().$queryRaw<{ n: bigint }[]>`
       SELECT COUNT(*) AS n FROM (
         SELECT lra."artistId" FROM "LocalReleaseArtist" lra GROUP BY lra."artistId" HAVING COUNT(DISTINCT lra."localReleaseId") = 1
       ) s
@@ -477,7 +477,7 @@ async function queryShortest(search: string, skip: number, pageSize: number, pag
   const orderBy = sortMap[sort] ?? { totalDuration: order }
 
   const [items, total] = await Promise.all([
-    prisma.localRelease.findMany({
+    db().localRelease.findMany({
       where,
       select: {
         id: true,
@@ -490,7 +490,7 @@ async function queryShortest(search: string, skip: number, pageSize: number, pag
       skip,
       take: pageSize,
     }),
-    prisma.localRelease.count({ where }),
+    db().localRelease.count({ where }),
   ])
 
   return {
@@ -516,7 +516,7 @@ async function queryMissingArt(search: string, skip: number, pageSize: number, p
   const orderBy = sort === 'year' ? { year: order } : { title: order }
 
   const [items, total] = await Promise.all([
-    prisma.localRelease.findMany({
+    db().localRelease.findMany({
       where,
       select: {
         id: true,
@@ -528,7 +528,7 @@ async function queryMissingArt(search: string, skip: number, pageSize: number, p
       skip,
       take: pageSize,
     }),
-    prisma.localRelease.count({ where }),
+    db().localRelease.count({ where }),
   ])
 
   return {
@@ -553,7 +553,7 @@ async function queryReleasesSynced(search: string, skip: number, pageSize: numbe
   const orderBy = sort === 'year' ? { year: order } : { title: order }
 
   const [items, total] = await Promise.all([
-    prisma.musicBrainzRelease.findMany({
+    db().musicBrainzRelease.findMany({
       where,
       select: {
         id: true,
@@ -565,7 +565,7 @@ async function queryReleasesSynced(search: string, skip: number, pageSize: numbe
       skip,
       take: pageSize,
     }),
-    prisma.musicBrainzRelease.count({ where }),
+    db().musicBrainzRelease.count({ where }),
   ])
 
   return {
@@ -603,7 +603,7 @@ async function queryReleaseTypesPivot(search: string, skip: number, pageSize: nu
 
   // One pass: the CTE is evaluated once and the total rides along as a window count over the grouped rows (it
   // used to be computed twice, once for the count and again for the page).
-  const rows = await prisma.$queryRaw<Record<string, any>[]>`
+  const rows = await db().$queryRaw<Record<string, any>[]>`
     WITH release_buckets AS (
       SELECT lra."artistId", ${Prisma.raw(releaseTypeBucketSql)} AS bucket
       FROM "LocalRelease" lr
@@ -624,7 +624,7 @@ async function queryReleaseTypesPivot(search: string, skip: number, pageSize: nu
     OFFSET ${skip} LIMIT ${pageSize}
   `
   const { items, total } = await paged(rows as (Record<string, any> & { total: bigint })[], skip, async () => {
-    const [r] = await prisma.$queryRaw<{ n: bigint }[]>`
+    const [r] = await db().$queryRaw<{ n: bigint }[]>`
       SELECT COUNT(DISTINCT a2.id) AS n
       FROM "LocalReleaseArtist" lra
       JOIN "Artist" a ON a.id = lra."artistId"
@@ -652,7 +652,7 @@ async function queryReleaseTypesPivot(search: string, skip: number, pageSize: nu
 // Matches both the given artist and any artist rolled onto it via primaryArtistId (a TypesPage.vue
 // row is already the *primary* artist, so its duplicates' own releases belong on this list too).
 async function queryReleaseTypeDetail(bucket: string, artistSlug: string, search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
-  const artist = await prisma.artist.findUnique({ where: { slug: artistSlug }, select: { id: true } })
+  const artist = await db().artist.findUnique({ where: { slug: artistSlug }, select: { id: true } })
   if (!artist) {
     throw createError({ statusCode: 404, statusMessage: 'Artist not found' })
   }
@@ -668,8 +668,8 @@ async function queryReleaseTypeDetail(bucket: string, artistSlug: string, search
     WHERE (${Prisma.raw(releaseTypeBucketSql)}) = ${bucket} AND (a.id = ${artist.id} OR a."primaryArtistId" = ${artist.id}) ${nameContains(Prisma.sql`lr."title"`, search)}`
 
   const [countResult, rows] = await Promise.all([
-    prisma.$queryRaw<[{ count: bigint }]>`SELECT COUNT(DISTINCT lr.id)::bigint AS count ${scope}`,
-    prisma.$queryRaw<{ id: string, title: string, year: number | null, updatedAt: Date | string | null }[]>`
+    db().$queryRaw<[{ count: bigint }]>`SELECT COUNT(DISTINCT lr.id)::bigint AS count ${scope}`,
+    db().$queryRaw<{ id: string, title: string, year: number | null, updatedAt: Date | string | null }[]>`
       SELECT DISTINCT lr.id, lr."title", lr."year", lr."updatedAt" ${scope}
       ORDER BY ${orderColumn} ${dir}
       OFFSET ${skip} LIMIT ${pageSize}`,

@@ -1,8 +1,8 @@
 import { Prisma } from '@prisma/client'
-import { prisma } from '~/server/utils/prisma'
+import { db, withStatementTimeout } from '~/server/utils/statementTimeout'
 import { verifyImage } from '~/server/utils/images'
 import { RELEASE_TILE_SELECT_NO_GENRE, toReleaseTile } from '~/server/utils/releaseTiles'
-import { SEARCH_MIN_CHARS, SEARCH_TIER_CAP, SEARCH_TOTAL_CAP } from '~/helpers/constants'
+import { SEARCH_MIN_CHARS, SEARCH_STATEMENT_TIMEOUT_MS, SEARCH_TIER_CAP, SEARCH_TOTAL_CAP } from '~/helpers/constants'
 
 // Escapes LIKE/ILIKE metacharacters so a query containing %, _ or \ is matched literally instead
 // of being treated as a wildcard.
@@ -81,8 +81,10 @@ export const rankedIds = async (kind: SearchKind, rawQuery: string, skip: number
   }
   const tierCap = Math.max(SEARCH_TIER_CAP, skip + take)
 
+  // Each query is bounded on its own connection so the two still run side by side.
+  const bounded = <T>(fn: () => Promise<T>) => withStatementTimeout(SEARCH_STATEMENT_TIMEOUT_MS, fn)
   const [rows, counted] = await Promise.all([
-    prisma.$queryRaw<{ id: string }[]>`
+    bounded(() => db().$queryRaw<{ id: string }[]>`
       SELECT id FROM (
         SELECT DISTINCT ON (id) id, label, k1, tier FROM (
           (SELECT id, label, k1, 0 AS tier FROM (${matchRows(kind, 0, q)}) t0 LIMIT ${tierCap})
@@ -96,9 +98,9 @@ export const rankedIds = async (kind: SearchKind, rawQuery: string, skip: number
         ORDER BY id, tier
       ) d
       ORDER BY tier, k1 DESC, label, id
-      OFFSET ${skip} LIMIT ${take}`,
-    prisma.$queryRaw<{ n: number }[]>`
-      SELECT count(*)::int AS n FROM (SELECT 1 FROM (${matchRows(kind, 3, q)}) m LIMIT ${SEARCH_TOTAL_CAP + 1}) s`,
+      OFFSET ${skip} LIMIT ${take}`),
+    bounded(() => db().$queryRaw<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM (SELECT 1 FROM (${matchRows(kind, 3, q)}) m LIMIT ${SEARCH_TOTAL_CAP + 1}) s`),
   ])
 
   const n = counted[0]?.n ?? 0
@@ -113,7 +115,7 @@ export const rankedTrackIds = (q: string, skip: number, take: number): Promise<R
 // never drift on fields/image handling.
 export const hydrateArtists = async (ids: string[]) => {
   if (!ids.length) {return []}
-  const rows = await prisma.artist.findMany({
+  const rows = await db().artist.findMany({
     where: { id: { in: ids } },
     select: {
       id: true,
@@ -138,7 +140,7 @@ export const hydrateArtists = async (ids: string[]) => {
 
 export const hydrateReleases = async (ids: string[]) => {
   if (!ids.length) {return []}
-  const rows = await prisma.localRelease.findMany({
+  const rows = await db().localRelease.findMany({
     where: { id: { in: ids } },
     select: RELEASE_TILE_SELECT_NO_GENRE,
   })
@@ -154,7 +156,7 @@ export const hydrateTracks = async (ids: string[]) => {
   // Explicit `select` down every level - a plain `include` defaults to every scalar column
   // (timestamps, tag metadata, file paths...) on both LocalReleaseTrack and the nested
   // LocalRelease, none of which the dropdown/results row needs.
-  const rows = await prisma.localReleaseTrack.findMany({
+  const rows = await db().localReleaseTrack.findMany({
     where: { id: { in: ids } },
     select: {
       id: true,

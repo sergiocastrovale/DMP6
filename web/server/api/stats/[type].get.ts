@@ -4,6 +4,8 @@ import { parsePagination } from '~/server/utils/pagination'
 import { resolveTimeZone } from '~/server/utils/timezone'
 import { currentUserId } from '~/server/utils/libraryOwnership'
 import { runStatQuery, VALID_TYPES } from '~/server/utils/statsQueries'
+import { withStatementTimeout } from '~/server/utils/statementTimeout'
+import { STATS_STATEMENT_TIMEOUT_MS } from '~/helpers/constants'
 
 // Stat pages are pure reads of library aggregates (some over 1.9M tracks) that only change when a scan runs, so
 // each distinct (type, filters, page, user) is cached for 5 minutes, library-versioned. `plays` and
@@ -28,6 +30,6 @@ export default defineEventHandler(async (event) => {
   const keyParts = JSON.stringify([type, query.bucket ?? '', query.artist ?? '', query.period ?? '', search, sort, order, page, pageSize, userId, tz])
   const cacheKey = `stats:type:${createHash('sha1').update(keyParts).digest('hex')}`
 
-  return cachedResponse(cacheKey, 300, () => runStatQuery(type, query, { userId, search, skip, pageSize, page, sort, order }), { shared: true })
+  return cachedResponse(cacheKey, 300, () => withStatementTimeout(STATS_STATEMENT_TIMEOUT_MS, () => runStatQuery(type, query, { userId, search, skip, pageSize, page, sort, order })), { shared: true })
 })
 

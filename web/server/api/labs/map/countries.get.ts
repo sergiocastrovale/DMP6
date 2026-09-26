@@ -1,8 +1,9 @@
-import { prisma } from '~/server/utils/prisma'
 import { cachedResponse } from '~/server/utils/cache'
 import { COUNTRY_NAMES } from '~/server/utils/countries'
 import { fetchCountryRows } from '~/server/utils/countryCovers'
 import { verifyImage, primeImageExistence } from '~/server/utils/images'
+import { withStatementTimeout } from '~/server/utils/statementTimeout'
+import { LABS_STATEMENT_TIMEOUT_MS } from '~/helpers/constants'
 import type { MapCountry } from '~/types/labs'
 
 export default defineEventHandler(async (event) => {
@@ -12,7 +13,7 @@ export default defineEventHandler(async (event) => {
 
   // v2: the payload's counts and image pairing changed shape-compatibly, so the old 24h entry must not be served.
   return cachedResponse<Record<string, MapCountry>>('map:countries:v2', 86400, async () => {
-    const rows = await fetchCountryRows(prisma)
+    const rows = await withStatementTimeout(LABS_STATEMENT_TIMEOUT_MS, tx => fetchCountryRows(tx))
 
     await primeImageExistence('releases', rows.flatMap(row => (row.images ?? []).map(cover => cover.image)))
     const result: Record<string, MapCountry> = {}

@@ -461,3 +461,11 @@ export const MAX_CONSECUTIVE_PLAYBACK_ERRORS = 3
 
 // Guest artists listed on an artist page ("appears with"): the most frequent collaborators, not every credit.
 export const RELATED_ARTISTS_LIMIT = 50
+
+// Server-side statement timeouts (server/utils/statementTimeout.ts): a runaway query is cancelled by Postgres and
+// answered with a 503 instead of holding a connection and piling up behind itself.
+export const SEARCH_STATEMENT_TIMEOUT_MS = 5_000
+export const STATS_STATEMENT_TIMEOUT_MS = 20_000
+export const LABS_STATEMENT_TIMEOUT_MS = 30_000
+// Queries slower than this are logged (server/utils/slowQuery.ts).
+export const SLOW_QUERY_MS = 1_000
