@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { describe, expect, it } from 'vitest'
-import { clearLoginFailures, isLoginLocked, registerLoginFailure } from '../../../server/utils/loginThrottle'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { _resetThrottleForTest, clearLoginFailures, isLoginLocked, MAX_THROTTLE_ENTRIES, registerLoginFailure, throttleSize } from '../../../server/utils/loginThrottle'
 
 describe('loginThrottle', () => {
   it('is not locked before any failures', () => {
@@ -34,5 +34,26 @@ describe('loginThrottle', () => {
     for (let i = 0; i < 6; i++) {registerLoginFailure(a)}
     expect(isLoginLocked(a)).toBe(true)
     expect(isLoginLocked(b)).toBe(false)
+  })
+})
+
+describe('loginThrottle bounds', () => {
+  beforeEach(() => _resetThrottleForTest())
+
+  it('forgets keys with no recent failure', () => {
+    const now = 1_000_000
+    registerLoginFailure('old', now)
+    // Push the map past the prune threshold with fresh keys well after the idle window.
+    const later = now + 20 * 60_000
+    for (let i = 0; i < 5100; i++) {registerLoginFailure(`k${i}`, later)}
+    // 'old' failed once, 20 minutes before - expired by the prune that ran while adding the others.
+    expect(isLoginLocked('old', later)).toBe(false)
+    expect(throttleSize()).toBe(5100)
+  })
+
+  it('never tracks more than the hard ceiling, evicting the oldest keys', () => {
+    const now = 5_000_000
+    for (let i = 0; i < MAX_THROTTLE_ENTRIES + 500; i++) {registerLoginFailure(`spray-${i}`, now)}
+    expect(throttleSize()).toBeLessThanOrEqual(MAX_THROTTLE_ENTRIES)
   })
 })

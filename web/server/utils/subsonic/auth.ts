@@ -1,14 +1,12 @@
 import type { H3Event } from 'h3'
 import { resolveApiKey } from '~/server/utils/apiKeys'
+import { clientIp } from '~/server/utils/clientIp'
 import { isLoginLocked, registerLoginFailure, clearLoginFailures } from '~/server/utils/loginThrottle'
 import { SubsonicApiError, SubsonicErrorCode } from './errors'
 import type { SubsonicParams } from './params'
 import type { SessionUser } from '~/types/auth'
 
-const throttleKeyFor = (event: H3Event): string => {
-  const ip = getRequestHeader(event, 'x-forwarded-for') || event.node.req.socket.remoteAddress || 'unknown'
-  return `subsonic:${ip}`
-}
+const throttleKeyFor = (event: H3Event): string => `subsonic:${clientIp(event)}`
 
 // Every /rest/* request carries credentials (apiKey), unlike the cookie-session web app where auth
 // happens once at login - so this reuses the same in-memory throttle as /api/auth/login rather than

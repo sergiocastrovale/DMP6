@@ -28,7 +28,7 @@ export interface PermissionsMatrixResponse {
   allPermissions: string[]
 }
 
-export type LoginThrottleEntry = { failures: number, lockedUntil: number }
+export type LoginThrottleEntry = { failures: number, lockedUntil: number, lastFailureAt: number }
 
 // Settings → Users "connected now" panel (server/api/users/presence.get.ts,
 // components/settings/UsersLive.vue). One entry per online user, one session per tab/device/Subsonic

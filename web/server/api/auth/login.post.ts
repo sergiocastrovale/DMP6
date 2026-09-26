@@ -2,6 +2,7 @@ import { prisma } from '~/server/utils/prisma'
 import { createSession } from '~/server/utils/auth'
 import { SESSION_MAX_AGE_SECONDS } from '~/helpers/constants'
 import { DUMMY_PASSWORD_HASH, verifyPassword } from '~/server/utils/password'
+import { clientIp } from '~/server/utils/clientIp'
 import { clearLoginFailures, isLoginLocked, registerLoginFailure } from '~/server/utils/loginThrottle'
 
 export default defineEventHandler(async (event) => {
@@ -15,7 +16,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: 'Missing credentials' })
   }
 
-  const throttleKey = `${username}:${getRequestIP(event, { xForwardedFor: true }) ?? 'unknown'}`
+  const throttleKey = `${username}:${clientIp(event)}`
   if (isLoginLocked(throttleKey)) {
     throw createError({ statusCode: 429, message: 'Too many attempts — try again shortly' })
   }
