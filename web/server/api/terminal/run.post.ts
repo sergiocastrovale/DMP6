@@ -1,11 +1,10 @@
-import { spawn, execSync } from 'child_process'
+import { spawn } from 'child_process'
 import fs from 'fs'
 import { requirePermission, requireRole } from '~/server/utils/permissions'
 import {
   buildCommandLine,
   buildScript,
   hasDestructiveFlag,
-  hasUnfinishedRun,
   isAllowedCommand,
   isValidSessionName,
   parseExitLine,
@@ -14,7 +13,8 @@ import {
   stripAnsi,
   withWebFlag,
 } from '~/server/utils/terminalCommand'
-import { tmuxAvailable, tmuxSessionAlive } from '~/server/utils/tmuxSessions'
+import { hasUnfinishedLog, killTmuxSession, startTmuxSession, tmuxAvailable, tmuxSessionAlive } from '~/server/utils/tmuxSessions'
+import { terminalLogPath, terminalScriptPath } from '~/server/utils/terminalPaths'
 import { terminalRunMetaPath } from '~/server/utils/terminalAccess'
 
 export default defineEventHandler(async (event) => {
@@ -80,15 +80,15 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  if (!tmuxAvailable()) {
+  if (!(await tmuxAvailable())) {
     send('Error: tmux is required but not installed.')
     res.write(`event: done\ndata: 1\n\n`)
     res.end()
     return
   }
 
-  const logFile = `/tmp/dmp-${session}.log`
-  const scriptFile = `/tmp/dmp-${session}.sh`
+  const logFile = terminalLogPath(session)
+  const scriptFile = terminalScriptPath(session)
 
   // A same-named session still mid-run (no DMP_EXIT sentinel yet) means another tab/user is watching
   // it - don't silently tmux-kill it out from under them (audit #84). Check BEFORE the log gets
@@ -96,8 +96,7 @@ export default defineEventHandler(async (event) => {
   // The tmux check is what keeps this from wedging: a run killed without writing its sentinel (an
   // old-format script, an OOM kill, a `tmux kill-server`) left a log that blocked the session name
   // permanently, with no UI route back other than deleting the file by hand.
-  const prevLog = fs.existsSync(logFile) ? fs.readFileSync(logFile, 'utf8') : null
-  if (hasUnfinishedRun(prevLog) && tmuxSessionAlive(session)) {
+  if (await hasUnfinishedLog(session) && await tmuxSessionAlive(session)) {
     throw createError({
       statusCode: 409,
       message: `Session "${session}" is already running - stop it first or reconnect instead.`,
@@ -112,8 +111,8 @@ export default defineEventHandler(async (event) => {
   fs.writeFileSync(terminalRunMetaPath(session), JSON.stringify({ command, args: body.args ?? [] }))
 
   try {
-    execSync(`tmux kill-session -t ${session} 2>/dev/null || true`)
-    execSync(`tmux new-session -d -s ${session} "${scriptFile}"`)
+    await killTmuxSession(session)
+    await startTmuxSession(session, scriptFile)
   }
   catch (e: any) {
     send(`Failed to start tmux session: ${e.message}`)

@@ -36,6 +36,7 @@ export const gateForTerminalAction = (action: TerminalAction, run: TerminalRunMe
 
 export const terminalRunMetaPath = (session: string): string => `/tmp/dmp-${session}.json`
 
+
 export const parseTerminalRunMeta = (raw: string | null): TerminalRunMeta | null => {
   if (!raw) {
     return null

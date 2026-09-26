@@ -18,8 +18,8 @@ export default defineEventHandler(async (event) => {
   // Clearing the DB row alone leaves the tmux session(s) that were actually blocking things alive -
   // the very next /api/terminal/run with the same session name 409s right back, defeating the whole
   // point of Force Unlock. Kill every live reconnectable session, not just a guessed single name.
-  for (const s of findReconnectableSessions()) {
-    killTmuxSession(s.session)
+  for (const s of await findReconnectableSessions()) {
+    await killTmuxSession(s.session)
   }
 
   return { ok: true }

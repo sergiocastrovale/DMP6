@@ -28,8 +28,8 @@ export default defineEventHandler(async (event) => {
 
   // Same reasoning as terminal/unlock.post.ts: clearing the DB row alone leaves the tmux session
   // itself alive, so the next run with the same session name 409s right back.
-  for (const s of findReconnectableSessions()) {
-    killTmuxSession(s.session)
+  for (const s of await findReconnectableSessions()) {
+    await killTmuxSession(s.session)
   }
 
   return { ok: true }

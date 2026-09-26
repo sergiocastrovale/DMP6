@@ -1,7 +1,9 @@
-import { spawn, execSync } from 'child_process'
-import fs from 'fs'
+import { spawn } from 'child_process'
 import { isValidSessionName, parseExitLine, stripAnsi } from '~/server/utils/terminalCommand'
 import { requireTerminalAccess } from '~/server/utils/terminalGuard'
+import { readLogTail, tmuxSessionAlive } from '~/server/utils/tmuxSessions'
+import { terminalLogPath } from '~/server/utils/terminalPaths'
+import { TERMINAL_LINES_CAP } from '~/helpers/constants'
 
 export default defineEventHandler(async (event) => {
   await requireTerminalAccess(event, 'view')
@@ -12,15 +14,12 @@ export default defineEventHandler(async (event) => {
   }
 
   // Verify the tmux session still exists
-  try {
-    execSync(`tmux has-session -t "${session}" 2>/dev/null`)
-  }
-  catch {
+  if (!(await tmuxSessionAlive(session))) {
     throw createError({ statusCode: 404, message: 'Session not found' })
   }
 
-  const logFile = `/tmp/dmp-${session}.log`
-  if (!fs.existsSync(logFile)) {
+  const logFile = terminalLogPath(session)
+  if (!(await readLogTail(logFile, 0))) {
     throw createError({ statusCode: 404, message: 'Log file not found' })
   }
 
@@ -33,8 +32,9 @@ export default defineEventHandler(async (event) => {
   const res = event.node.res
 
   return new Promise<void>((resolve) => {
-    // tail from the beginning (-n +1) to replay existing output, then follow
-    const tail = spawn('tail', ['-n', '+1', '-f', logFile])
+    // Replay only the last TERMINAL_LINES_CAP lines - the client keeps no more than that anyway, and `-n +1`
+    // re-sent the whole file (tens of MB for a long ./index) on every reconnect - then follow.
+    const tail = spawn('tail', ['-n', String(TERMINAL_LINES_CAP), '-f', logFile])
 
     const finish = (code: number) => {
       tail.kill('SIGTERM')

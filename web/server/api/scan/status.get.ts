@@ -30,7 +30,7 @@ export default defineEventHandler(async (): Promise<ScanStatus> => {
     // every per-artist action and wrapper script like ./refresh). When more than one session is live
     // this only ever surfaces one of them; the real multi-session source of truth is
     // GET /api/terminal/sessions, which stores/terminal.ts's autoReconnectOrphan() actually uses.
-    sessionName: findReconnectableSessions()[0]?.session ?? null,
+    sessionName: (await findReconnectableSessions())[0]?.session ?? null,
     lastScanStartedAt: stats?.lastScanStartedAt?.toISOString() ?? null,
     lastScanEndedAt: stats?.lastScanEndedAt?.toISOString() ?? null,
     lastIndexedFolder: stats?.lastIndexedFolder ?? null,

@@ -9,5 +9,5 @@ import { requireTerminalAccess } from '~/server/utils/terminalGuard'
 export default defineEventHandler(async (event) => {
   await requireTerminalAccess(event, 'view')
 
-  return { sessions: findReconnectableSessions() }
+  return { sessions: await findReconnectableSessions() }
 })
