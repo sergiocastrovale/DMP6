@@ -1,5 +1,7 @@
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
+import { readBodyOf } from '~/server/utils/requestValidation'
+import { revertBodySchema } from '~/server/schemas/issues'
 import type { HistoryIssueType as RevertableType } from '~/types/issues'
 
 const REVERTABLE_MODELS = {
@@ -15,13 +17,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: `Revert not supported for type: ${type}` })
   }
 
-  const { ids, mode } = await readBody<{ ids: string[]; mode: 'undo' | 'undo-resolved' }>(event)
-  if (!Array.isArray(ids) || ids.length === 0) {
-    throw createError({ statusCode: 400, message: 'ids must be a non-empty array' })
-  }
-  if (!['undo', 'undo-resolved'].includes(mode)) {
-    throw createError({ statusCode: 400, message: "mode must be 'undo' or 'undo-resolved'" })
-  }
+  const { ids, mode } = await readBodyOf(event, revertBodySchema)
 
   const model = REVERTABLE_MODELS[type]
   const result = await (prisma[model] as any).updateMany({

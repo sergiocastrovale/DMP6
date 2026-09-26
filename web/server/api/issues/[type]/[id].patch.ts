@@ -1,5 +1,7 @@
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
+import { readBodyOf } from '~/server/utils/requestValidation'
+import { issuePatchBodySchema } from '~/server/schemas/issues'
 import type { FixableIssueType as IssueType } from '~/types/issues'
 
 const MODEL_MAP = {
@@ -26,7 +28,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, message: `Unknown issue type: ${type}` })
   }
 
-  const body = await readBody<Record<string, unknown>>(event)
+  const body = await readBodyOf(event, issuePatchBodySchema)
   const allowed = ALLOWED_FIELDS[type]
 
   const data: Record<string, unknown> = { updatedAt: new Date() }

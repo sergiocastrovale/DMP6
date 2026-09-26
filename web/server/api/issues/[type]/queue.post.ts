@@ -1,5 +1,7 @@
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
+import { readBodyOf } from '~/server/utils/requestValidation'
+import { idsBodySchema } from '~/server/schemas/issues'
 import type { FixableIssueType as IssueType } from '~/types/issues'
 
 const MODEL_MAP = {
@@ -17,10 +19,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, message: `Unknown issue type: ${type}` })
   }
 
-  const { ids } = await readBody<{ ids: string[] }>(event)
-  if (!Array.isArray(ids) || ids.length === 0) {
-    throw createError({ statusCode: 400, message: 'ids must be a non-empty array' })
-  }
+  const { ids } = await readBodyOf(event, idsBodySchema)
 
   const model = MODEL_MAP[type]
   const result = await (prisma[model] as any).updateMany({

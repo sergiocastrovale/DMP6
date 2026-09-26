@@ -1,12 +1,10 @@
-import type { Role } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
 import { hashPassword } from '~/server/utils/password'
 import { destroyUserSessions } from '~/server/utils/auth'
 import { invalidateAuthUserCache } from '~/server/utils/userCache'
-import { isValidEmail } from '~/server/utils/validation'
-
-const VALID_ROLES: Role[] = ['VIEWER', 'MANAGER', 'ADMIN']
+import { readBodyOf } from '~/server/utils/requestValidation'
+import { updateUserBodySchema } from '~/server/schemas/users'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'users.manage')
@@ -16,22 +14,15 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: 'Invalid id' })
   }
 
-  const body = (await readBody(event)) ?? {}
-  const { email, role, password } = body
+  const { email, role, password } = await readBodyOf(event, updateUserBodySchema)
 
   const data: Record<string, unknown> = {}
 
   if (email !== undefined) {
-    if (typeof email !== 'string' || !isValidEmail(email)) {
-      throw createError({ statusCode: 400, message: 'Invalid email' })
-    }
     data.email = email
   }
 
   if (role !== undefined) {
-    if (!VALID_ROLES.includes(role)) {
-      throw createError({ statusCode: 400, message: 'Invalid role' })
-    }
     const target = await prisma.user.findUnique({ where: { id } })
     if (!target) {throw createError({ statusCode: 404, message: 'User not found' })}
     if (target.role === 'ADMIN' && role !== 'ADMIN') {
@@ -44,9 +35,6 @@ export default defineEventHandler(async (event) => {
   }
 
   if (password !== undefined) {
-    if (typeof password !== 'string' || password.length < 6) {
-      throw createError({ statusCode: 400, message: 'Password must be at least 6 characters' })
-    }
     data.passwordHash = await hashPassword(password)
     data.mustChangePassword = true
     await destroyUserSessions(id)

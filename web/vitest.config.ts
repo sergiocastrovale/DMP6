@@ -25,7 +25,7 @@ export default defineConfig({
         test: {
           name: 'unit',
           environment: 'happy-dom',
-          include: ['test/helpers/**/*.test.ts', 'test/server/utils/**/*.test.ts', 'test/unit/**/*.test.ts'],
+          include: ['test/helpers/**/*.test.ts', 'test/server/utils/**/*.test.ts', 'test/server/schemas/**/*.test.ts', 'test/unit/**/*.test.ts'],
           setupFiles: ['test/setup/h3-globals.ts'],
         },
       },

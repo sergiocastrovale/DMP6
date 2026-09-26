@@ -1,5 +1,7 @@
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
+import { readBodyOf } from '~/server/utils/requestValidation'
+import { idsBodySchema } from '~/server/schemas/issues'
 import type { HistoryIssueType as HistoryType } from '~/types/issues'
 
 const MODELS = {
@@ -10,10 +12,7 @@ const MODELS = {
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'issues.fix')
 
-  const { ids } = await readBody<{ ids: string[] }>(event)
-  if (!Array.isArray(ids) || ids.length === 0) {
-    throw createError({ statusCode: 400, message: 'ids must be a non-empty array' })
-  }
+  const { ids } = await readBodyOf(event, idsBodySchema)
 
   const rows = await prisma.fixHistory.findMany({
     where: { id: { in: ids }, revertedAt: null },
