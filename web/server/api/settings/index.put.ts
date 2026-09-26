@@ -3,7 +3,7 @@ import { refreshSettings } from '~/server/utils/settings'
 import { clearDownloadEnvironmentCache } from '~/server/utils/downloadEnvironment'
 import { clearSlskdConfigCache } from '~/server/utils/slskd'
 import { requirePermission } from '~/server/utils/permissions'
-import { maskSettingsSecrets } from '~/server/utils/settingsSecrets'
+import { encryptSettingsSecrets, maskSettingsSecrets } from '~/server/utils/settingsSecrets'
 import { readBodyOf } from '~/server/utils/requestValidation'
 import { settingsBodySchema } from '~/server/schemas/settings'
 
@@ -14,9 +14,9 @@ export default defineEventHandler(async (event) => {
   const data = await readBodyOf(event, settingsBodySchema)
 
   // Remove undefined keys
-  const clean = Object.fromEntries(
+  const clean = encryptSettingsSecrets(Object.fromEntries(
     Object.entries(data).filter(([, v]) => v !== undefined),
-  )
+  ))
 
   const settings = await prisma.settings.upsert({
     where: { id: 'main' },

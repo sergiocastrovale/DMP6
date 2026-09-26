@@ -51,7 +51,7 @@ export const settingsBodySchema = z.object({
   awsSecretAccessKey: secret,
   storageEndpoint: constrainedText(urlField),
   storagePublicUrl: constrainedText(urlField),
-  fanartApiKey: text,
+  fanartApiKey: secret,
   geniusClientId: text,
   geniusSecret: secret,
   geniusAccessToken: secret,

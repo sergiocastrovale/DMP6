@@ -1,5 +1,6 @@
 import type { Settings } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
+import { decryptSettingsSecrets } from '~/server/utils/settingsSecrets'
 
 // The one place the `Settings` row is read. Every resolver (settingsCache, downloadSettings, monitorSettings,
 // autoScan, songkongSettings, pauseState, acquisitionStatus) derives its DB → env → default view from this row,
@@ -21,7 +22,9 @@ let loadAttempted = false
 
 const load = (): Promise<Settings | null> => {
   if (!inflight) {
+    // Secrets are decrypted here, once per load, so every resolver downstream sees plaintext.
     const started = prisma.settings.findUnique({ where: { id: 'main' } })
+      .then(stored => stored && decryptSettingsSecrets(stored))
       .then((r) => {
         // An invalidation while this read was in flight orphaned it (inflight was reset): its result may
         // predate the write that triggered the invalidation.

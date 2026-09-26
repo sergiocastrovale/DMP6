@@ -40,6 +40,24 @@ These must be set in `web/.env`. The deploy script sources this file.
 | `DMP_DATA` | NAS path for persistent data (images, Redis, dumps) |
 Optional vars (image storage, S3, etc.) are documented in `.env` itself.
 
+### Encrypting stored credentials (`SETTINGS_ENCRYPTION_KEY`)
+
+The keys entered in Settings (slskd, S3, Fanart.tv, Genius, the Last.fm application secret) and every user's Last.fm
+session key sit in the database, so a `./backup` dump or a replica would carry them in the clear. Setting
+`SETTINGS_ENCRYPTION_KEY` (at least 32 characters, `openssl rand -base64 32`) in the NAS `.env` encrypts them at rest with
+AES-256-GCM (`web/server/utils/secretBox.ts`). It is deliberately not `SESSION_SECRET`, so rotating one never breaks the other.
+
+- **Turning it on:** add the variable and redeploy. At boot the web app rewrites the plaintext values it finds as
+  `enc:v1:...` (one compare-and-set write per value, idempotent, logged to the monitor log as "settings encryption: N stored
+  secret(s) ..."). A key that is set but shorter than 32 characters stops the app at boot. Values saved from Settings after
+  that are encrypted as they are written.
+- **Scripts:** the Rust binaries read the S3 and Fanart keys from the same table and decrypt them with the same variable
+  (`scripts/common/src/secrets.rs`), so it has to be in their environment too - the compose file passes it to the `dmp`
+  container, where the tmux-run scripts inherit it. A script that cannot open a value falls back to its env value.
+- **Losing or changing the key:** encrypted values can no longer be read and show as "not set". Enter them again in
+  Settings (and each user reconnects Last.fm). There is no rotation tool - back the key up with your other secrets.
+- **Turning it off:** removing the variable does not decrypt anything; the encrypted values become unreadable as above.
+
 For first-time NAS setup (storage, SSH key, NAS `.env`) see [docs/truenas.md](truenas.md).
 
 ## Docker services

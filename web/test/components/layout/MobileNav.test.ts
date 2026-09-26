@@ -3,7 +3,11 @@ import { describe, expect, it, vi } from 'vitest'
 import MobileNav from '../../../components/layout/MobileNav.vue'
 import { useAuth } from '../../../composables/useAuth'
 
+// Sign out ends in a navigation; left real, it runs after the test's DOM is gone and rejects unhandled ("history is not defined").
+const navigate = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+
 mockNuxtImport('useRequestHeaders', () => () => ({}))
+mockNuxtImport('navigateTo', () => navigate)
 
 const setUser = (overrides: Partial<{ role: 'ADMIN' | 'VIEWER', permissions: string[] }> = {}) => {
   useAuth().user.value = {
@@ -62,7 +66,7 @@ describe('layout/MobileNav.vue', () => {
     await wrapper.get('button').trigger('click')
     const signOut = [...document.body.querySelectorAll('button')].find(b => b.textContent?.trim() === 'Sign out')!
     signOut.click()
-    await wrapper.vm.$nextTick()
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/login'))
     expect(useAuth().user.value).toBeNull()
     wrapper.unmount()
     document.body.innerHTML = ''

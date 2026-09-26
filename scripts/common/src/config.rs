@@ -170,7 +170,8 @@ pub async fn apply_db_overrides(config: &mut Config, pool: &PgPool) {
         if let Some(v) = row.s3_access_key {
             config.s3_access_key = Some(v);
         }
-        if let Some(v) = row.s3_secret_key {
+        // Stored encrypted when SETTINGS_ENCRYPTION_KEY is set (common::secrets); one that can't be opened leaves the env value.
+        if let Some(v) = row.s3_secret_key.as_deref().and_then(crate::secrets::decrypt_secret) {
             config.s3_secret_key = Some(v);
         }
         if let Some(v) = row.storage_endpoint {
@@ -179,7 +180,7 @@ pub async fn apply_db_overrides(config: &mut Config, pool: &PgPool) {
         if let Some(v) = row.storage_public_url {
             config.storage_public_url = Some(v);
         }
-        if let Some(v) = row.fanart_api_key {
+        if let Some(v) = row.fanart_api_key.as_deref().and_then(crate::secrets::decrypt_secret) {
             config.fanart_api_key = Some(v);
         }
     }

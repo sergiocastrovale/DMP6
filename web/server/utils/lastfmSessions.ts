@@ -1,5 +1,6 @@
 import { prisma } from '~/server/utils/prisma'
 import { getSettingsRow } from '~/server/utils/settings'
+import { decryptSecret, encryptSecret } from '~/server/utils/secretBox'
 
 // A Last.fm session belongs to the account that authorised it, so it is stored per user (UserLastfmSession) and only
 // the application's API key and shared secret stay global (Settings.lastfmApiKey / lastfmSecret, env fallback).
@@ -11,14 +12,17 @@ export interface UserLastfmSession {
 
 export const getUserLastfmSession = async (userId: number): Promise<UserLastfmSession | null> => {
   const row = await prisma.userLastfmSession.findUnique({ where: { userId }, select: { sessionKey: true, username: true } })
-  return row ?? null
+  // Stored encrypted when SETTINGS_ENCRYPTION_KEY is set; one that cannot be opened counts as not connected.
+  const sessionKey = row ? decryptSecret(row.sessionKey) : null
+  return row && sessionKey ? { sessionKey, username: row.username } : null
 }
 
 export const saveUserLastfmSession = async (userId: number, session: UserLastfmSession): Promise<void> => {
+  const stored = { sessionKey: encryptSecret(session.sessionKey), username: session.username }
   await prisma.userLastfmSession.upsert({
     where: { userId },
-    create: { userId, ...session },
-    update: { ...session, createdAt: new Date() },
+    create: { userId, ...stored },
+    update: { ...stored, createdAt: new Date() },
   })
 }
 

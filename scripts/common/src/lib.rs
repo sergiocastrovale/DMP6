@@ -14,6 +14,7 @@ pub mod progress;
 pub mod release_pairs;
 pub mod run_hash;
 pub mod s3;
+pub mod secrets;
 pub mod slug;
 pub mod statistics;
 pub mod tags;

@@ -8,12 +8,12 @@ const { data: settings, refresh } = await useAsyncData('settings-db', () =>
   useCookieFetch<Record<string, any>>('/api/settings'),
 )
 
-const fanartApiKey = ref(settings.value?.fanartApiKey ?? '')
+const fanartApiKey = ref('')
 
 const { saving, saved, error, save } = useFormSave(async () => {
   await $fetch('/api/settings', {
     method: 'PUT',
-    body: { fanartApiKey: fanartApiKey.value || null },
+    body: { fanartApiKey: fanartApiKey.value || undefined },
   })
   await refresh()
 })
@@ -57,7 +57,7 @@ const { saving: lastfmSaving, saved: lastfmSaved, error: lastfmError, save: last
           label="API Key"
           description="Used by the sync script to fetch artist images. Overrides FANART_API_KEY."
           type="password"
-          placeholder="••••••••"
+          :placeholder="settings?.fanartApiKeySet ? 'Already set - leave blank to keep' : 'Fanart.tv API key'"
           :disabled="!canEdit"
           @blur="save"
         />
