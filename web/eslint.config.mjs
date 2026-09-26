@@ -7,11 +7,9 @@ export default withNuxt(
       // Boyscout rule (CLAUDE.md): always wrap statements in braces, never a one-line `if`. Clean as of
       // 2026-07-31 (eslint --fix handled all 351 pre-existing violations) - kept at 'error'.
       curly: ['error', 'all'],
-      // Prefer arrow functions in every context (CLAUDE.md). ~319 pre-existing `function` declarations
-      // across the codebase (not eslint --fix-able - most are recursive/hoisted call sites that need a
-      // manual per-site rewrite). Kept at 'warn' until that conversion pass (docs audit #33) lands, then
-      // promote to 'error'.
-      'func-style': ['warn', 'expression'],
+      // Prefer arrow functions in every context (CLAUDE.md). Every function declaration has been converted; a new
+      // one is an error. Mind hoisting: define an arrow before the first eager use of it.
+      'func-style': ['error', 'expression'],
       // ~213 pre-existing `any` casts (docs audit #36 tracks typing them properly). 'warn' matches the
       // audit's own suggested severity - not meant to ever become a hard error given how often `any` is
       // legitimately needed at DB/API boundaries.

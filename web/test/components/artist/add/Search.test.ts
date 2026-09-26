@@ -165,6 +165,6 @@ describe('artist/add/Search.vue', () => {
   })
 })
 
-function flushMicrotasks() {
+const flushMicrotasks = () => {
   return new Promise(resolve => setTimeout(resolve, 0))
 }

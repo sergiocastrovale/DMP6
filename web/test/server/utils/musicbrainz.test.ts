@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Each test re-imports the module fresh (vi.resetModules) so the module-level pacing state
 // (lastRequestAt/queue) never leaks between tests.
-async function freshModule() {
+const freshModule = async () => {
   vi.resetModules()
   return import('../../../server/utils/musicbrainz')
 }

@@ -68,7 +68,7 @@ export const createPoller = ({ run, delay, doc = typeof document === 'undefined'
     if (active) {schedule()}
   }
 
-  function onVisibilityChange() {
+  const onVisibilityChange = () => {
     if (active && !doc?.hidden && !timer && !running) {
       void tick()
     }
