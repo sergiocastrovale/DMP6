@@ -398,7 +398,7 @@ model LocalReleaseTrack {
   facts               ArtistFact[]
   plays               LocalReleaseTrackPlay[]
   playEvents          PlayEvent[]
-  // Trigram GIN index for title ILIKE and expression index on LOWER(genre) added via raw migration
+  // Also indexed as ("title" gin_trgm_ops) by migration 20260926000100 (substring search) - Prisma cannot declare it.
 
   @@index([localReleaseId])
   @@index([mbTrackId])
