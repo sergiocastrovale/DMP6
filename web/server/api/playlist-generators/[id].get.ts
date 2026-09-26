@@ -1,9 +1,9 @@
 import { prisma } from '~/server/utils/prisma'
-import { requireRole } from '~/server/utils/permissions'
+import { requirePermission } from '~/server/utils/permissions'
 import type { PlaylistGeneratorRow } from '~/types/playlistGenerator'
 
 export default defineEventHandler(async (event): Promise<PlaylistGeneratorRow> => {
-  requireRole(event, 'ADMIN')
+  await requirePermission(event, 'playlists.generate')
 
   const id = getRouterParam(event, 'id')
   if (!id) {

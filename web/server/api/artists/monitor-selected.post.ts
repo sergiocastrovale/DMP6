@@ -4,7 +4,7 @@ import { requirePermission } from '~/server/utils/permissions'
 // Bulk-toggle monitoring across a specific set of artists (the /downloads monitoring tab's
 // "Monitor/Unmonitor selected"). One updateMany; the global trickle worker then picks releases up.
 export default defineEventHandler(async (event) => {
-  await requirePermission(event, 'variables.edit')
+  await requirePermission(event, 'downloads.crud')
 
   const body = await readBody(event)
   if (typeof body?.monitored !== 'boolean') {

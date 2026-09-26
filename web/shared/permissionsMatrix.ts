@@ -19,6 +19,13 @@ export const ALL_PERMISSIONS = [
   // Deleting the fix-history audit trail.
   'issues.admin',
   'variables.edit',
+  // Administration surfaces that used to be hard-wired to the ADMIN role. Now ordinary keys: ADMIN holds them
+  // implicitly (server/utils/permissions.ts), and Settings -> Permissions can delegate any of them.
+  'users.manage',
+  'permissions.manage',
+  'playlists.generate',
+  'labs.mosaic',
+  'terminal.control',
 ] as const
 
 export type PermissionKey = typeof ALL_PERMISSIONS[number]
@@ -34,6 +41,8 @@ export const DEFAULT_MATRIX: Record<Role, PermissionKey[]> = {
     'sync.view',
     'sync.run',
     'downloads.crud',
+    // The album mosaic was requireRoleAtLeast('MANAGER'); keep exactly that access by default.
+    'labs.mosaic',
   ],
   ADMIN: [...ALL_PERMISSIONS],
 }

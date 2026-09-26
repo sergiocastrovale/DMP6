@@ -1,5 +1,5 @@
 import { prisma } from '~/server/utils/prisma'
-import { requireRole } from '~/server/utils/permissions'
+import { requirePermission } from '~/server/utils/permissions'
 import { verifyImage } from '~/server/utils/images'
 import { listOnline, isStillPlaying } from '~/server/utils/presence'
 import type { UserPresence } from '~/types/auth'
@@ -8,7 +8,7 @@ import type { UserPresence } from '~/types/auth'
 // (components/settings/UsersLive.vue). Track/release/artist details are resolved from the DB by id -
 // never trust the client-submitted title/artist strings a heartbeat carried (server/api/me/presence.post.ts).
 export default defineEventHandler(async (event): Promise<UserPresence[]> => {
-  requireRole(event, 'ADMIN')
+  await requirePermission(event, 'users.manage')
 
   const now = Date.now()
   const entries = listOnline(now)

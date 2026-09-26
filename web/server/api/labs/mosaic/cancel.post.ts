@@ -1,9 +1,9 @@
 import { getMosaicProcess, setMosaicProcess } from '~/server/utils/mosaic'
-import { requireRoleAtLeast } from '~/server/utils/permissions'
+import { requirePermission } from '~/server/utils/permissions'
 
 export default defineEventHandler(async (event): Promise<{ ok: boolean; message?: string }> => {
   // Matches generate.post.ts's gating - cancelling affects the one global mosaic slot for everyone.
-  requireRoleAtLeast(event, 'MANAGER')
+  await requirePermission(event, 'labs.mosaic')
 
   const proc = getMosaicProcess()
   if (proc) {

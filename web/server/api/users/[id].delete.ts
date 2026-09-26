@@ -1,9 +1,9 @@
 import { prisma } from '~/server/utils/prisma'
-import { requireRole } from '~/server/utils/permissions'
+import { requirePermission } from '~/server/utils/permissions'
 import { destroyUserSessions } from '~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
-  requireRole(event, 'ADMIN')
+  await requirePermission(event, 'users.manage')
 
   const id = Number(getRouterParam(event, 'id'))
   if (!Number.isInteger(id)) {

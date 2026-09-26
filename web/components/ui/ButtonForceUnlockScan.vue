@@ -3,7 +3,8 @@ import { LockOpen } from 'lucide-vue-next'
 
 const emit = defineEmits<{ unlocked: [] }>()
 
-const { isAdmin } = useAuth()
+const { hasPerm } = useAuth()
+const canUnlock = hasPerm('terminal.control')
 const unlocking = ref(false)
 
 const forceUnlock = async () => {
@@ -23,7 +24,7 @@ const forceUnlock = async () => {
 
 <template>
   <UiButton
-    v-if="isAdmin"
+    v-if="canUnlock"
     variant="quiet"
     size="sm"
     :icon="LockOpen"

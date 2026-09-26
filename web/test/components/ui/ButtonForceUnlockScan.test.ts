@@ -6,13 +6,13 @@ import ButtonForceUnlockScan from '../../../components/ui/ButtonForceUnlockScan.
 const fetchMock = vi.fn().mockResolvedValue(undefined)
 vi.stubGlobal('$fetch', fetchMock)
 
-const auth = vi.hoisted(() => ({ isAdmin: true }))
-mockNuxtImport('useAuth', () => () => ({ isAdmin: ref(auth.isAdmin) }))
+const auth = vi.hoisted(() => ({ canUnlock: true }))
+mockNuxtImport('useAuth', () => () => ({ hasPerm: (key: string) => ref(key === 'terminal.control' && auth.canUnlock) }))
 
 describe('ui/ButtonForceUnlockScan.vue', () => {
   afterEach(() => {
     vi.clearAllMocks()
-    auth.isAdmin = true
+    auth.canUnlock = true
   })
 
   it('posts to the scan unlock endpoint and emits unlocked on click', async () => {
@@ -35,8 +35,8 @@ describe('ui/ButtonForceUnlockScan.vue', () => {
     expect(wrapper.emitted('unlocked')).toBeFalsy()
   })
 
-  it('renders nothing for a non-admin - the endpoint is ADMIN-only', async () => {
-    auth.isAdmin = false
+  it('renders nothing without terminal.control - the endpoint is gated on it', async () => {
+    auth.canUnlock = false
     const wrapper = await mountSuspended(ButtonForceUnlockScan)
 
     expect(wrapper.find('button').exists()).toBe(false)

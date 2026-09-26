@@ -1,6 +1,6 @@
 import type { Role } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
-import { requireRole } from '~/server/utils/permissions'
+import { requirePermission } from '~/server/utils/permissions'
 import { hashPassword } from '~/server/utils/password'
 import { isValidEmail } from '~/server/utils/validation'
 import { isUniqueConstraintError } from '~/server/utils/prismaErrors'
@@ -8,7 +8,7 @@ import { isUniqueConstraintError } from '~/server/utils/prismaErrors'
 const VALID_ROLES: Role[] = ['VIEWER', 'MANAGER', 'ADMIN']
 
 export default defineEventHandler(async (event) => {
-  requireRole(event, 'ADMIN')
+  await requirePermission(event, 'users.manage')
 
   const body = (await readBody(event)) ?? {}
   const { username, email, password, role } = body

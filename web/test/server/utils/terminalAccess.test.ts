@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { gateForTerminalAction, parseTerminalRunMeta } from '../../../server/utils/terminalAccess'
 
 describe('gateForTerminalAction', () => {
-  it('unlock is ADMIN-only', () => {
-    expect(gateForTerminalAction('unlock', null)).toEqual({ kind: 'role', role: 'ADMIN' })
+  it('unlock needs terminal.control (ADMIN-only by default)', () => {
+    expect(gateForTerminalAction('unlock', null)).toEqual({ kind: 'permission', key: 'terminal.control' })
   })
 
   it('viewing sessions or reconnecting needs sync.view', () => {

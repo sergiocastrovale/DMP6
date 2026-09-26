@@ -1,6 +1,6 @@
 import type { Role } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
-import { requireRole } from '~/server/utils/permissions'
+import { requirePermission } from '~/server/utils/permissions'
 import { hashPassword } from '~/server/utils/password'
 import { destroyUserSessions } from '~/server/utils/auth'
 import { invalidateAuthUserCache } from '~/server/utils/userCache'
@@ -9,7 +9,7 @@ import { isValidEmail } from '~/server/utils/validation'
 const VALID_ROLES: Role[] = ['VIEWER', 'MANAGER', 'ADMIN']
 
 export default defineEventHandler(async (event) => {
-  requireRole(event, 'ADMIN')
+  await requirePermission(event, 'users.manage')
 
   const id = Number(getRouterParam(event, 'id'))
   if (!Number.isInteger(id)) {

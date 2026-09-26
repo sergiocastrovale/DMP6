@@ -1,8 +1,8 @@
 import { prisma } from '~/server/utils/prisma'
-import { requireRole } from '~/server/utils/permissions'
+import { requirePermission } from '~/server/utils/permissions'
 
 export default defineEventHandler(async (event) => {
-  requireRole(event, 'ADMIN')
+  await requirePermission(event, 'users.manage')
 
   const users = await prisma.user.findMany({
     select: {

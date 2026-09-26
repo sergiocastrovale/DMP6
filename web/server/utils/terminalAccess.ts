@@ -15,12 +15,13 @@ export interface TerminalRunMeta {
   args: string[]
 }
 
+// Clearing the scan lock and killing every session is `terminal.control` (ADMIN-only by default, delegable).
 // Stopping a run needs at least what it took to start it: a MANAGER can stop their own ./index but not an
 // ADMIN's ./nuke or `--overwrite` rescan. A run with no recorded metadata (started before this existed,
 // or from outside the web app) falls back to the baseline `sync.run`.
 export const gateForTerminalAction = (action: TerminalAction, run: TerminalRunMeta | null): TerminalGate => {
   if (action === 'unlock') {
-    return { kind: 'role', role: 'ADMIN' }
+    return { kind: 'permission', key: 'terminal.control' }
   }
   if (action === 'view') {
     return { kind: 'permission', key: 'sync.view' }

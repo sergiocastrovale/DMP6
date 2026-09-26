@@ -1,11 +1,11 @@
 import { prisma } from '~/server/utils/prisma'
-import { requireRole } from '~/server/utils/permissions'
+import { requirePermission } from '~/server/utils/permissions'
 import { generateSlug } from '~/server/utils/slug'
 import { parseTerms, validateGenerator } from '~/helpers/playlistGenerators'
 import type { PlaylistGeneratorType } from '~/types/playlistGenerator'
 
 export default defineEventHandler(async (event) => {
-  requireRole(event, 'ADMIN')
+  await requirePermission(event, 'playlists.generate')
 
   const body = await readBody(event)
 

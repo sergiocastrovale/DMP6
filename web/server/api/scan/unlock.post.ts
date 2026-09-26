@@ -1,10 +1,10 @@
 import { prisma } from '~/server/utils/prisma'
-import { requireRole } from '~/server/utils/permissions'
+import { requirePermission } from '~/server/utils/permissions'
 import { isOwnScanProcess } from '~/server/utils/scanLock'
 import { findReconnectableSessions, killTmuxSession } from '~/server/utils/tmuxSessions'
 
 export default defineEventHandler(async (event) => {
-  requireRole(event, 'ADMIN')
+  await requirePermission(event, 'terminal.control')
 
   const stats = await prisma.statistics.findUnique({
     where: { id: 'main' },

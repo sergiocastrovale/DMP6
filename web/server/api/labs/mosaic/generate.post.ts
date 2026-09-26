@@ -4,7 +4,7 @@ import { join, resolve } from 'path'
 import { tmpdir } from 'os'
 import { getMosaicProcess, setMosaicProcess } from '~/server/utils/mosaic'
 import { prisma } from '~/server/utils/prisma'
-import { requireRoleAtLeast } from '~/server/utils/permissions'
+import { requirePermission } from '~/server/utils/permissions'
 
 const VALID_MODES = ['chronological', 'gradient', 'random']
 
@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
   // against the real NAS DB - see docs' "TO DO / VERIFY WHEN NAS IS ONLINE"), so this uses the simpler
   // role check instead, matching other ADMIN/MANAGER-gated actions that don't need a DB-backed
   // permission row (audit #94).
-  requireRoleAtLeast(event, 'MANAGER')
+  await requirePermission(event, 'labs.mosaic')
 
   if (getMosaicProcess()) {
     throw createError({ statusCode: 409, message: 'Mosaic generation already in progress' })

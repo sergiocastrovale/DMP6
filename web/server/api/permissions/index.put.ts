@@ -3,7 +3,7 @@ import { prisma } from '~/server/utils/prisma'
 import {
   ALL_PERMISSIONS,
   invalidatePermissionCache,
-  requireRole,
+  requirePermission,
 } from '~/server/utils/permissions'
 
 // ADMIN is not editable: it holds every permission implicitly (server/utils/permissions.ts). Its rows are
@@ -12,7 +12,7 @@ const EDITABLE_ROLES: Role[] = ['VIEWER', 'MANAGER']
 const PERM_SET = new Set<string>(ALL_PERMISSIONS)
 
 export default defineEventHandler(async (event) => {
-  requireRole(event, 'ADMIN')
+  await requirePermission(event, 'permissions.manage')
 
   const body = (await readBody(event)) ?? {}
   const matrix = body.matrix as Record<string, string[]> | undefined

@@ -3,7 +3,8 @@ import { LockOpen } from 'lucide-vue-next'
 import { useTerminalStore } from '~/stores/terminal'
 
 const terminal = useTerminalStore()
-const { isAdmin } = useAuth()
+const { hasPerm } = useAuth()
+const canUnlock = hasPerm('terminal.control')
 const confirmOpen = ref(false)
 
 const confirmUnlock = () => {
@@ -13,7 +14,7 @@ const confirmUnlock = () => {
 </script>
 
 <template>
-  <div v-if="isAdmin && terminal.hasLockError">
+  <div v-if="canUnlock && terminal.hasLockError">
     <UiButton
       variant="danger"
       size="sm"

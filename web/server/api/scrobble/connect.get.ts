@@ -1,9 +1,9 @@
 import { prisma } from '~/server/utils/prisma'
-import { requireRole } from '~/server/utils/permissions'
+import { requirePermission } from '~/server/utils/permissions'
 import { getAuthUrl } from '~/server/utils/lastfm'
 
 export default defineEventHandler(async (event) => {
-  requireRole(event, 'ADMIN')
+  await requirePermission(event, 'variables.edit')
 
   // Read straight from the DB, not the settingsCache: this handler only runs once, right after
   // the settings form just saved the key, and the cache's 30s staleness window (or an
