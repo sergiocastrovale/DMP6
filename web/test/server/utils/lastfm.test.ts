@@ -10,19 +10,19 @@ vi.mock('~/server/utils/monitorLog', () => ({ monitorLog: vi.fn() }))
 const jsonResponse = (body: unknown): Response => ({ json: async () => body } as unknown as Response)
 
 const settings = (overrides: Partial<LastfmSettings> = {}): LastfmSettings => ({
-  lastfmApiKey: 'key', lastfmSecret: 'secret', lastfmSessionKey: 'session', lastfmUsername: null,
+  lastfmApiKey: 'key', lastfmSecret: 'secret', lastfmSessionKey: 'session',
   ...overrides,
 })
 
 describe('isLastfmConfigured', () => {
   it('requires apiKey, secret, and sessionKey', () => {
-    expect(isLastfmConfigured({ lastfmApiKey: 'a', lastfmSecret: 'b', lastfmSessionKey: 'c', lastfmUsername: null })).toBe(true)
+    expect(isLastfmConfigured({ lastfmApiKey: 'a', lastfmSecret: 'b', lastfmSessionKey: 'c' })).toBe(true)
   })
 
   it('is false when any field is missing', () => {
-    expect(isLastfmConfigured({ lastfmApiKey: null, lastfmSecret: 'b', lastfmSessionKey: 'c', lastfmUsername: null })).toBe(false)
-    expect(isLastfmConfigured({ lastfmApiKey: 'a', lastfmSecret: null, lastfmSessionKey: 'c', lastfmUsername: null })).toBe(false)
-    expect(isLastfmConfigured({ lastfmApiKey: 'a', lastfmSecret: 'b', lastfmSessionKey: null, lastfmUsername: null })).toBe(false)
+    expect(isLastfmConfigured({ lastfmApiKey: null, lastfmSecret: 'b', lastfmSessionKey: 'c' })).toBe(false)
+    expect(isLastfmConfigured({ lastfmApiKey: 'a', lastfmSecret: null, lastfmSessionKey: 'c' })).toBe(false)
+    expect(isLastfmConfigured({ lastfmApiKey: 'a', lastfmSecret: 'b', lastfmSessionKey: null })).toBe(false)
   })
 })
 

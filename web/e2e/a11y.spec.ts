@@ -55,6 +55,7 @@ const AUTHENTICATED_ROUTES = [
   '/labs/decades',
   '/settings/library',
   '/settings/themes',
+  '/settings/lastfm',
 ]
 
 for (const route of AUTHENTICATED_ROUTES) {

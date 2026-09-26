@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { apiErrorMessage } from '~/helpers/apiError'
-import { CheckCircle2, AlertCircle, ExternalLink, Unlink } from 'lucide-vue-next'
 import { grid } from '~/helpers/ui'
 
 const { hasPerm } = useAuth()
@@ -38,10 +36,6 @@ const { saving: geniusSaving, saved: geniusSaved, error: geniusError, save: geni
 
 const lastfmApiKey = ref(settings.value?.lastfmApiKey ?? '')
 const lastfmSecret = ref(settings.value?.lastfmSecret ?? '')
-const connectedUsername = computed(() => settings.value?.lastfmUsername ?? '')
-// lastfmSessionKey is masked to '' by the API — check the isSet flag instead of the (always blank) value.
-const isConnected = computed(() => !!settings.value?.lastfmSessionKeySet)
-
 const { saving: lastfmSaving, saved: lastfmSaved, error: lastfmError, save: lastfmSave } = useFormSave(async () => {
   await $fetch('/api/settings', {
     method: 'PUT',
@@ -52,47 +46,6 @@ const { saving: lastfmSaving, saved: lastfmSaved, error: lastfmError, save: last
   })
   await refresh()
 })
-
-const connecting = ref(false)
-
-const connect = async () => {
-  connecting.value = true
-  try {
-    // The API key/secret fields save on blur, which may not have landed yet if the user tabbed
-    // straight from the field to this button - persist explicitly first so connect always sees
-    // the values currently on screen, not whatever was last saved.
-    await lastfmSave()
-    if (lastfmError.value) {
-      connecting.value = false
-      return
-    }
-    const { url } = await $fetch<{ url: string }>('/api/scrobble/connect')
-    window.location.href = url
-  } catch (e) {
-    lastfmError.value = apiErrorMessage(e, 'Failed to start Last.fm auth')
-    connecting.value = false
-  }
-}
-
-const disconnecting = ref(false)
-
-const disconnect = async () => {
-  disconnecting.value = true
-  try {
-    await $fetch('/api/settings', {
-      method: 'PUT',
-      body: {
-        lastfmSessionKey: null,
-        lastfmUsername: null,
-      },
-    })
-    await refresh()
-  } catch (e) {
-    lastfmError.value = apiErrorMessage(e, 'Failed to disconnect')
-  } finally {
-    disconnecting.value = false
-  }
-}
 </script>
 
 <template>
@@ -151,35 +104,10 @@ const disconnect = async () => {
       <SettingsSaveBar :saving="geniusSaving" :saved="geniusSaved" :error="geniusError" />
     </UiCard>
 
-    <UiCard title="Last.fm" description="Scrobble tracks to Last.fm">
+    <UiCard title="Last.fm" description="Application credentials shared by every listener">
       <div class="text-sm text-stone-100/60">
-        Scrobble tracks to last.fm.
         Create your API key <a href="https://www.last.fm/api/authentication" target="_blank" class="underline">here</a>.
-      </div>
-
-      <div v-if="isConnected" class="flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 px-4 py-3">
-        <CheckCircle2 :size="18" class="text-success shrink-0" />
-        <div class="flex-1">
-          <p class="text-base text-success">
-            Connected as <span class="font-semibold">{{ connectedUsername }}</span>
-          </p>
-          <p class="text-sm text-stone-100/55">Tracks are being scrobbled to Last.fm</p>
-        </div>
-        <UiButton
-          variant="danger"
-          size="sm"
-          :icon="Unlink"
-          :loading="disconnecting"
-          :disabled="disconnecting || !canEdit"
-          @click="disconnect"
-        >
-          {{ disconnecting ? 'Disconnecting…' : 'Disconnect' }}
-        </UiButton>
-      </div>
-
-      <div v-else class="flex items-center gap-3 rounded-lg border border-stone-100/10 bg-stone-800/50 px-4 py-3">
-        <AlertCircle :size="18" class="text-stone-100/55 shrink-0" />
-        <p class="flex-1 text-base text-stone-100/60">Not connected to Last.fm</p>
+        Each user connects their own account, and scrobbles, under Settings → Last.fm.
       </div>
 
       <div :class="grid.halfRow" class="mt-4">
@@ -188,6 +116,7 @@ const disconnect = async () => {
           label="API Key"
           placeholder="Last.fm API key"
           :disabled="!canEdit"
+          @blur="lastfmSave"
         />
 
         <SettingsField
@@ -196,21 +125,11 @@ const disconnect = async () => {
           type="password"
           :placeholder="settings?.lastfmSecretSet ? 'Already set - leave blank to keep' : 'Last.fm shared secret'"
           :disabled="!canEdit"
+          @blur="lastfmSave"
         />
       </div>
 
-      <SettingsSaveBar :saving="lastfmSaving" :saved="lastfmSaved" :error="lastfmError" class="pt-2">
-        <UiButton
-          v-if="!isConnected && lastfmApiKey && (lastfmSecret || settings?.lastfmSecretSet)"
-          variant="danger"
-          :icon="ExternalLink"
-          :loading="connecting"
-          :disabled="!canEdit"
-          @click="connect"
-        >
-          {{ connecting ? 'Redirecting…' : 'Connect Last.fm' }}
-        </UiButton>
-      </SettingsSaveBar>
+      <SettingsSaveBar :saving="lastfmSaving" :saved="lastfmSaved" :error="lastfmError" class="pt-2" />
     </UiCard>
   </form>
 </template>

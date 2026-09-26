@@ -178,7 +178,7 @@ NAS: `sudo docker exec dmp cat /app/data/logs/errors.log`
 
 **Settings**: `/api/settings` (GET masked/PUT), `GET /settings/public`
 
-**Scrobble**: `/api/scrobble/connect`, `/callback`, `POST /now-playing`. The Last.fm scrobble itself is server-side: `applyPlayEventPatch`'s counted flip (and `recordExternalPlay`, i.e. Subsonic clients) calls `server/utils/scrobble.ts` once per counted listen, with the global Last.fm session.
+**Scrobble**: `/api/scrobble/connect`, `/callback`, `POST /now-playing`; `GET/DELETE /api/me/lastfm` (connection state / disconnect). All `play.view`: a Last.fm session belongs to the account that authorised it, so it is **per user** (`UserLastfmSession`, `server/utils/lastfmSessions.ts`, Settings → Last.fm, cascade on user delete). Only the application key/secret stay global (`Settings.lastfmApiKey`/`lastfmSecret`, Settings → API Keys, admin). The Last.fm scrobble itself is server-side: `applyPlayEventPatch`'s counted flip (and `recordExternalPlay`, i.e. Subsonic clients) calls `server/utils/scrobble.ts` once per counted listen with the listener's own session (none connected = nothing sent). `Settings.lastfmSessionKey`/`lastfmUsername` are the retired global session, never read.
 
 **Labs**: `GET /labs/map/countries` (24h cache), `/labs/map/artists`, `/network/graph`, `/decades/stats`, `/api/labs/mosaic/*`
 
@@ -201,7 +201,7 @@ NAS: `sudo docker exec dmp cat /app/data/logs/errors.log`
 | `/downloads` (+5 subpages) | Queue shell: monitoring, merge, queue (`?filter=`), history, events |
 | `/labs` (+4 subpages) | map, mosaic, network, decades |
 | `/issues`, `/issues/<type>` (7), `/issues/history` | Metadata issue review/fix/undo |
-| `/settings/*` (8) | api-keys, downloads, library, monitoring, permissions, scrobble, storage, users |
+| `/settings/*` (9) | api-keys, downloads, library, permissions, storage, users (admin); subsonic, lastfm, themes (every role) |
 | `/change-password`, `/login` | Auth |
 
 ## Player Store

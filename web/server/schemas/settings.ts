@@ -57,6 +57,7 @@ export const settingsBodySchema = z.object({
   geniusAccessToken: secret,
   lastfmApiKey: text,
   lastfmSecret: secret,
+  // The retired global session (see UserLastfmSession): accepted only so an admin can clear what is left of it.
   lastfmSessionKey: secret,
   lastfmUsername: text,
 })

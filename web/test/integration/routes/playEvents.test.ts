@@ -129,7 +129,7 @@ describe('play events (real Postgres)', () => {
     expect(await prisma.localReleaseTrackPlay.count({ where: { userId: alice.id } })).toBe(0)
   })
 
-  it('scrobbles to Last.fm exactly once per counted listen, with the listen\'s own start time', async () => {
+  it('scrobbles to the listener\'s Last.fm exactly once per counted listen, with the listen\'s own start time', async () => {
     const alice = await makeUser(prisma)
     const track = await makeLocalTrack(prisma)
     const startedAt = new Date('2026-09-26T10:00:00Z')
@@ -143,7 +143,7 @@ describe('play events (real Postgres)', () => {
     await applyPlayEventPatch(alice.id, event.id, { listenedSeconds: 140, ended: true })
 
     expect(scrobble.scrobbleInBackground).toHaveBeenCalledTimes(1)
-    expect(scrobble.scrobbleInBackground).toHaveBeenCalledWith(track.id, startedAt.getTime())
+    expect(scrobble.scrobbleInBackground).toHaveBeenCalledWith(alice.id, track.id, startedAt.getTime())
   })
 
   it('two concurrent counted patches still scrobble once', async () => {
@@ -166,6 +166,6 @@ describe('play events (real Postgres)', () => {
     await recordExternalPlay(alice.id, track.id)
 
     expect(scrobble.scrobbleInBackground).toHaveBeenCalledTimes(1)
-    expect(scrobble.scrobbleInBackground).toHaveBeenCalledWith(track.id, expect.any(Number))
+    expect(scrobble.scrobbleInBackground).toHaveBeenCalledWith(alice.id, track.id, expect.any(Number))
   })
 })

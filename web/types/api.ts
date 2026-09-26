@@ -22,12 +22,15 @@ export interface CachedSettings {
   geniusAccessToken: string | null
   lastfmApiKey: string | null
   lastfmSecret: string | null
-  lastfmSessionKey: string | null
-  lastfmUsername: string | null
 }
 
 export type ParsedIntField =
   | { ok: true, value: number | null | undefined }
   | { ok: false }
 
-export type LastfmSettings = Pick<import('@prisma/client').Settings, 'lastfmApiKey' | 'lastfmSecret' | 'lastfmSessionKey' | 'lastfmUsername'>
+// What one Last.fm call needs: the application's key and secret (global) plus the calling user's session key.
+export interface LastfmSettings {
+  lastfmApiKey: string | null
+  lastfmSecret: string | null
+  lastfmSessionKey: string | null
+}

@@ -73,7 +73,7 @@ export const applyPlayEventPatch = async (userId: number, id: string, patch: Pla
   if (flipped) {
     await bumpUserCache(userId)
     // Once per counted listen: the flip is the only place a play becomes counted, and it happens exactly once.
-    scrobbleInBackground(flipped.trackId, flipped.startedAt.getTime())
+    scrobbleInBackground(userId, flipped.trackId, flipped.startedAt.getTime())
   }
   return { ok: true }
 }
@@ -106,5 +106,5 @@ export const recordExternalPlay = async (userId: number, trackId: string, source
     await recordPlay(userId, trackId, now, tx)
   })
   await bumpUserCache(userId)
-  scrobbleInBackground(trackId, now.getTime())
+  scrobbleInBackground(userId, trackId, now.getTime())
 }

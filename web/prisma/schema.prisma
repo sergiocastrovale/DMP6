@@ -695,6 +695,7 @@ model Settings {
   // Last.fm / Scrobbling
   lastfmApiKey           String?
   lastfmSecret           String?
+  // Retired: the one global session, replaced by UserLastfmSession. Kept (dropping is destructive) but never read.
   lastfmSessionKey       String?
   lastfmUsername         String?
   createdAt              DateTime  @default(now())
@@ -961,6 +962,19 @@ model User {
   trackPlays       LocalReleaseTrackPlay[]
   playEvents       PlayEvent[]
   apiKeys          UserApiKey[]
+  lastfmSession    UserLastfmSession?
+}
+
+// One user's Last.fm session (server/utils/lastfmSessions.ts). Only the API key and shared secret are global
+// (Settings.lastfmApiKey/lastfmSecret): a session key belongs to the Last.fm account that authorised it, so each
+// user's counted listens scrobble to their own account. Private like favorites - dies with the user (Cascade), no
+// admin override. Settings.lastfmSessionKey/lastfmUsername are the retired single global session, no longer read.
+model UserLastfmSession {
+  userId     Int      @id
+  sessionKey String
+  username   String
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // OpenSubsonic `apiKey` auth (see docs/feature_subsonic.md) - the one credential form the /rest/*

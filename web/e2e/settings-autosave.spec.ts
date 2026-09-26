@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { waitForHydration } from './helpers/fixtures'
 
 // Settings forms save automatically (no Save button) - see components/settings/*Form.vue. Every
 // text field saves on blur, every switch/select/checkbox saves on change. These specs exercise the
@@ -17,6 +18,8 @@ test.beforeEach(({ page }) => {
 const gotoSettings = async (page: Page, section: string) => {
   await page.goto(`/settings/${section}`)
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
+  // A blur or change before Nuxt hydrates is dropped, which under parallel load looked like a save that never happened.
+  await waitForHydration(page)
 }
 
 const expectSaved = async (page: Page) => {
@@ -173,30 +176,34 @@ test.describe('settings autosave', () => {
     expect(consoleErrors).toEqual([])
   })
 
-  test('api-keys: Connect Last.fm saves the key first, then succeeds immediately', async ({ page }) => {
-    // Regression test: connect() persists the API key via a PUT, then immediately calls
-    // GET /api/scrobble/connect. That handler used to read the key back through
-    // server/utils/settingsCache.ts (a 30s-TTL cache meant for hot paths like audio/image
-    // serving), so this immediate read could still see the pre-save value - "Last.fm API key not
-    // configured" even though the key had just been saved. connect.get.ts now reads the DB
-    // directly instead.
+  test('api-keys: the Last.fm application key saves on blur, then Settings → Last.fm can start the connect', async ({ page }) => {
+    // The key and secret are the application's (shared by every listener); connecting is per user, on its own page.
+    // connect.get.ts reads the key straight from the DB rather than the 30s settings cache, so a key saved a moment
+    // ago must not read back as "not configured".
     await gotoSettings(page, 'api-keys')
 
-    // Block the external hop so the test never leaves localhost; connect() still runs our own
-    // /api/scrobble/connect for real, which is what exercises the fix.
     await page.route('https://www.last.fm/**', route => route.fulfill({ status: 200, body: 'stubbed' }))
 
     const apiKey = page.getByLabel('API Key').nth(1)
     const secret = page.getByLabel('Shared Secret')
     await apiKey.fill('lastfm-e2e-key')
     await secret.fill('lastfm-e2e-secret')
+    await secret.blur()
+    // Both fields save on blur, so wait for the row itself rather than for whichever PUT answers first.
+    await expect.poll(async () => {
+      const row = await (await page.request.get('/api/settings')).json()
+      return !!row.lastfmApiKey && row.lastfmSecretSet
+    }).toBe(true)
+    await expect(page.getByRole('button', { name: /Connect Last\.fm/ })).toHaveCount(0)
 
+    await page.goto('/settings/lastfm')
+    await waitForHydration(page)
     const connectResponse = page.waitForResponse(r => r.url().includes('/api/scrobble/connect'))
     await page.getByRole('button', { name: /Connect Last\.fm/ }).click()
     const resp = await connectResponse
     expect(resp.status()).toBe(200)
 
-    await expect(page.getByText('Last.fm API key not configured')).not.toBeVisible()
+    await expect(page.getByText('Last.fm is not set up')).not.toBeVisible()
     expect(consoleErrors).toEqual([])
   })
 

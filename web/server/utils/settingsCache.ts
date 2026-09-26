@@ -22,8 +22,6 @@ const fromRow = (s: Settings | null): CachedSettings => ({
   geniusAccessToken: s?.geniusAccessToken || process.env.GENIUS_ACCESS_TOKEN || null,
   lastfmApiKey: s?.lastfmApiKey || process.env.LASTFM_API_KEY || null,
   lastfmSecret: s?.lastfmSecret || process.env.LASTFM_SECRET || null,
-  lastfmSessionKey: s?.lastfmSessionKey || process.env.LASTFM_SESSION_KEY || null,
-  lastfmUsername: s?.lastfmUsername || process.env.LASTFM_USERNAME || null,
 })
 
 export const getCachedSettings = (): CachedSettings => {

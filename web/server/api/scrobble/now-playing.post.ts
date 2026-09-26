@@ -1,7 +1,8 @@
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
-import { getCachedSettings } from '~/server/utils/settingsCache'
-import { callLastFm, describeLastfmProblem, isLastfmConfigured } from '~/server/utils/lastfm'
+import { currentUserId } from '~/server/utils/libraryOwnership'
+import { callLastFm, describeLastfmProblem } from '~/server/utils/lastfm'
+import { lastfmCredentialsFor } from '~/server/utils/scrobble'
 import { monitorLog } from '~/server/utils/monitorLog'
 import { readBodyOf } from '~/server/utils/requestValidation'
 import { nowPlayingBodySchema } from '~/server/schemas/scrobble'
@@ -11,8 +12,8 @@ export default defineEventHandler(async (event) => {
 
   const { trackId } = await readBodyOf(event, nowPlayingBodySchema)
 
-  const settings = getCachedSettings()
-  if (!settings || !isLastfmConfigured(settings)) {
+  const settings = await lastfmCredentialsFor(currentUserId(event))
+  if (!settings) {
     return { ok: true, skipped: true }
   }
 

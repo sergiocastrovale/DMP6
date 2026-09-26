@@ -1,17 +1,15 @@
-import { getSettingsRow } from '~/server/utils/settings'
+import { lastfmAppCredentials } from '~/server/utils/lastfmSessions'
 import { requirePermission } from '~/server/utils/permissions'
 import { getAuthUrl } from '~/server/utils/lastfm'
 import { createOAuthState, OAUTH_STATE_COOKIE, OAUTH_STATE_MAX_AGE_SECONDS } from '~/server/utils/oauthState'
 
 export default defineEventHandler(async (event) => {
-  await requirePermission(event, 'variables.edit')
+  // Any listener connects their own account; the application key it goes through is the admin's (Settings).
+  await requirePermission(event, 'play.view')
 
-  // Fresh read, not the cached row: this handler only runs once, right after the settings form saved the key,
-  // and a key typed a moment ago must not look "not configured". Nothing here is a hot path.
-  const settings = await getSettingsRow({ fresh: true })
-  const lastfmApiKey = settings?.lastfmApiKey || process.env.LASTFM_API_KEY
+  const { apiKey: lastfmApiKey } = await lastfmAppCredentials(true)
   if (!lastfmApiKey) {
-    throw createError({ statusCode: 400, message: 'Last.fm API key not configured' })
+    throw createError({ statusCode: 400, message: 'Last.fm is not set up - ask an admin to add the API key in Settings' })
   }
 
   // The nonce rides in the callback PATH (Last.fm appends ?token=... itself, so a query string of ours would be
