@@ -287,6 +287,8 @@ model LocalRelease {
   @@index([createdAt])
   @@index([downloadedFrom])
   @@index([boxReleaseId])
+  @@index([matchStatus])
+  @@index([updatedAt])
   // Also indexed as ("folderPath" text_pattern_ops) by migration 20260923000100 - Prisma cannot declare it.
   @@index([title])
 }
@@ -411,6 +413,7 @@ model LocalReleaseTrack {
   @@index([mbReleaseGroupId])
   @@index([mbReleaseId])
   // Also indexed as ("filePath" varchar_pattern_ops) by migration 20260923000100 - Prisma cannot declare it.
+  // Partial index LocalReleaseTrack_lowBitrate_idx (bitrate > 0 AND < 256) by migration 20260926001600 - likewise.
 }
 
 // ---------------------------------------------------------------------------
@@ -840,6 +843,7 @@ model IssueCorruptedTpe2 {
   track         LocalReleaseTrack @relation("CorruptedTrackIssue", fields: [trackId], references: [id], onDelete: Cascade)
 
   @@index([status])
+  @@index([status, createdAt])
   @@index([auditRunId])
 }
 
@@ -855,6 +859,7 @@ model IssueOrphanArtist {
   artist     Artist      @relation("OrphanArtistIssue", fields: [artistId], references: [id], onDelete: Cascade)
 
   @@index([status])
+  @@index([status, createdAt])
   @@index([auditRunId])
 }
 
@@ -871,6 +876,7 @@ model IssueDuplicateArtist {
   artistB    Artist      @relation("DuplicateArtistB", fields: [artistBId], references: [id], onDelete: Cascade)
 
   @@index([status])
+  @@index([status, createdAt])
   @@index([auditRunId])
 }
 
@@ -887,6 +893,7 @@ model IssueDuplicateRelease {
   releaseB   LocalRelease @relation("DuplicateReleaseB", fields: [releaseBId], references: [id], onDelete: Cascade)
 
   @@index([status])
+  @@index([status, createdAt])
   @@index([auditRunId])
 }
 
@@ -903,6 +910,7 @@ model IssueMismatchedReleaseId {
   releaseB   LocalRelease @relation("MismatchedReleaseIdB", fields: [releaseBId], references: [id], onDelete: Cascade)
 
   @@index([status])
+  @@index([status, createdAt])
   @@index([auditRunId])
 }
 
@@ -919,6 +927,7 @@ model IssueMissingMetadata {
   track          LocalReleaseTrack @relation("MissingMetadataIssue", fields: [trackId], references: [id], onDelete: Cascade)
 
   @@index([status])
+  @@index([status, createdAt])
   @@index([auditRunId])
 }
 
@@ -935,6 +944,7 @@ model IssueEnrichmentGap {
   localRelease   LocalRelease @relation(fields: [localReleaseId], references: [id], onDelete: Cascade)
 
   @@index([status])
+  @@index([status, createdAt])
   @@index([auditRunId])
   @@index([localReleaseId])
 }
