@@ -161,3 +161,13 @@ test('the artist network draws its graph and re-centres on a clicked node', asyn
   await expect.poll(() => requests.length).toBe(2)
   expect(requests[1]).toContain('artistId=n2')
 })
+
+test('the track info dialog lists the track\'s facts', async ({ page }) => {
+  await page.goto(`/artist/${artistSlug}?view=list`)
+  await waitForHydration(page)
+  await page.getByRole('button', { name: 'Track info' }).first().click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toContainText('Track ID')
+  await expect(dialog).toContainText('/smoke/')
+  await expect(dialog).toContainText('Track 1')
+})

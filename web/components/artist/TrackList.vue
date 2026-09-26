@@ -4,8 +4,8 @@ import type { Track, TrackInfo } from '~/types/track'
 import type { ReleaseStatus } from '~/types/release'
 import type { TrackListColumn } from '~/types/ui'
 import { usePlayerStore } from '~/stores/player'
-import { useGlobalStore } from '~/stores/global'
 import { formatDuration } from '~/helpers/functions'
+import { releaseTitleSlug } from '~/helpers/artistPageLogic'
 import { toPlayerTrack } from '~/helpers/playerTrack'
 import { cx, surface } from '~/helpers/ui'
 
@@ -30,20 +30,8 @@ const props = withDefaults(defineProps<{
 })
 
 const player = usePlayerStore()
-const global = useGlobalStore()
 const api = useApi()
-const favoriteTracks = ref<Set<string>>(new Set())
-
-// Hearts come with the tracks themselves (`isFavorite`, set per user by the tracks endpoints). Re-seeded
-// whenever the list is replaced; a toggle below only edits the set, so the two never disagree for long.
-watch(() => props.tracks, (tracks) => {
-  for (const t of tracks) {
-    if (t.isFavorite === undefined) {continue}
-    if (t.isFavorite) {favoriteTracks.value.add(t.id)}
-    else {favoriteTracks.value.delete(t.id)}
-  }
-}, { immediate: true })
-
+const { favoriteTracks, toggleFavorite } = useTrackFavorites(() => props.tracks)
 
 const isTrackPlaying = (trackId: string) => {
   return player.isPlaying && player.currentTrack?.id === trackId
@@ -73,22 +61,6 @@ const playTrack = (track: Track) => {
   const startTrack = playerTracks.find(t => t.id === track.id)
   player.setQueue(playerTracks, startTrack)
 }
-
-const toggleFavorite = async (trackId: string) => {
-  const isFavorite = favoriteTracks.value.has(trackId)
-  if (!await api.run(() => $fetch<unknown>(`/api/favorites/tracks/${trackId}`, { method: isFavorite ? 'DELETE' : 'POST' }), 'Could not update the favorite')) {
-    return
-  }
-  if (isFavorite) {
-    favoriteTracks.value.delete(trackId)
-    global.stats.favorites--
-  }
-  else {
-    favoriteTracks.value.add(trackId)
-    global.stats.favorites++
-  }
-}
-
 
 const showInfoDialog = ref(false)
 const infoTrack = ref<Track | null>(null)
@@ -124,13 +96,6 @@ const openInfoDialog = async (track: Track) => {
   infoData.value = null
   showInfoDialog.value = true
   infoData.value = await api.load(() => $fetch<TrackInfo>(`/api/tracks/${track.id}/info`), 'Could not load the track info')
-}
-
-const formatFileSize = (bytes: number) => {
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(0)} KB`
-  }
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 </script>
 
@@ -234,7 +199,7 @@ const formatFileSize = (bytes: number) => {
                 v-if="releaseMap?.[track.localReleaseId || ''] && track.localReleaseId"
                 :icon="Link"
                 label="Go to release"
-                :href="`/artist/${$route.params.slug}?release=${(releaseMap[track.localReleaseId]?.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`"
+                :href="`/artist/${$route.params.slug}?release=${releaseTitleSlug(releaseMap[track.localReleaseId]?.title || '')}`"
                 @click.stop
               />
               <DataTableAction
@@ -249,113 +214,5 @@ const formatFileSize = (bytes: number) => {
     </SlimTableBody>
   </SlimTable>
 
-  <Dialog v-model="showInfoDialog" :title="infoTrack?.title ?? 'Track Info'" size="md">
-    <template v-if="infoTrack" #content>
-      <dl class="space-y-3 text-sm">
-        <div>
-          <dt class="text-xs text-stone-100/60">Track ID</dt>
-          <dd class="font-mono text-xs text-stone-100/60">{{ infoTrack.id }}</dd>
-        </div>
-        <div v-if="infoTrack.filePath">
-          <dt class="text-xs text-stone-100/60">File path</dt>
-          <dd class="font-mono text-xs text-stone-100/60 break-all">{{ infoTrack.filePath }}</dd>
-        </div>
-        <div v-if="infoTrack.artist">
-          <dt class="text-xs text-stone-100/60">Artist</dt>
-          <dd class="font-mono text-xs text-stone-100/60">{{ infoTrack.artist }}</dd>
-        </div>
-        <div v-if="infoTrack.album">
-          <dt class="text-xs text-stone-100/60">Album</dt>
-          <dd class="font-mono text-xs text-stone-100/60">{{ infoTrack.album }}</dd>
-        </div>
-        <div v-if="infoTrack.albumArtist">
-          <dt class="text-xs text-stone-100/60">Album artist</dt>
-          <dd class="font-mono text-xs text-stone-100/60">{{ infoTrack.albumArtist }}</dd>
-        </div>
-        <div v-if="infoTrack.genre">
-          <dt class="text-xs text-stone-100/60">Genre</dt>
-          <dd class="font-mono text-xs text-stone-100/60">{{ infoTrack.genre }}</dd>
-        </div>
-        <div v-if="infoTrack.trackNumber">
-          <dt class="text-xs text-stone-100/60">Track</dt>
-          <dd class="font-mono text-xs text-stone-100/60">{{ infoTrack.discNumber ? `Disc ${infoTrack.discNumber}, ` : '' }}Track {{ infoTrack.trackNumber }}</dd>
-        </div>
-        <div v-if="infoTrack.duration">
-          <dt class="text-xs text-stone-100/60">Duration</dt>
-          <dd class="font-mono text-xs text-stone-100/60">{{ formatDuration(infoTrack.duration) }}</dd>
-        </div>
-        <div v-if="infoTrack.year">
-          <dt class="text-xs text-stone-100/60">Year</dt>
-          <dd class="font-mono text-xs text-stone-100/60">{{ infoTrack.year }}</dd>
-        </div>
-
-        <template v-if="infoData">
-          <div v-if="!infoTrack.filePath && infoData.filePath">
-            <dt class="text-xs text-stone-100/60">File path</dt>
-            <dd class="font-mono text-xs text-stone-100/60 break-all">{{ infoData.filePath }}</dd>
-          </div>
-          <div v-if="infoData.bitrate || infoData.sampleRate">
-            <dt class="text-xs text-stone-100/60">Audio</dt>
-            <dd class="font-mono text-xs text-stone-100/60">{{ [infoData.bitrate ? `${Math.round(infoData.bitrate / 1000)} kbps` : '', infoData.sampleRate ? `${(infoData.sampleRate / 1000).toFixed(1)} kHz` : ''].filter(Boolean).join(' · ') }}</dd>
-          </div>
-          <div v-if="infoData.fileSize">
-            <dt class="text-xs text-stone-100/60">File size</dt>
-            <dd class="font-mono text-xs text-stone-100/60">{{ formatFileSize(infoData.fileSize) }}</dd>
-          </div>
-          <div v-if="infoData.bpm">
-            <dt class="text-xs text-stone-100/60">BPM</dt>
-            <dd class="font-mono text-xs text-stone-100/60">{{ infoData.bpm }}</dd>
-          </div>
-          <div v-if="infoData.key">
-            <dt class="text-xs text-stone-100/60">Key</dt>
-            <dd class="font-mono text-xs text-stone-100/60">{{ infoData.key }}</dd>
-          </div>
-          <div v-if="infoData.mood">
-            <dt class="text-xs text-stone-100/60">Mood</dt>
-            <dd class="font-mono text-xs text-stone-100/60">{{ infoData.mood }}</dd>
-          </div>
-          <div v-if="infoData.isrc">
-            <dt class="text-xs text-stone-100/60">ISRC</dt>
-            <dd class="font-mono text-xs text-stone-100/60">{{ infoData.isrc }}</dd>
-          </div>
-          <div v-if="infoData.label">
-            <dt class="text-xs text-stone-100/60">Label</dt>
-            <dd class="font-mono text-xs text-stone-100/60">{{ infoData.label }}</dd>
-          </div>
-          <div v-if="infoData.replayGain">
-            <dt class="text-xs text-stone-100/60">Replay gain</dt>
-            <dd class="font-mono text-xs text-stone-100/60">{{ infoData.replayGain }}</dd>
-          </div>
-          <div v-if="infoData.encoder">
-            <dt class="text-xs text-stone-100/60">Encoder</dt>
-            <dd class="font-mono text-xs text-stone-100/60">{{ infoData.encoder }}</dd>
-          </div>
-          <div v-if="infoData.acousticId">
-            <dt class="text-xs text-stone-100/60">AcoustID</dt>
-            <dd class="font-mono text-xs text-stone-100/60">{{ infoData.acousticId }}</dd>
-          </div>
-          <div v-if="infoData.playCount">
-            <dt class="text-xs text-stone-100/60">Play count</dt>
-            <dd class="font-mono text-xs text-stone-100/60">{{ infoData.playCount }}</dd>
-          </div>
-          <div v-if="infoData.lastPlayedAt">
-            <dt class="text-xs text-stone-100/60">Last played</dt>
-            <dd class="font-mono text-xs text-stone-100/60">{{ new Date(infoData.lastPlayedAt).toLocaleString() }}</dd>
-          </div>
-          <div v-if="infoData.createdAt">
-            <dt class="text-xs text-stone-100/60">Indexed</dt>
-            <dd class="font-mono text-xs text-stone-100/60">{{ new Date(infoData.createdAt).toLocaleString() }}</dd>
-          </div>
-          <div v-if="infoData.mbTrackId">
-            <dt class="text-xs text-stone-100/60">MusicBrainz recording</dt>
-            <dd class="font-mono text-xs text-stone-100/60">{{ infoData.mbTrackId }}</dd>
-          </div>
-          <div v-if="infoData.mbReleaseId">
-            <dt class="text-xs text-stone-100/60">MusicBrainz release</dt>
-            <dd class="font-mono text-xs text-stone-100/60">{{ infoData.mbReleaseId }}</dd>
-          </div>
-        </template>
-      </dl>
-    </template>
-  </Dialog>
+  <ArtistTrackInfoDialog v-model="showInfoDialog" :track="infoTrack" :info="infoData" />
 </template>
