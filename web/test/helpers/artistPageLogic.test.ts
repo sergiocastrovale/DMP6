@@ -210,11 +210,16 @@ describe('tracksToPlayerTracks', () => {
   })
 
   it('maps to the player queue shape, defaulting blank title/artist/album/duration', () => {
-    const tracks = [track({ id: 't1', title: null, artist: null, album: null, duration: null })]
+    const tracks = [track({ id: 't1', title: null, artist: null, albumArtist: null, album: null, duration: null })]
     expect(tracksToPlayerTracks(tracks, 'artist-slug')).toEqual([{
       id: 't1', title: 'Unknown', artist: 'Unknown', album: '', duration: 0,
       artistSlug: 'artist-slug', releaseImage: null, releaseImageUrl: null, localReleaseId: 'lr1',
     }])
+  })
+
+  it('uses the album artist when a track has no artist of its own', () => {
+    const tracks = [track({ id: 't1', artist: null, albumArtist: 'Various Artists' })]
+    expect(tracksToPlayerTracks(tracks, 'artist-slug')[0]!.artist).toBe('Various Artists')
   })
 
   it('preserves given title/artist/album/duration when present', () => {
