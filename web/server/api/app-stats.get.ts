@@ -3,6 +3,7 @@ import { cachedResponse } from '~/server/utils/cache'
 import { currentUserId } from '~/server/utils/libraryOwnership'
 import { countActiveDownloads } from '~/server/utils/downloadQueue'
 import { userTotalPlays } from '~/server/utils/userPlays'
+import { countPendingIssues } from '~/server/utils/issueCounts'
 
 export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'private, max-age=120, stale-while-revalidate=30')
@@ -12,13 +13,7 @@ export default defineEventHandler(async (event) => {
     cachedResponse('app-stats', 120, async () => {
       const [stats, issues, activeDownloads] = await Promise.all([
         prisma.statistics.findUnique({ where: { id: 'main' } }),
-        Promise.all([
-          prisma.issueCorruptedTpe2.count({ where: { status: 'PENDING' } }),
-          prisma.issueOrphanArtist.count({ where: { status: 'PENDING' } }),
-          prisma.issueDuplicateArtist.count({ where: { status: 'PENDING' } }),
-          prisma.issueMissingMetadata.count({ where: { status: 'PENDING' } }),
-          prisma.issueEnrichmentGap.count({ where: { status: 'PENDING' } }),
-        ]).then((counts) => counts.reduce((a, b) => a + b, 0)),
+        countPendingIssues(),
         countActiveDownloads(),
       ])
 
