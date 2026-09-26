@@ -3,8 +3,53 @@
 // shared-releaseId dedup/coverage logic (the systemic sync-matcher bug this app has) for direct unit
 // testing without spinning up a database.
 
+import type { Prisma } from '@prisma/client'
 import type { AlsoPartOfEntry, MbReleaseRow, LocalReleaseRow, ImageResolver, UnifiedRelease, LocalAndGapCardsResult } from '~/types/release'
 import { containmentContainerTitle } from '~/helpers/functions'
+
+// The columns a release card is built from. One definition for the artist catalogue and the single-release
+// lookup, so the two can't drift on which fields a card carries. Track counts come from `_count` (a grouped
+// aggregate inside the database) - selecting `tracks: { select: { id: true } }` just to call `.length` shipped
+// every track id of every release to Node: ~90k rows for an artist like Bach.
+export const MB_RELEASE_CARD_SELECT = {
+  id: true,
+  title: true,
+  year: true,
+  musicbrainzId: true,
+  releaseGroupId: true,
+  disambiguation: true,
+  editionLabel: true,
+  releaseDate: true,
+  packaging: true,
+  country: true,
+  format: true,
+  status: true,
+  statusReason: true,
+  mediumCount: true,
+  media: {
+    select: { position: true, title: true, equivalentReleaseId: true, equivalentReleaseGroupId: true },
+    orderBy: { position: 'asc' },
+  },
+  type: { select: { name: true, slug: true } },
+  _count: { select: { tracks: true } },
+} as const satisfies Prisma.MusicBrainzReleaseSelect
+
+export const LOCAL_RELEASE_CARD_SELECT = {
+  id: true,
+  title: true,
+  year: true,
+  folderPath: true,
+  image: true,
+  imageUrl: true,
+  matchStatus: true,
+  statusReason: true,
+  releaseId: true,
+  _count: { select: { tracks: true } },
+  artists: { select: { artist: { select: { name: true, slug: true } } } },
+  mediumPosition: true,
+  boxReleaseId: true,
+  boxMediumPosition: true,
+} as const satisfies Prisma.LocalReleaseSelect
 
 // Single-release field mapping shared by the batch card builders below and the single-release lookup
 // endpoint (server/api/releases/[id].get.ts) - keeps `image`/`imageUrl`/type/format/etc. derivation in
@@ -91,7 +136,7 @@ export const buildReleaseCard = (
       imageUrl: img.imageUrl,
       trackCount: 0,
       totalPlayCount: lr.totalPlayCount,
-      localTrackCount: lr.tracks.length,
+      localTrackCount: lr._count.tracks,
       isMusicBrainz: false,
       hasLocal: true,
       localReleaseId: lr.id,
@@ -126,9 +171,9 @@ export const buildReleaseCard = (
     status: mbr.status as UnifiedRelease['status'],
     image: img.image,
     imageUrl: img.imageUrl,
-    trackCount: mbr.tracks.length,
+    trackCount: mbr._count.tracks,
     totalPlayCount: lr.totalPlayCount,
-    localTrackCount: lr.tracks.length,
+    localTrackCount: lr._count.tracks,
     isMusicBrainz: true,
     hasLocal: true,
     localReleaseId: lr.id,
@@ -284,9 +329,9 @@ export const buildLocalAndGapCards = (params: {
       status: mbr.status as UnifiedRelease['status'],
       image: gapImg.image,
       imageUrl: gapImg.imageUrl,
-      trackCount: mbr.tracks.length,
+      trackCount: mbr._count.tracks,
       totalPlayCount: boxDiscs.reduce((sum, d) => sum + d.totalPlayCount, 0),
-      localTrackCount: boxDiscs.reduce((sum, d) => sum + d.tracks.length, 0),
+      localTrackCount: boxDiscs.reduce((sum, d) => sum + d._count.tracks, 0),
       isMusicBrainz: true,
       hasLocal: false,
       localReleaseId: null,

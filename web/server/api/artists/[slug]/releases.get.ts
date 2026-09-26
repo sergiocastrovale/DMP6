@@ -1,18 +1,10 @@
-import type { AlsoPartOfEntry } from '~/types/release'
 import { prisma } from '~/server/utils/prisma'
-import { verifyImage } from '~/server/utils/images'
+import { cachedResponse } from '~/server/utils/cache'
 import { parsePagination } from '~/server/utils/pagination'
 import { hasPermission } from '~/server/utils/permissions'
 import { currentUserId } from '~/server/utils/libraryOwnership'
 import { releasePlayTotals } from '~/server/utils/userPlays'
-import {
-  accumulateAlsoPartOf,
-  buildAppearsOnCards,
-  buildCoArtistMap,
-  buildConnectedArtistByRelease,
-  buildLocalAndGapCards,
-  sortReleaseCards,
-} from '~/server/utils/releaseAggregation'
+import { applyPlays, buildArtistCatalogue, playReleaseIds } from '~/server/utils/artistCatalogue'
 
 export default defineEventHandler(async (event) => {
   const userId = currentUserId(event)
@@ -22,166 +14,13 @@ export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const { page, pageSize } = parsePagination(query, { defaultSize: 20, maxSize: 500 })
 
-  const artist = await prisma.artist.findUnique({
-    where: { slug },
-    select: { id: true },
-  })
+  // The catalogue is user-independent and expensive to assemble, so it is cached (10 min, library-versioned -
+  // a rescan or merge invalidates it). Everything that differs per user - plays, download state - is attached
+  // after the cache. A 404 for an unknown slug is thrown inside the builder and therefore never cached.
+  const catalogue = await cachedResponse(`artist-releases:${slug}`, 600, () => buildArtistCatalogue(slug), { shared: true })
 
-  if (!artist) {throw createError({ statusCode: 404, statusMessage: 'Artist not found' })}
-
-  const connectedArtists = await prisma.artist.findMany({
-    where: { primaryArtistId: artist.id },
-    select: { id: true, name: true, slug: true },
-  })
-  const allArtistIds = [artist.id, ...connectedArtists.map(a => a.id)]
-  const connectedArtistById = new Map(connectedArtists.map(a => [a.id, a]))
-
-  const mbReleaseLinks = await prisma.musicBrainzReleaseArtist.findMany({
-    where: { artistId: { in: allArtistIds } },
-    select: {
-      release: {
-        select: {
-          id: true,
-          title: true,
-          year: true,
-          musicbrainzId: true,
-          releaseGroupId: true,
-          disambiguation: true,
-          editionLabel: true,
-          releaseDate: true,
-          packaging: true,
-          country: true,
-          format: true,
-          status: true,
-          statusReason: true,
-          mediumCount: true,
-          media: {
-            select: { position: true, title: true, equivalentReleaseId: true, equivalentReleaseGroupId: true },
-            orderBy: { position: 'asc' },
-          },
-          type: { select: { name: true, slug: true } },
-          tracks: { select: { id: true } },
-        },
-      },
-    },
-  })
-  const mbReleases = mbReleaseLinks.map(l => l.release)
-  const mbById = new Map(mbReleases.map(r => [r.id, r]))
-
-  // Get all local releases for this artist (via LocalReleaseArtist junction)
-  const releaseLinks = await prisma.localReleaseArtist.findMany({
-    where: { artistId: { in: allArtistIds } },
-    select: { localReleaseId: true, artistId: true },
-  })
-  const releaseIds = [...new Set(releaseLinks.map(l => l.localReleaseId))]
-  const connectedArtistByRelease = buildConnectedArtistByRelease(releaseLinks, connectedArtistById)
-
-  const localReleases = await prisma.localRelease.findMany({
-    where: { id: { in: releaseIds } },
-    select: {
-      id: true,
-      title: true,
-      year: true,
-      folderPath: true,
-      image: true,
-      imageUrl: true,
-      matchStatus: true,
-      statusReason: true,
-      releaseId: true,
-      tracks: { select: { id: true } },
-      artists: {
-        select: {
-          artist: { select: { name: true, slug: true } },
-        },
-      },
-      mediumPosition: true,
-      boxReleaseId: true,
-      boxMediumPosition: true,
-    },
-    orderBy: [{ year: 'asc' }, { title: 'asc' }],
-  })
-
-  const playTotals = await releasePlayTotals(userId, localReleases.map(r => r.id))
-  const localReleasesWithPlays = localReleases.map(r => ({ ...r, totalPlayCount: playTotals.get(r.id)?.totalPlayCount ?? 0 }))
-
-  // Build co-artist map: for each local release, list other artists (excluding current + connected)
-  const connectedSlugs = new Set(connectedArtists.map(a => a.slug))
-  const coArtistMap = buildCoArtistMap(localReleasesWithPlays, slug, connectedSlugs)
-
-  // docs/sync_decisions.md: box sets in the catalogue that reprint any of this page's release groups -
-  // a pure catalogue fact, independent of ownership. Batched once across every group id on the page.
-  const releaseGroupIds = [...new Set(mbReleases.map(r => r.releaseGroupId).filter((id): id is string => !!id))]
-  const alsoPartOfMedia = releaseGroupIds.length > 0
-    ? await prisma.musicBrainzReleaseMedium.findMany({
-      where: { equivalentReleaseGroupId: { in: releaseGroupIds } },
-      select: { equivalentReleaseGroupId: true, releaseId: true, release: { select: { title: true, year: true, releaseGroupId: true } } },
-    })
-    : []
-  const alsoPartOfByGroupId = new Map<string, AlsoPartOfEntry[]>()
-  const alsoPartOfSeen = new Map<string, Set<string>>()
-  accumulateAlsoPartOf(alsoPartOfMedia, alsoPartOfByGroupId, alsoPartOfSeen)
-
-  const { cards: localAndGapCards, appearsOnLocal } = buildLocalAndGapCards({
-    localReleases: localReleasesWithPlays,
-    mbById,
-    coArtistMap,
-    connectedArtistByRelease,
-    resolveImage: verifyImage,
-    alsoPartOfByGroupId,
-  })
-
-  // Appears-On: LocalReleases whose MB release is NOT in this artist's catalogue.
-  // Fetch those MB rows so the cards get real type/year/status/trackCount.
-  const appearsOnMbIds = appearsOnLocal.map(lr => lr.releaseId!)
-  const appearsOnMbReleases = appearsOnMbIds.length > 0
-    ? await prisma.musicBrainzRelease.findMany({
-      where: { id: { in: appearsOnMbIds } },
-      select: {
-        id: true,
-        title: true,
-        musicbrainzId: true,
-        releaseGroupId: true,
-        disambiguation: true,
-        editionLabel: true,
-        releaseDate: true,
-        packaging: true,
-        country: true,
-        format: true,
-        year: true,
-        status: true,
-        statusReason: true,
-        mediumCount: true,
-        media: {
-          select: { position: true, title: true, equivalentReleaseId: true, equivalentReleaseGroupId: true },
-          orderBy: { position: 'asc' },
-        },
-        type: { select: { name: true, slug: true } },
-        tracks: { select: { id: true } },
-      },
-    })
-    : []
-  const appearsOnMbById = new Map(appearsOnMbReleases.map(r => [r.id, r]))
-
-  const appearsOnGroupIds = [...new Set(appearsOnMbReleases.map(r => r.releaseGroupId).filter((id): id is string => !!id))]
-    .filter(id => !alsoPartOfByGroupId.has(id))
-  if (appearsOnGroupIds.length > 0) {
-    const extraMedia = await prisma.musicBrainzReleaseMedium.findMany({
-      where: { equivalentReleaseGroupId: { in: appearsOnGroupIds } },
-      select: { equivalentReleaseGroupId: true, releaseId: true, release: { select: { title: true, year: true, releaseGroupId: true } } },
-    })
-    accumulateAlsoPartOf(extraMedia, alsoPartOfByGroupId, alsoPartOfSeen)
-  }
-
-  const appearsOnCards = buildAppearsOnCards({
-    appearsOnLocal,
-    appearsOnMbById,
-    coArtistMap,
-    connectedArtistByRelease,
-    resolveImage: verifyImage,
-    alsoPartOfByGroupId,
-  })
-
-  const releases = sortReleaseCards([...localAndGapCards, ...appearsOnCards])
+  const localIds = catalogue.flatMap(playReleaseIds)
+  const releases = applyPlays(catalogue, await releasePlayTotals(userId, localIds))
 
   // Paginate the unified list
   const total = releases.length

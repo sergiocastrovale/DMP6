@@ -27,7 +27,7 @@ const mbRelease = (overrides: Partial<MbReleaseRow> & { id: string }): MbRelease
   mediumCount: 1,
   media: [],
   type: { name: 'Album', slug: 'album' },
-  tracks: [{ id: 't1' }],
+  _count: { tracks: 1 },
   ...overrides,
 })
 
@@ -41,7 +41,7 @@ const localRelease = (overrides: Partial<LocalReleaseRow> & { id: string }): Loc
   statusReason: null,
   releaseId: null,
   totalPlayCount: 0,
-  tracks: [],
+  _count: { tracks: 0 },
   artists: [],
   mediumPosition: null,
   boxReleaseId: null,
@@ -174,7 +174,7 @@ describe('buildLocalAndGapCards - core aggregation', () => {
       id: 'mb1',
       status: 'MISSING',
       statusReason: 'Recordings inside "Bing With a Beat"',
-      tracks: [{ id: 't1' }, { id: 't2' }],
+      _count: { tracks: 2 },
     })
     const container = localRelease({ id: 'parent-lr', title: 'Bing With a Beat' })
     const { cards } = buildLocalAndGapCards({
@@ -355,16 +355,16 @@ describe('buildLocalAndGapCards - box sets (docs/sync_decisions.md)', () => {
   })
 
   it('the dissolved box itself stays a gap but borrows its discs\' cover, track count and plays - so it is playable', () => {
-    const box = mbRelease({ id: 'box1', title: 'Deliverance & Damnation', mediumCount: 2, tracks: Array.from({ length: 14 }, (_, i) => ({ id: `bt${i}` })) })
+    const box = mbRelease({ id: 'box1', title: 'Deliverance & Damnation', mediumCount: 2, _count: { tracks: 14 } })
     const deliverance = mbRelease({ id: 'album1', title: 'Deliverance' })
     const damnation = mbRelease({ id: 'album2', title: 'Damnation' })
     const disc2 = localRelease({
       id: 'lr2', releaseId: 'album2', boxReleaseId: 'box1', boxMediumPosition: 2, image: 'disc2.jpg', totalPlayCount: 3,
-      tracks: Array.from({ length: 8 }, (_, i) => ({ id: `d2t${i}` })),
+      _count: { tracks: 8 },
     })
     const disc1 = localRelease({
       id: 'lr1', releaseId: 'album1', boxReleaseId: 'box1', boxMediumPosition: 1, image: 'disc1.jpg', totalPlayCount: 2,
-      tracks: Array.from({ length: 6 }, (_, i) => ({ id: `d1t${i}` })),
+      _count: { tracks: 6 },
     })
     const { cards } = buildLocalAndGapCards({
       localReleases: [disc2, disc1],

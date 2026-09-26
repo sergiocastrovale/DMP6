@@ -106,7 +106,7 @@ export interface MbReleaseRow {
   mediumCount: number
   media: { position: number, title: string | null, equivalentReleaseId: string | null, equivalentReleaseGroupId: string | null }[]
   type: { name: string, slug: string }
-  tracks: { id: string }[]
+  _count: { tracks: number }
 }
 
 export interface LocalReleaseRow {
@@ -120,7 +120,7 @@ export interface LocalReleaseRow {
   statusReason: string | null
   releaseId: string | null
   totalPlayCount: number
-  tracks: { id: string }[]
+  _count: { tracks: number }
   artists: { artist: { name: string, slug: string } }[]
   // Box-set provenance (docs/sync_decisions.md) - null for an ordinary, non-box-related release.
   mediumPosition: number | null

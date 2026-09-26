@@ -1,7 +1,7 @@
 import type { AlsoPartOfEntry } from '~/types/release'
 import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
-import { accumulateAlsoPartOf, buildReleaseCard } from '~/server/utils/releaseAggregation'
+import { accumulateAlsoPartOf, buildReleaseCard, LOCAL_RELEASE_CARD_SELECT, MB_RELEASE_CARD_SELECT } from '~/server/utils/releaseAggregation'
 import { currentUserId } from '~/server/utils/libraryOwnership'
 import { releasePlayTotals } from '~/server/utils/userPlays'
 
@@ -14,50 +14,7 @@ export default defineEventHandler(async (event) => {
 
   const lr = await prisma.localRelease.findUnique({
     where: { id },
-    select: {
-      id: true,
-      title: true,
-      year: true,
-      folderPath: true,
-      image: true,
-      imageUrl: true,
-      matchStatus: true,
-      statusReason: true,
-      releaseId: true,
-      tracks: { select: { id: true } },
-      artists: {
-        select: {
-          artist: { select: { name: true, slug: true } },
-        },
-      },
-      mediumPosition: true,
-      boxReleaseId: true,
-      boxMediumPosition: true,
-      release: {
-        select: {
-          id: true,
-          title: true,
-          year: true,
-          musicbrainzId: true,
-          releaseGroupId: true,
-          disambiguation: true,
-          editionLabel: true,
-          releaseDate: true,
-          packaging: true,
-          country: true,
-          format: true,
-          status: true,
-          statusReason: true,
-          mediumCount: true,
-          media: {
-            select: { position: true, title: true, equivalentReleaseId: true, equivalentReleaseGroupId: true },
-            orderBy: { position: 'asc' },
-          },
-          type: { select: { name: true, slug: true } },
-          tracks: { select: { id: true } },
-        },
-      },
-    },
+    select: { ...LOCAL_RELEASE_CARD_SELECT, release: { select: MB_RELEASE_CARD_SELECT } },
   })
 
   if (!lr) {
@@ -65,31 +22,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const boxMbr = lr.boxReleaseId
-    ? await prisma.musicBrainzRelease.findUnique({
-      where: { id: lr.boxReleaseId },
-      select: {
-        id: true,
-        title: true,
-        year: true,
-        musicbrainzId: true,
-        releaseGroupId: true,
-        disambiguation: true,
-        editionLabel: true,
-        releaseDate: true,
-        packaging: true,
-        country: true,
-        format: true,
-        status: true,
-        statusReason: true,
-        mediumCount: true,
-        media: {
-          select: { position: true, title: true, equivalentReleaseId: true, equivalentReleaseGroupId: true },
-          orderBy: { position: 'asc' },
-        },
-        type: { select: { name: true, slug: true } },
-        tracks: { select: { id: true } },
-      },
-    })
+    ? await prisma.musicBrainzRelease.findUnique({ where: { id: lr.boxReleaseId }, select: MB_RELEASE_CARD_SELECT })
     : null
 
   // docs/sync_decisions.md: box sets in the catalogue that reprint this release's whole release group -
