@@ -216,7 +216,7 @@ Fullscreen WebGL visualizer over playback (4 presets: chaos/fractal/flow/julia).
 
 ## Caching (Redis)
 
-Optional sidecar, falls through to DB silently if unavailable.
+Optional sidecar (`server/utils/cache.ts`), connected at boot by `server/plugins/redis.ts`. Without Redis (or while it is down) `cachedResponse` uses a 500-entry in-process LRU, or falls through to the DB. Concurrent misses on one key share a single computation (singleflight).
 
 | Endpoint | TTL |
 |---|---|
@@ -228,7 +228,7 @@ Optional sidecar, falls through to DB silently if unavailable.
 | `/api/releases/archive` | 5 min |
 | `/api/labs/map/countries` | 24 h |
 
-Library-derived entries (`{ shared: true }` in `cachedResponse`) embed a **library version** in their key (`lib:<Statistics.updatedAt ms>:<key>`, `server/utils/libraryVersion.ts`): every lock-holding script bumps `Statistics.updatedAt`, so a scan/merge makes all old keys unreachable at once. Web-side edits that don't bump it (artist photo/monitor toggle, `./add`) call `invalidateShared(pattern)`. `last-played` is per-user and invalidated on counted plays.
+Library-derived entries (`{ shared: true }` in `cachedResponse`) embed a **library version** in their key (`lib:<Statistics.updatedAt ms>:<key>`, `server/utils/libraryVersion.ts`): every lock-holding script bumps `Statistics.updatedAt`, so a scan/merge makes all old keys unreachable at once. Web-side edits that don't bump it (artist photo/monitor toggle, `./add`) call `invalidateShared(pattern)`. `last-played` is per-user: a counted play bumps the user's cache version (`bumpUserCache`, `ver:user:<id>`), which the key embeds — one INCR, no keyspace SCAN. A play touches nothing else.
 
 ## NAS / Deploy
 

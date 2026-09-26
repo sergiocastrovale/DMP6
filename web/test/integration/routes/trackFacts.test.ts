@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getTestPrisma, resetDb } from '../../../test/setup/db'
 import { invalidateSettingsCache, refreshSettingsCache } from '../../../server/utils/settingsCache'
+import { resetMemoryCacheForTests } from '../../../server/utils/cache'
 import { fetchFactsForTrack } from '../../../server/utils/genius'
 import { pickStoredFact } from '../../../server/utils/artistFacts'
 import { factHash } from '../../../server/utils/geniusFacts'
@@ -88,6 +89,8 @@ const seedArtistWithOneTrack = async () => {
 describe('"Did you know" for a playing track (real Postgres)', () => {
   beforeEach(async () => {
     await resetDb()
+    // Genius responses are cached (in-process when there is no Redis); each test stubs its own HTTP.
+    resetMemoryCacheForTests()
     await prisma.settings.upsert({
       where: { id: 'main' },
       create: { id: 'main', geniusAccessToken: 'test-token' },

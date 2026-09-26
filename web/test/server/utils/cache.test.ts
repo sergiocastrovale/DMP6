@@ -5,6 +5,7 @@ const redisMock = {
   get: vi.fn(async (k: string) => store.get(k) ?? null),
   set: vi.fn(async (k: string, v: string) => { store.set(k, v); return 'OK' }),
   del: vi.fn(async (...ks: string[]) => { for (const k of ks) {store.delete(k)}; return ks.length }),
+  incr: vi.fn(async (k: string) => { const n = Number(store.get(k) ?? 0) + 1; store.set(k, String(n)); return n }),
   scan: vi.fn(async (_cursor: string, _m: string, pattern: string) => {
     const re = new RegExp(`^${pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`)
     return ['0', [...store.keys()].filter(k => re.test(k))] as [string, string[]]
@@ -72,5 +73,23 @@ describe('cachedResponse with shared keys', () => {
     await invalidateShared('artists:*')
 
     expect([...store.keys()]).toEqual(['lib:100:stats'])
+  })
+})
+
+describe('per-user cache version with Redis', () => {
+  beforeEach(() => {
+    store.clear()
+    vi.clearAllMocks()
+  })
+
+  it('bumps with one INCR (no SCAN) and reads it back', async () => {
+    const { userCacheVersion, bumpUserCache } = await import('../../../server/utils/cache')
+    expect(await userCacheVersion(5)).toBe(0)
+    await bumpUserCache(5)
+    await bumpUserCache(5)
+    expect(await userCacheVersion(5)).toBe(2)
+    expect(redisMock.incr).toHaveBeenCalledTimes(2)
+    expect(redisMock.scan).not.toHaveBeenCalled()
+    expect(store.get('ver:user:5')).toBe('2')
   })
 })

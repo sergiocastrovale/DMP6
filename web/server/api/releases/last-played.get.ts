@@ -1,5 +1,5 @@
 import { prisma } from '~/server/utils/prisma'
-import { cachedResponse } from '~/server/utils/cache'
+import { cachedResponse, userCacheVersion } from '~/server/utils/cache'
 import { RELEASE_TILE_SELECT, toReleaseTile } from '~/server/utils/releaseTiles'
 import { currentUserId } from '~/server/utils/libraryOwnership'
 
@@ -10,7 +10,8 @@ export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const limit = Math.min(Number(query.limit) || 50, 100)
 
-  return cachedResponse(`releases:last-played:${userId}:${limit}`, 60, async () => {
+  const version = await userCacheVersion(userId)
+  return cachedResponse(`releases:last-played:${userId}:v${version}:${limit}`, 60, async () => {
     const plays = await prisma.$queryRaw<{ localReleaseId: string, playCount: bigint, lastPlayedAt: Date }[]>`
       SELECT lrt."localReleaseId" AS "localReleaseId",
              SUM(p."playCount")::bigint AS "playCount",

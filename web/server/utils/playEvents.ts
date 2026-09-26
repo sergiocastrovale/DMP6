@@ -1,6 +1,6 @@
 import type { PlaySource } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
-import { invalidateCache } from '~/server/utils/cache'
+import { bumpUserCache } from '~/server/utils/cache'
 import { recordPlay } from '~/server/utils/userPlays'
 
 export interface PlayEventProgress {
@@ -70,7 +70,7 @@ export async function applyPlayEventPatch(userId: number, id: string, patch: Pla
   })
 
   if (flipped) {
-    await invalidateCache(`releases:last-played:${userId}:*`)
+    await bumpUserCache(userId)
   }
   return { ok: true }
 }
@@ -102,5 +102,5 @@ export async function recordExternalPlay(userId: number, trackId: string, source
     })
     await recordPlay(userId, trackId, now, tx)
   })
-  await invalidateCache(`releases:last-played:${userId}:*`)
+  await bumpUserCache(userId)
 }
