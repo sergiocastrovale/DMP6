@@ -24,6 +24,25 @@ test.describe('security headers', () => {
     expect(headers['content-security-policy']).toContain('frame-ancestors \'none\'')
   })
 
+  test('serves Inter Tight from this origin and makes no third-party requests', async ({ page, baseURL }) => {
+    const external: string[] = []
+    page.on('request', (req) => {
+      const url = new URL(req.url())
+      if (url.origin !== new URL(baseURL!).origin && !['data:', 'blob:'].includes(url.protocol)) {
+        external.push(req.url())
+      }
+    })
+    await page.goto('/')
+    await page.waitForLoadState('networkidle')
+
+    const loaded = await page.evaluate(async () => {
+      await document.fonts.ready
+      return [...document.fonts].some(f => f.family.replace(/["']/g, '') === 'Inter Tight' && f.status === 'loaded')
+    })
+    expect(loaded).toBe(true)
+    expect(external).toEqual([])
+  })
+
   for (const route of ROUTES) {
     test(`${route} triggers no CSP violations`, async ({ page }) => {
       await stubTerminal(page)

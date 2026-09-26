@@ -29,8 +29,8 @@ export const buildCsp = (options: Pick<SecurityHeaderOptions, 'storagePublicUrl'
   const directives: Record<string, string[]> = {
     'default-src': ['\'self\''],
     'script-src': ['\'self\'', '\'unsafe-inline\''],
-    'style-src': ['\'self\'', '\'unsafe-inline\'', 'https://fonts.googleapis.com'],
-    'font-src': ['\'self\'', 'https://fonts.gstatic.com'],
+    'style-src': ['\'self\'', '\'unsafe-inline\''],
+    'font-src': ['\'self\''],
     // https: because cover art can come from an S3/CDN bucket or (Cover Art Archive) URLs stored on the row.
     'img-src': ['\'self\'', 'data:', 'blob:', 'https:'],
     'media-src': ['\'self\'', 'blob:'],

@@ -3,6 +3,17 @@
 @import "./theme.css";
 /* Must follow theme.css: it overrides that file's amber ramp per accent theme. */
 @import "./themes.css";
+/* Inter Tight, self-hosted (was fetched from Google Fonts: a third-party request on every page view, no offline
+   use in the PWA, and a CSP hole). Latin + Latin Extended only - other scripts fall through to system fonts,
+   which is what unicode-range would have done for a glyph Inter Tight lacks anyway. */
+@import "@fontsource/inter-tight/latin-400.css";
+@import "@fontsource/inter-tight/latin-ext-400.css";
+@import "@fontsource/inter-tight/latin-500.css";
+@import "@fontsource/inter-tight/latin-ext-500.css";
+@import "@fontsource/inter-tight/latin-600.css";
+@import "@fontsource/inter-tight/latin-ext-600.css";
+@import "@fontsource/inter-tight/latin-700.css";
+@import "@fontsource/inter-tight/latin-ext-700.css";
 
 html,
 body {

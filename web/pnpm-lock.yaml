@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@fontsource/inter-tight':
+        specifier: ^5.3.0
+        version: 5.3.0
       '@prisma/client':
         specifier: ^6.1.0
         version: 6.19.2(prisma@6.19.2(magicast@0.5.2)(typescript@5.9.3))(typescript@5.9.3)
@@ -1104,6 +1107,9 @@ packages:
   '@eslint/plugin-kit@0.7.2':
     resolution: {integrity: sha512-+CNAzxglkrpNf/kKywqQfk74QjtceuOE7Qm+AF8miRvPF/wmmK5+OJOgVh3AVTT3RP2mH3+FOaxlE5v72owk0A==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=24}
+
+  '@fontsource/inter-tight@5.3.0':
+    resolution: {integrity: sha512-uRwIrjKSUcCKIFeO2qm3yECA9phwge6Y1qQZvUmwqFgiIVWUELwwuq7pFlmlpPtO33ZtFQVOXQGNuvna1JPs6A==}
 
   '@grpc/grpc-js@1.14.4':
     resolution: {integrity: sha512-k9Dj3DV/itK9D06Y8f190Qgop7/Ui+D0njFV3LHMPwPT75DpXLQohE9Wmz0QElrJnzsjB7KPWiKJbOl7IPDArQ==}
@@ -8322,6 +8328,8 @@ snapshots:
     dependencies:
       '@eslint/core': 1.2.1
       levn: 0.4.1
+
+  '@fontsource/inter-tight@5.3.0': {}
 
   '@grpc/grpc-js@1.14.4':
     dependencies:

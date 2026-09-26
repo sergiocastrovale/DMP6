@@ -15,6 +15,13 @@ describe('buildCsp', () => {
     expect(csp).toContain('connect-src \'self\' https://cdn.example.com;')
   })
 
+  it('allows no third-party font or style host - fonts are self-hosted', () => {
+    const csp = buildCsp({})
+    expect(csp).not.toMatch(/google/i)
+    expect(csp).toMatch(/font-src 'self';/)
+    expect(csp).toMatch(/style-src 'self' 'unsafe-inline';/)
+  })
+
   it('ignores an unparsable storage URL', () => {
     expect(buildCsp({ storagePublicUrl: 'not a url' })).toMatch(/connect-src 'self';/)
   })
