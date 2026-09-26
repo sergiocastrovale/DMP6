@@ -1,3 +1,4 @@
+import { SEARCH_MIN_CHARS } from '~/helpers/constants'
 import { parsePagination } from '~/server/utils/pagination'
 import { hydrateArtists, hydrateReleases, hydrateTracks, rankedArtistIds, rankedReleaseIds, rankedTrackIds } from '~/server/utils/searchRank'
 
@@ -16,20 +17,21 @@ export default defineEventHandler(async (event) => {
   }
 
   const query = getQuery(event)
-  const searchQuery = (query.q as string) || ''
+  const searchQuery = (typeof query.q === 'string' ? query.q : '').trim()
   const { page, pageSize, skip } = parsePagination(query, { defaultSize: 48, maxSize: 100 })
 
-  if (searchQuery.length < 2) {
-    return { items: [], total: 0, page, hasMore: false }
+  if (searchQuery.length < SEARCH_MIN_CHARS[type]) {
+    return { items: [], total: 0, totalCapped: false, page, hasMore: false }
   }
 
   const { rank, hydrate } = RANKERS[type]
-  const { ids, total } = await rank(searchQuery, skip, pageSize)
+  const { ids, total, totalCapped } = await rank(searchQuery, skip, pageSize)
   const items = await hydrate(ids)
 
   return {
     items,
     total,
+    totalCapped,
     page,
     hasMore: skip + items.length < total,
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { escapeLike } from '~/server/utils/searchRank'
+import { escapeLike, searchPatterns } from '~/server/utils/searchRank'
 
 describe('server/utils/searchRank.escapeLike', () => {
   it('leaves plain text untouched', () => {
@@ -15,5 +15,12 @@ describe('server/utils/searchRank.escapeLike', () => {
     // A naive char-by-char replace that escapes % and _ before \ would turn "a\\%b" into
     // "a\\\\%b" - the escaping backslash itself getting escaped a second time.
     expect(escapeLike('a\\%b')).toBe('a\\\\\\%b')
+  })
+})
+
+describe('server/utils/searchRank.searchPatterns', () => {
+  it('builds exact, prefix, word-boundary and substring patterns, all escaped', () => {
+    expect(searchPatterns('love')).toEqual(['love', 'love%', '% love%', '%love%'])
+    expect(searchPatterns('50%_off')).toEqual(['50\\%\\_off', '50\\%\\_off%', '% 50\\%\\_off%', '%50\\%\\_off%'])
   })
 })

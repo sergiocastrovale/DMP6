@@ -97,6 +97,8 @@ export interface TabItem {
   label: string
   href?: string
   count?: number
+  // Appended to the count in the pill, e.g. '+' for a capped total ("1000+").
+  countSuffix?: string
   countHighlight?: boolean
 }
 

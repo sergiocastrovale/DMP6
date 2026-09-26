@@ -431,3 +431,10 @@ export const USERS_LIVE_REFRESH_MS = 10_000
 // MusicBrainz artist MBID - used by /add's search box to detect a pasted id vs a name query
 // (server/api/artists/mb-search.get.ts).
 export const MBID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+// Search (server/utils/searchRank.ts). Trigram indexes need >= 3 characters to be usable, so a 2-character
+// substring search over 1.9M tracks/150k releases would fall back to a sequential scan; artists (46k rows)
+// stay cheap enough at 2. TIER_CAP bounds the rows fetched per rank tier; TOTAL_CAP is where the result
+// count stops being exact and the UI shows "1000+".
+export const SEARCH_MIN_CHARS = { artists: 2, releases: 3, tracks: 3 } as const
+export const SEARCH_TIER_CAP = 500
+export const SEARCH_TOTAL_CAP = 1000

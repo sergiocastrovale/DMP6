@@ -21,8 +21,27 @@ describe('layout/SearchBar.vue', () => {
     await wrapper.get('input').setValue('radio')
     await vi.advanceTimersByTimeAsync(300)
     await wrapper.vm.$nextTick()
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/api/search?q=radio'))
+    expect(fetchMock).toHaveBeenCalledWith('/api/search', expect.objectContaining({ params: { q: 'radio' } }))
     expect(wrapper.text()).toContain('Radiohead')
+    vi.useRealTimers()
+  })
+
+  it('aborts the request still in flight when the query changes', async () => {
+    const signals: AbortSignal[] = []
+    const fetchMock = vi.fn().mockImplementation((_url: string, opts: { signal: AbortSignal }) => {
+      signals.push(opts.signal)
+      return new Promise(() => {})
+    })
+    vi.stubGlobal('$fetch', fetchMock)
+    vi.useFakeTimers()
+    const wrapper = await mountSuspended(SearchBar)
+    await wrapper.get('input').setValue('radio')
+    await vi.advanceTimersByTimeAsync(300)
+    await wrapper.get('input').setValue('radiohead')
+    await vi.advanceTimersByTimeAsync(300)
+    expect(signals).toHaveLength(2)
+    expect(signals[0]!.aborted).toBe(true)
+    expect(signals[1]!.aborted).toBe(false)
     vi.useRealTimers()
   })
 

@@ -72,7 +72,7 @@ const tabClass = (selected: boolean) => cx(
           :class="tabClass(isHrefActive(tab.href))"
         >
           <span>{{ tab.label }}</span>
-          <span v-if="tab.count !== undefined" :class="countPillClass(tab)">{{ tab.count }}</span>
+          <span v-if="tab.count !== undefined" :class="countPillClass(tab)">{{ tab.count }}{{ tab.countSuffix }}</span>
         </NuxtLink>
         <button
           v-else
@@ -84,7 +84,7 @@ const tabClass = (selected: boolean) => cx(
           @click="activeTab = tab.key"
         >
           <span>{{ tab.label }}</span>
-          <span v-if="tab.count !== undefined" :class="countPillClass(tab)">{{ tab.count }}</span>
+          <span v-if="tab.count !== undefined" :class="countPillClass(tab)">{{ tab.count }}{{ tab.countSuffix }}</span>
         </button>
       </template>
     </div>

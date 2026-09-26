@@ -13,6 +13,7 @@ defineSlots<{ default: (props: { items: Record<string, any>[] }) => any }>()
 
 const items = ref<Record<string, any>[]>([])
 const total = ref(0)
+const totalCapped = ref(false)
 const page = ref(1)
 const hasMore = ref(false)
 const loading = ref(false)
@@ -30,7 +31,7 @@ const fetchPage = async (append = false) => {
   append ? (loadingMore.value = true) : (loading.value = true)
 
   try {
-    const data = await $fetch<{ items: Record<string, any>[], total: number, hasMore: boolean }>(
+    const data = await $fetch<{ items: Record<string, any>[], total: number, totalCapped?: boolean, hasMore: boolean }>(
       `/api/search/${props.type}`,
       { params: { q: props.query, page: append ? page.value : 1, pageSize: 48 }, signal: controller.signal },
     )
@@ -38,6 +39,7 @@ const fetchPage = async (append = false) => {
 
     items.value = append ? [...items.value, ...data.items] : data.items
     total.value = data.total
+    totalCapped.value = data.totalCapped ?? false
     hasMore.value = data.hasMore
     if (!append) {page.value = 1}
   }
@@ -80,7 +82,7 @@ watch(() => [props.type, props.query], () => fetchPage(), { immediate: true })
       <UiLoadingBlock v-if="loadingMore" size="inline" />
 
       <div class="mt-4 text-center text-xs text-stone-100/55">
-        Showing {{ items.length }} of {{ total.toLocaleString() }} {{ label }}
+        Showing {{ items.length }} of {{ total.toLocaleString() }}{{ totalCapped ? '+' : '' }} {{ label }}
       </div>
     </template>
   </div>

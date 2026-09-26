@@ -3,6 +3,8 @@ import { useDebounceFn } from '@vueuse/core'
 import { Search, X } from 'lucide-vue-next'
 import type { SearchResults } from '~/types/search'
 import { cx, ICON_STROKE_WIDTH } from '~/helpers/ui'
+import { isAbortError } from '~/helpers/functions'
+import { SEARCH_MIN_CHARS } from '~/helpers/constants'
 
 const query = ref('')
 const inputRef = ref<HTMLInputElement>()
@@ -13,26 +15,39 @@ const showDropdown = ref(false)
 const activeIndex = ref(-1)
 const listboxId = useId()
 
+// A newer keystroke aborts the request still in flight - each one costs three ranked queries server-side,
+// and a slow stale response must never land after (and overwrite) a fresher one.
+let searchAbort: AbortController | null = null
+
 const performSearch = useDebounceFn(async (searchQuery: string) => {
-  if (!searchQuery || searchQuery.length < 2) {
+  searchAbort?.abort()
+  const trimmed = searchQuery.trim()
+  if (trimmed.length < SEARCH_MIN_CHARS.artists) {
+    searchAbort = null
     searchResults.value = null
     showDropdown.value = false
     return
   }
 
+  const controller = new AbortController()
+  searchAbort = controller
   isSearching.value = true
   try {
-    const data = await $fetch<SearchResults>(`/api/search?q=${encodeURIComponent(searchQuery)}`)
+    const data = await $fetch<SearchResults>('/api/search', { params: { q: trimmed }, signal: controller.signal })
     searchResults.value = data
     showDropdown.value = true
     activeIndex.value = -1
   }
   catch (error) {
-    console.error('Search failed:', error)
-    searchResults.value = null
+    if (!isAbortError(error)) {
+      console.error('Search failed:', error)
+      searchResults.value = null
+    }
   }
   finally {
-    isSearching.value = false
+    if (searchAbort === controller) {
+      isSearching.value = false
+    }
   }
 }, 300)
 

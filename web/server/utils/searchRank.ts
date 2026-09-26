@@ -1,102 +1,112 @@
+import { Prisma } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
+import { SEARCH_MIN_CHARS, SEARCH_TIER_CAP, SEARCH_TOTAL_CAP } from '~/helpers/constants'
 
 // Escapes LIKE/ILIKE metacharacters so a query containing %, _ or \ is matched literally instead
-// of being treated as a wildcard. Prisma's own `contains` does this internally for its generated
-// queries, but these raw queries build their own ILIKE patterns and need the same treatment.
+// of being treated as a wildcard.
 export const escapeLike = (value: string): string => value.replace(/[\\%_]/g, char => `\\${char}`)
 
-// Rank tiers, cheapest/most-specific first: exact match beats prefix beats word-boundary-contains
-// beats plain substring. Keeps "HIM" from being buried under every artist whose name merely
-// contains "him".
-interface RankedIds {
+export interface RankedIds {
   ids: string[]
+  // Capped at SEARCH_TOTAL_CAP: counting every match of a common word ("the", "love") would read
+  // hundreds of thousands of rows just to print a badge. `totalCapped` means "at least this many".
   total: number
+  totalCapped: boolean
 }
 
-export const rankedArtistIds = async (q: string, skip: number, take: number): Promise<RankedIds> => {
-  const like = `%${escapeLike(q)}%`
-  const prefix = `${escapeLike(q)}%`
+export type SearchKind = 'artists' | 'releases' | 'tracks'
 
-  const rows = await prisma.$queryRaw<{ id: string, total: bigint }[]>`
-    SELECT id, count(*) OVER() AS total
-    FROM "Artist"
-    WHERE "primaryArtistId" IS NULL
-      AND name ILIKE ${like}
-    ORDER BY
-      CASE
-        WHEN lower(name) = lower(${q}) THEN 0
-        WHEN name ILIKE ${prefix} THEN 1
-        WHEN name ILIKE ${`% ${escapeLike(q)}%`} THEN 2
-        ELSE 3
-      END,
-      "completeness" DESC NULLS LAST,
-      name ASC,
-      id ASC
-    OFFSET ${skip} LIMIT ${take}
-  `
-  return { ids: rows.map(r => r.id), total: rows.length ? Number(rows[0]!.total) : await countArtists(like) }
+const EMPTY: RankedIds = { ids: [], total: 0, totalCapped: false }
+
+// Rank tiers, most specific first: exact, prefix, word-boundary, plain substring. Keeps "HIM" from being
+// buried under every artist whose name merely contains "him". Each tier is capped independently, so a
+// common word costs a bounded number of heap fetches rather than a sort of every match.
+export const searchPatterns = (q: string): [string, string, string, string] => {
+  const e = escapeLike(q)
+  return [e, `${e}%`, `% ${e}%`, `%${e}%`]
 }
 
-export const rankedReleaseIds = async (q: string, skip: number, take: number): Promise<RankedIds> => {
-  const like = `%${escapeLike(q)}%`
-  const prefix = `${escapeLike(q)}%`
-  const wordLike = `% ${escapeLike(q)}%`
+const TIER_EXACT = 0
+const TIER_PREFIX = 1
 
-  const rows = await prisma.$queryRaw<{ id: string, total: bigint }[]>`
-    SELECT lr.id, count(*) OVER() AS total
-    FROM "LocalRelease" lr
-    LEFT JOIN "MusicBrainzRelease" mbr ON mbr.id = lr."releaseId"
-    WHERE lr.title ILIKE ${like} OR mbr.title ILIKE ${like}
-    ORDER BY
-      CASE
-        WHEN lower(COALESCE(lr.title, mbr.title)) = lower(${q}) THEN 0
-        WHEN COALESCE(lr.title, mbr.title) ILIKE ${prefix} THEN 1
-        WHEN COALESCE(lr.title, mbr.title) ILIKE ${wordLike} THEN 2
-        ELSE 3
-      END,
-      lr."createdAt" DESC,
-      lr.id ASC
-    OFFSET ${skip} LIMIT ${take}
-  `
-  return { ids: rows.map(r => r.id), total: rows.length ? Number(rows[0]!.total) : await countReleases(like) }
+// `col` matches tier `tier` of the query. Track titles answer the exact and prefix tiers from the btree on
+// lower(title) (migration 20260926000500) - the trigram index can't reject a non-match without fetching
+// every candidate row. Everything else, and the two substring tiers, use the trigram indexes.
+const tierCondition = (kind: SearchKind, col: Prisma.Sql, tier: number, q: string): Prisma.Sql => {
+  const pattern = searchPatterns(q)[tier]!
+  if (kind === 'tracks' && tier === TIER_EXACT) {
+    return Prisma.sql`lower(${col}) = lower(${q})`
+  }
+  if (kind === 'tracks' && tier === TIER_PREFIX) {
+    return Prisma.sql`lower(${col}) LIKE lower(${escapeLike(q)}) || '%'`
+  }
+  return Prisma.sql`${col} ILIKE ${pattern}`
 }
 
-export const rankedTrackIds = async (q: string, skip: number, take: number): Promise<RankedIds> => {
-  const like = `%${escapeLike(q)}%`
-  const prefix = `${escapeLike(q)}%`
-  const wordLike = `% ${escapeLike(q)}%`
-
-  const rows = await prisma.$queryRaw<{ id: string, total: bigint }[]>`
-    SELECT id, count(*) OVER() AS total
-    FROM "LocalReleaseTrack"
-    WHERE title ILIKE ${like}
-    ORDER BY
-      CASE
-        WHEN lower(title) = lower(${q}) THEN 0
-        WHEN title ILIKE ${prefix} THEN 1
-        WHEN title ILIKE ${wordLike} THEN 2
-        ELSE 3
-      END,
-      title ASC,
-      id ASC
-    OFFSET ${skip} LIMIT ${take}
-  `
-  return { ids: rows.map(r => r.id), total: rows.length ? Number(rows[0]!.total) : await countTracks(like) }
+// One SELECT of (id, label, k1) for every row matching the tier. `label` is the text shown and tie-broken
+// on; `k1` is a per-kind popularity key sorted DESC inside a tier.
+const matchRows = (kind: SearchKind, tier: number, q: string): Prisma.Sql => {
+  switch (kind) {
+    case 'artists':
+      return Prisma.sql`
+        SELECT id, name AS label, COALESCE(completeness, -1)::float8 AS k1
+        FROM "Artist"
+        WHERE "primaryArtistId" IS NULL AND ${tierCondition(kind, Prisma.sql`name`, tier, q)}`
+    case 'tracks':
+      return Prisma.sql`
+        SELECT id, title AS label, 0::float8 AS k1
+        FROM "LocalReleaseTrack"
+        WHERE ${tierCondition(kind, Prisma.sql`title`, tier, q)}`
+    case 'releases':
+      // A release matches on its own folder-derived title or on the MusicBrainz title it is bound to.
+      // Two indexed branches instead of one OR across a join, which no index can serve.
+      return Prisma.sql`
+        SELECT lr.id, lr.title AS label, extract(epoch FROM lr."createdAt")::float8 AS k1
+        FROM "LocalRelease" lr
+        WHERE ${tierCondition(kind, Prisma.sql`lr.title`, tier, q)}
+        UNION
+        SELECT lr.id, lr.title AS label, extract(epoch FROM lr."createdAt")::float8 AS k1
+        FROM "LocalRelease" lr
+        JOIN "MusicBrainzRelease" mbr ON mbr.id = lr."releaseId"
+        WHERE ${tierCondition(kind, Prisma.sql`mbr.title`, tier, q)}`
+  }
 }
 
-// count(*) OVER() rides along with the page for free when a page has rows, but an empty page
-// (skip past the end, or a 0-result query) needs its own count to report a correct `total`/0.
-const countArtists = (like: string): Promise<number> =>
-  prisma.artist.count({ where: { primaryArtistId: null, name: { contains: like.slice(1, -1), mode: 'insensitive' } } })
+export const rankedIds = async (kind: SearchKind, rawQuery: string, skip: number, take: number): Promise<RankedIds> => {
+  const q = rawQuery.trim()
+  if (q.length < SEARCH_MIN_CHARS[kind]) {
+    return EMPTY
+  }
+  const tierCap = Math.max(SEARCH_TIER_CAP, skip + take)
 
-const countReleases = (like: string): Promise<number> => {
-  const term = like.slice(1, -1)
-  return prisma.localRelease.count({ where: { OR: [{ title: { contains: term, mode: 'insensitive' } }, { release: { title: { contains: term, mode: 'insensitive' } } }] } })
+  const [rows, counted] = await Promise.all([
+    prisma.$queryRaw<{ id: string }[]>`
+      SELECT id FROM (
+        SELECT DISTINCT ON (id) id, label, k1, tier FROM (
+          (SELECT id, label, k1, 0 AS tier FROM (${matchRows(kind, 0, q)}) t0 LIMIT ${tierCap})
+          UNION ALL
+          (SELECT id, label, k1, 1 AS tier FROM (${matchRows(kind, 1, q)}) t1 LIMIT ${tierCap})
+          UNION ALL
+          (SELECT id, label, k1, 2 AS tier FROM (${matchRows(kind, 2, q)}) t2 LIMIT ${tierCap})
+          UNION ALL
+          (SELECT id, label, k1, 3 AS tier FROM (${matchRows(kind, 3, q)}) t3 LIMIT ${tierCap})
+        ) u
+        ORDER BY id, tier
+      ) d
+      ORDER BY tier, k1 DESC, label, id
+      OFFSET ${skip} LIMIT ${take}`,
+    prisma.$queryRaw<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM (SELECT 1 FROM (${matchRows(kind, 3, q)}) m LIMIT ${SEARCH_TOTAL_CAP + 1}) s`,
+  ])
+
+  const n = counted[0]?.n ?? 0
+  return { ids: rows.map(r => r.id), total: Math.min(n, SEARCH_TOTAL_CAP), totalCapped: n > SEARCH_TOTAL_CAP }
 }
 
-const countTracks = (like: string): Promise<number> =>
-  prisma.localReleaseTrack.count({ where: { title: { contains: like.slice(1, -1), mode: 'insensitive' } } })
+export const rankedArtistIds = (q: string, skip: number, take: number): Promise<RankedIds> => rankedIds('artists', q, skip, take)
+export const rankedReleaseIds = (q: string, skip: number, take: number): Promise<RankedIds> => rankedIds('releases', q, skip, take)
+export const rankedTrackIds = (q: string, skip: number, take: number): Promise<RankedIds> => rankedIds('tracks', q, skip, take)
 
 // Row shaping shared by the dropdown endpoint and the paged per-type endpoint, so the two can
 // never drift on fields/image handling.

@@ -45,7 +45,7 @@ fi
 
 # A schema.prisma change without a migration is drift. Indexes Prisma cannot declare (btree operator
 # classes, GIN trigram) are created by raw migrations and listed here so their "DROP INDEX" is not reported.
-RAW_INDEXES='LocalReleaseTrack_filePath_pattern_idx|LocalRelease_folderPath_pattern_idx|LocalReleaseTrack_title_trgm_idx|LocalRelease_title_trgm_idx|MusicBrainzRelease_title_trgm_idx|Artist_name_trgm_idx'
+RAW_INDEXES='LocalReleaseTrack_filePath_pattern_idx|LocalRelease_folderPath_pattern_idx|LocalReleaseTrack_title_trgm_idx|LocalRelease_title_trgm_idx|MusicBrainzRelease_title_trgm_idx|Artist_name_trgm_idx|LocalReleaseTrack_lower_title_pattern_idx'
 DRIFT="$(cd "$ROOT/web" && pnpm exec prisma migrate diff --from-url "$DB_URL" \
   --to-schema-datamodel prisma/schema.prisma --script 2>/dev/null \
   | grep -vE "^--|^\s*$|^DROP INDEX \"(${RAW_INDEXES})\";$" || true)"
