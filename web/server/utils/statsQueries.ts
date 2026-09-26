@@ -158,12 +158,22 @@ const queryReleases = async (type: string, search: string, skip: number, pageSiz
     })), total, { page, pageSize, skip })
 }
 
+// The stored library total, or a real count when there is none yet (no scan has run, so Statistics is empty).
+const storedTrackTotal = async (): Promise<number> => {
+  const stored = (await db().statistics.findUnique({ where: { id: 'main' }, select: { tracks: true } }))?.tracks
+  return stored || db().localReleaseTrack.count()
+}
+
 const queryTracks = async (search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
   const where: Prisma.LocalReleaseTrackWhereInput = {}
   if (search) { where.title = { contains: search, mode: 'insensitive' } }
 
-  const orderBy = sort === 'artist' ? { artist: order } : { title: order }
+  // `id` breaks ties so paging is stable (duplicate titles used to shuffle between pages), and (title, id) is what the
+  // LocalReleaseTrack_title_id_idx index serves.
+  const orderBy = sort === 'artist' ? [{ artist: order }, { id: order }] : [{ title: order }, { id: order }]
 
+  // Unfiltered, the total is the library's track count, which the scans keep in Statistics - counting 1.9M rows to
+  // report a number that is already stored is the slow part of an otherwise index-only page.
   const [items, total] = await Promise.all([
     db().localReleaseTrack.findMany({
       where,
@@ -172,14 +182,14 @@ const queryTracks = async (search: string, skip: number, pageSize: number, page:
       skip,
       take: pageSize,
     }),
-    db().localReleaseTrack.count({ where }),
+    search ? db().localReleaseTrack.count({ where }) : storedTrackTotal(),
   ])
 
   return paged(items.map(t => ({
-      id: t.id,
-      title: t.title,
-      artistName: t.artist,
-    })), total, { page, pageSize, skip })
+    id: t.id,
+    title: t.title,
+    artistName: t.artist,
+  })), total, { page, pageSize, skip })
 }
 
 const queryGenres = async (search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {

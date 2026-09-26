@@ -132,4 +132,47 @@ describe('statistics detail queries (real Postgres)', () => {
       await expect(runStatQuery('type-detail', { bucket: 'album', artist: 'missing' }, args())).rejects.toMatchObject({ statusCode: 404 })
     })
   })
+
+  describe('tracks', () => {
+    const titled = (title: string, artist = 'A') => makeLocalTrack(prisma, { title, artist })
+
+    it('orders by title with the id as tiebreak, so duplicate titles never shuffle between pages', async () => {
+      const dupes = await Promise.all([titled('Same'), titled('Same'), titled('Same'), titled('Same')])
+      await titled('Alpha')
+      await titled('Zulu')
+
+      const all = await stat<{ items: { id: string, title: string }[] }>('tracks', {}, args({ pageSize: 10 }))
+      expect(all.items.map(t => t.title)).toEqual(['Alpha', 'Same', 'Same', 'Same', 'Same', 'Zulu'])
+      expect(all.items.slice(1, 5).map(t => t.id)).toEqual(dupes.map(t => t.id).sort())
+
+      const paged = []
+      for (let page = 1; page <= 3; page++) {
+        const r = await stat<{ items: { id: string }[] }>('tracks', {}, args({ pageSize: 2, page, skip: (page - 1) * 2 }))
+        paged.push(...r.items.map(t => t.id))
+      }
+      expect(paged).toEqual(all.items.map(t => t.id))
+    })
+
+    it('reverses with desc and sorts by artist', async () => {
+      await titled('A1', 'Zed')
+      await titled('B1', 'Amy')
+      expect((await stat<{ items: { title: string }[] }>('tracks', {}, args({ order: 'desc' }))).items.map(t => t.title)).toEqual(['B1', 'A1'])
+      expect((await stat<{ items: { title: string }[] }>('tracks', {}, args({ sort: 'artist' }))).items.map(t => t.title)).toEqual(['B1', 'A1'])
+    })
+
+    it('reports the stored library total when unfiltered, the real count when searching, and a real count before any scan', async () => {
+      await titled('Find Me')
+      await titled('Other')
+      // No Statistics row yet: fall back to counting.
+      expect((await stat<{ total: number }>('tracks', {}, args())).total).toBe(2)
+
+      await prisma.statistics.upsert({ where: { id: 'main' }, create: { id: 'main', tracks: 2 }, update: { tracks: 2 } })
+      const unfiltered = await stat<{ total: number, hasMore: boolean }>('tracks', {}, args({ pageSize: 1 }))
+      expect(unfiltered).toMatchObject({ total: 2, hasMore: true })
+
+      const searched = await stat<{ total: number, items: { title: string }[] }>('tracks', {}, args({ search: 'find' }))
+      expect(searched.total).toBe(1)
+      expect(searched.items.map(t => t.title)).toEqual(['Find Me'])
+    })
+  })
 })

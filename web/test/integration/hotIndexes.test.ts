@@ -21,6 +21,7 @@ describe('hot-path indexes (real Postgres, migrated schema)', () => {
   const cases: [string, string, string][] = [
     ['LocalRelease_matchStatus_idx', 'stats unmatched count', `SELECT count(*) FROM "LocalRelease" WHERE "matchStatus" = 'UNMATCHED'`],
     ['LocalRelease_updatedAt_idx', 'recently updated releases', `SELECT id FROM "LocalRelease" WHERE "updatedAt" > "createdAt" ORDER BY "updatedAt" DESC LIMIT 50`],
+    ['LocalReleaseTrack_title_id_idx', 'track stats list by title', `SELECT id, title, artist FROM "LocalReleaseTrack" ORDER BY title ASC, id ASC OFFSET 0 LIMIT 200`],
     ['LocalReleaseTrack_lowBitrate_idx', 'low-bitrate stats count', `SELECT count(*) FROM "LocalReleaseTrack" WHERE bitrate < 256 AND bitrate > 0`],
     ['IssueCorruptedTpe2_status_createdAt_idx', 'corrupted issue list', `SELECT id FROM "IssueCorruptedTpe2" WHERE status = 'DETECTED' ORDER BY "createdAt" DESC LIMIT 50`],
     ['IssueOrphanArtist_status_createdAt_idx', 'orphan issue list', `SELECT id FROM "IssueOrphanArtist" WHERE status = 'DETECTED' ORDER BY "createdAt" DESC LIMIT 50`],
