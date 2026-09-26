@@ -1,4 +1,3 @@
-import { spawn } from 'child_process'
 import fs from 'fs'
 import { requirePermission, requireRole } from '~/server/utils/permissions'
 import {
@@ -6,12 +5,11 @@ import {
   buildScript,
   hasDestructiveFlag,
   isAllowedCommand,
-  parseExitLine,
   permissionForCommand,
   permissionsForFlags,
-  stripAnsi,
   withWebFlag,
 } from '~/server/utils/terminalCommand'
+import { openSse, streamLogAsSse } from '~/server/utils/sse'
 import { readBodyOf } from '~/server/utils/requestValidation'
 import { terminalRunBodySchema } from '~/server/schemas/terminal'
 import { hasUnfinishedLog, killTmuxSession, startTmuxSession, tmuxAvailable, tmuxSessionAlive } from '~/server/utils/tmuxSessions'
@@ -53,25 +51,10 @@ export default defineEventHandler(async (event) => {
 
   const args = withWebFlag(command, body.args ?? [])
 
-  setResponseHeaders(event, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-  })
-
-  const res = event.node.res
-
-  const send = (text: string) => {
-    const clean = stripAnsi(text)
-    for (const line of clean.split('\n')) {
-      if (line) {res.write(`data: ${JSON.stringify(line)}\n\n`)}
-    }
-  }
-
   if (!(await tmuxAvailable())) {
-    send('Error: tmux is required but not installed.')
-    res.write(`event: done\ndata: 1\n\n`)
-    res.end()
+    const sse = openSse(event)
+    sse.send('Error: tmux is required but not installed.')
+    sse.done(1)
     return
   }
 
@@ -101,61 +84,17 @@ export default defineEventHandler(async (event) => {
   // What `stop` needs to gate on: a MANAGER must not be able to stop an ADMIN-only run.
   fs.writeFileSync(terminalMetaPath(session), JSON.stringify({ command, args: body.args ?? [] }), { mode: 0o600 })
 
+  const sse = openSse(event)
+
   try {
     await killTmuxSession(session)
     await startTmuxSession(session, scriptFile)
   }
   catch (e: any) {
-    send(`Failed to start tmux session: ${e.message}`)
-    res.write(`event: done\ndata: 1\n\n`)
-    res.end()
+    sse.send(`Failed to start tmux session: ${e.message}`)
+    sse.done(1)
     return
   }
 
-  return new Promise<void>((resolve) => {
-    const tail = spawn('tail', ['-f', logFile])
-
-    const finish = (code: number) => {
-      tail.kill('SIGTERM')
-      res.write(`event: done\ndata: ${code}\n\n`)
-      res.end()
-      resolve()
-    }
-
-    let done = false
-    tail.stdout.on('data', (chunk: Buffer) => {
-      const text = stripAnsi(chunk.toString())
-      for (const line of text.split('\n')) {
-        if (!line) {continue}
-        const exitCode = parseExitLine(line)
-        if (exitCode !== null) {
-          if (!done) {
-            done = true
-            finish(exitCode)
-          }
-          return
-        }
-        res.write(`data: ${JSON.stringify(line)}\n\n`)
-      }
-    })
-
-    tail.on('error', (err) => {
-      if (!done) {
-        done = true
-        send(`Error: ${err.message}`)
-        finish(1)
-      }
-    })
-
-    // SSE disconnect: kill the log tail but leave the tmux session alive.
-    // Closing the terminal sidebar or navigating away keeps the process running.
-    // Explicit stop goes through /api/terminal/stop which signals the process.
-    event.node.req.on('close', () => {
-      if (!done) {
-        done = true
-        tail.kill('SIGTERM')
-        resolve()
-      }
-    })
-  })
+  return streamLogAsSse(sse, logFile)
 })

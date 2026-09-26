@@ -15,11 +15,13 @@ export function parseSseEvents(buffer: string): { events: SseEvent[], remainder:
   for (const part of parts) {
     let event = 'message'
     let data = ''
+    let hasField = false
     for (const line of part.split('\n')) {
-      if (line.startsWith('event: ')) {event = line.slice(7)}
-      else if (line.startsWith('data: ')) {data = line.slice(6)}
+      if (line.startsWith('event: ')) {event = line.slice(7); hasField = true}
+      else if (line.startsWith('data: ')) {data = line.slice(6); hasField = true}
     }
-    events.push({ event, data })
+    // A frame of only comment lines (the server's `: ping` keep-alive) carries nothing for the caller.
+    if (hasField) {events.push({ event, data })}
   }
   return { events, remainder }
 }

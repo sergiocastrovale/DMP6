@@ -1,4 +1,5 @@
 import { requirePermission } from '~/server/utils/permissions'
+import { openSse } from '~/server/utils/sse'
 import { readBodyOf } from '~/server/utils/requestValidation'
 import { optionalIdsBodySchema } from '~/server/schemas/common'
 import { prisma } from '~/server/utils/prisma'
@@ -15,34 +16,23 @@ export default defineEventHandler(async (event) => {
     ? bodyIds
     : (await prisma.downloadedRelease.findMany({ where: { status: 'READY' }, select: { id: true } })).map(r => r.id)
 
-  setResponseHeaders(event, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-  })
-
-  const res = event.node.res
-  const send = (line: string) => res.write(`data: ${JSON.stringify(line)}\n\n`)
+  const sse = openSse(event)
 
   try {
     if (!ids.length) {
-      send('Nothing to merge.')
-      res.write(`event: done\ndata: 0\n\n`)
-      res.end()
+      sse.send('Nothing to merge.')
+      sse.done(0)
       return
     }
-    const { merged } = await mergeManyDownloadedReleases(ids, send)
+    const { merged } = await mergeManyDownloadedReleases(ids, sse.send)
     if (!merged) {
-      send('No releases merged.')
+      sse.send('No releases merged.')
     }
     // errors are already emitted line-by-line via send() during the run
-    res.write(`event: done\ndata: 0\n\n`)
+    sse.done(0)
   }
   catch (e: any) {
-    send(`Error: ${e?.message || e}`)
-    res.write(`event: done\ndata: 1\n\n`)
-  }
-  finally {
-    res.end()
+    sse.send(`Error: ${e?.message || e}`)
+    sse.done(1)
   }
 })

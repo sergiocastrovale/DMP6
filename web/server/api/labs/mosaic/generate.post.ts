@@ -5,6 +5,7 @@ import { tmpdir } from 'os'
 import { getMosaicProcess, setMosaicProcess } from '~/server/utils/mosaic'
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
+import { openSse } from '~/server/utils/sse'
 import { readBodyOf } from '~/server/utils/requestValidation'
 import { mosaicBodySchema } from '~/server/schemas/labs'
 
@@ -58,13 +59,7 @@ export default defineEventHandler(async (event) => {
     releases.map((r) => ({ file: r.image, year: r.year ?? 9999 })),
   ))
 
-  setResponseHeaders(event, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-  })
-
-  const res = event.node.res
+  const sse = openSse(event)
 
   return new Promise<void>((resolve_) => {
     const child = spawn(
@@ -78,10 +73,8 @@ export default defineEventHandler(async (event) => {
       try { unlinkSync(manifestPath) } catch { /* ignore */ }
     }
 
-    // Guards every res.write/res.end below - the client can disconnect (req 'close') before the
-    // child process actually exits, and the child's own 'close'/stdout/stderr events can still fire
-    // afterward. Without this, that late event writes to an already-`res.end()`ed response, which
-    // throws ERR_STREAM_WRITE_AFTER_END (audit #94).
+    // The stream ignores writes once the client is gone, but the child's own 'close'/stdout/stderr events can still
+    // fire afterward: this stops the bookkeeping (process slot, manifest) from running twice (audit #94).
     let done = false
 
     child.on('error', (err) => {
@@ -89,9 +82,8 @@ export default defineEventHandler(async (event) => {
       done = true
       setMosaicProcess(null)
       cleanup()
-      res.write(`data: ${JSON.stringify(`Error: ${err.message}`)}\n\n`)
-      res.write(`event: done\ndata: 1\n\n`)
-      res.end()
+      sse.send(`Error: ${err.message}`)
+      sse.done(1)
       resolve_()
     })
 
@@ -106,11 +98,11 @@ export default defineEventHandler(async (event) => {
       for (const line of lines) {
         if (!line) { continue }
         if (line.startsWith('PROGRESS:')) {
-          res.write(`event: progress\ndata: ${line.slice(9)}\n\n`)
+          sse.sendEvent('progress', line.slice(9))
         } else if (line.startsWith('DONE:')) {
-          res.write(`event: result\ndata: ${line.slice(5)}\n\n`)
+          sse.sendEvent('result', line.slice(5))
         } else {
-          res.write(`data: ${JSON.stringify(line)}\n\n`)
+          sse.send(line)
         }
       }
     })
@@ -119,7 +111,7 @@ export default defineEventHandler(async (event) => {
       if (done) {return}
       const text = chunk.toString().trim()
       if (text) {
-        res.write(`data: ${JSON.stringify(text)}\n\n`)
+        sse.send(text)
       }
     })
 
@@ -128,12 +120,11 @@ export default defineEventHandler(async (event) => {
       done = true
       setMosaicProcess(null)
       cleanup()
-      res.write(`event: done\ndata: ${code ?? 0}\n\n`)
-      res.end()
+      sse.done(code ?? 0)
       resolve_()
     })
 
-    event.node.req.on('close', () => {
+    sse.onClose(() => {
       if (done) {return}
       done = true
       if (getMosaicProcess() === child) {
@@ -160,22 +151,16 @@ async function proxyToRemote(event: any, remoteServerUrl: string, mode: string) 
     throw createError({ statusCode: response.status, message: 'Remote generation failed' })
   }
 
-  setResponseHeaders(event, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-  })
-
-  const res = event.node.res
+  const sse = openSse(event, { heartbeatMs: 0 })
   const reader = response.body.getReader()
 
   try {
     while (true) {
       const { done, value } = await reader.read()
       if (done) { break }
-      res.write(Buffer.from(value))
+      sse.raw(Buffer.from(value))
     }
   } finally {
-    res.end()
+    event.node.res.end()
   }
 }

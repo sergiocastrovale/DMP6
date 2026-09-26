@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { appendTerminalLine, parseDoneExitCode, parseSseEvents } from '../../helpers/sse'
 
 describe('parseSseEvents', () => {
+  it('ignores comment-only keep-alive frames', () => {
+    const { events, remainder } = parseSseEvents(': ping\n\ndata: "a"\n\n: ping\n\nevent: done\ndata: 0\n\n')
+    expect(events).toEqual([{ event: 'message', data: '"a"' }, { event: 'done', data: '0' }])
+    expect(remainder).toBe('')
+  })
+
   it('parses a single complete frame', () => {
     const { events, remainder } = parseSseEvents('event: message\ndata: hello\n\n')
     expect(events).toEqual([{ event: 'message', data: 'hello' }])
