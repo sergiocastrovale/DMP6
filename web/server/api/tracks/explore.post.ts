@@ -1,22 +1,21 @@
 import type { TrackCandidate, ExploreParams } from '~/types/player'
-import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
 import {
   scoreTrack, weightedRandomPick,
   getPoolCacheKey, getCachedPool, setCachedPool, removeFromPool,
 } from '~/server/utils/explore'
+import { fetchExplorePool, MAX_EXCLUDE_IDS } from '~/server/utils/exploreCandidates'
 import { currentUserId } from '~/server/utils/libraryOwnership'
-import { trackPlaysByIds, withTrackPlay, recentSkipsByIds } from '~/server/utils/userPlays'
 
 export default defineEventHandler(async (event) => {
   const userId = currentUserId(event)
-  const body = await readBody<{
+  const body = (await readBody<{
     energy?: number
     era?: number
     familiarity?: number
     sound?: number
     excludeIds?: string[]
-  }>(event)
+  }>(event)) ?? {}
 
   const params: ExploreParams = {
     energy: Math.min(9, Math.max(0, Math.round(body.energy ?? 5))),
@@ -25,7 +24,9 @@ export default defineEventHandler(async (event) => {
     sound: Math.min(9, Math.max(0, Math.round(body.sound ?? 4))),
   }
 
-  const excludeIds = Array.isArray(body.excludeIds) ? body.excludeIds : []
+  const excludeIds = (Array.isArray(body.excludeIds) ? body.excludeIds : [])
+    .filter((id): id is string => typeof id === 'string')
+    .slice(-MAX_EXCLUDE_IDS)
   const cacheKey = getPoolCacheKey(userId, params)
 
   // Try cached pool first
@@ -35,74 +36,10 @@ export default defineEventHandler(async (event) => {
   if (cached && cached.length >= 20) {
     candidates = cached
   } else {
-    // Era year ranges for SQL pre-filter (±10 years for soft filter)
-    const ERA_RANGES: [number, number][] = [
-      [1960, 1969], [1970, 1979], [1980, 1989], [1990, 1999],
-      [2000, 2004], [2005, 2009], [2010, 2014], [2015, 2019],
-      [2020, 2024], [2025, 2030],
-    ]
-    const [eraMin, eraMax] = ERA_RANGES[params.era]!
-
-    // Build where clause for SQL pre-filtering
-    const where: Record<string, unknown> = {}
-
-    if (excludeIds.length > 0) {
-      where.id = { notIn: excludeIds }
-    }
-
-    // Hard filter for "Uncharted" familiarity
-    if (params.familiarity === 9) {
-      where.plays = { none: { userId } }
-    }
-
-    // Soft era filter: include tracks in range ±10 years OR tracks with no year
-    where.OR = [
-      { year: { gte: eraMin - 10, lte: eraMax + 10 } },
-      { year: null },
-    ]
-
-    // Fetch a random sample of candidates with metadata
-    const raw = await prisma.localReleaseTrack.findMany({
-      where,
-      select: {
-        id: true,
-        title: true,
-        artist: true,
-        album: true,
-        duration: true,
-        year: true,
-        genre: true,
-        metadata: true,
-        localReleaseId: true,
-        localRelease: {
-          select: {
-            image: true,
-            imageUrl: true,
-            artists: { select: { artist: { select: { slug: true } } } },
-          },
-        },
-      },
-      take: 500,
-    })
-
-    if (raw.length === 0) {
+    candidates = await fetchExplorePool({ userId, params, excludeIds })
+    if (candidates.length === 0) {
       throw createError({ statusCode: 404, message: 'No tracks found' })
     }
-
-    // Shuffle candidates
-    for (let i = raw.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
-      ;[raw[i], raw[j]] = [raw[j]!, raw[i]!]
-    }
-
-    const [plays, recentSkips] = await Promise.all([
-      trackPlaysByIds(userId, raw.map(t => t.id)),
-      recentSkipsByIds(userId, raw.map(t => t.id)),
-    ])
-    candidates = raw.slice(0, 500).map(t => ({
-      ...withTrackPlay(t, plays),
-      recentSkips: recentSkips.get(t.id) ?? 0,
-    })) as unknown as TrackCandidate[]
 
     // Cache the full pool for subsequent requests with the same params
     setCachedPool(cacheKey, candidates)
@@ -134,7 +71,7 @@ export default defineEventHandler(async (event) => {
     duration: t.duration || 0,
     // Already selected above for the era filter; the explore history row shows it under the title.
     year: t.year ?? null,
-    artistSlug: (t.localRelease as any)?.artists?.[0]?.artist?.slug || null,
+    artistSlug: t.localRelease?.artists[0]?.artist.slug || null,
     releaseImage: img.image,
     releaseImageUrl: img.imageUrl,
     localReleaseId: t.localReleaseId,

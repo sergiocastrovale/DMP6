@@ -1,37 +1,22 @@
 import type { PrismaClient } from '@prisma/client'
 import type { RandomTrackRow } from '~/types/track'
+import { sampleIds } from '~/server/utils/randomSample'
 
 /**
- * Random track sampling with an escalating fallback: BERNOULLI(0.05) is cheap but can come up short on
- * a small library; BERNOULLI(1) is a wider net for the same reason. Neither is guaranteed to return
- * `count` rows (TABLESAMPLE is probabilistic, not "top N"), so a final plain `ORDER BY random() LIMIT n`
- * closes the gap whenever the library actually has at least `count` tracks.
+ * `count` random tracks, sampled across the whole library (server/utils/randomSample.ts) - not the first
+ * heap pages, which is all `TABLESAMPLE BERNOULLI ... LIMIT` ever returned. Returns fewer only when the
+ * library itself has fewer.
  */
 export async function fetchRandomTrackRows(prisma: PrismaClient, count: number): Promise<RandomTrackRow[]> {
-  let rows = await prisma.$queryRaw<RandomTrackRow[]>`
+  const ids = await sampleIds(prisma, 'LocalReleaseTrack', count)
+  if (ids.length === 0) {
+    return []
+  }
+  const rows = await prisma.$queryRaw<RandomTrackRow[]>`
     SELECT id, title, artist, album, duration, "localReleaseId"
     FROM "LocalReleaseTrack"
-    TABLESAMPLE BERNOULLI(0.05)
-    LIMIT ${count}
-  `
-
-  if (rows.length < count) {
-    rows = await prisma.$queryRaw<RandomTrackRow[]>`
-      SELECT id, title, artist, album, duration, "localReleaseId"
-      FROM "LocalReleaseTrack"
-      TABLESAMPLE BERNOULLI(1)
-      LIMIT ${count}
-    `
-  }
-
-  if (rows.length < count) {
-    rows = await prisma.$queryRaw<RandomTrackRow[]>`
-      SELECT id, title, artist, album, duration, "localReleaseId"
-      FROM "LocalReleaseTrack"
-      ORDER BY random()
-      LIMIT ${count}
-    `
-  }
-
-  return rows
+    WHERE id = ANY(${ids}::text[])`
+  // ANY() returns in heap order; put the shuffle back.
+  const byId = new Map(rows.map(r => [r.id, r]))
+  return ids.flatMap(id => byId.get(id) ?? [])
 }

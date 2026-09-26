@@ -1,9 +1,11 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PrismaClient } from '@prisma/client'
 import { fetchRandomTrackRows } from '../../../server/utils/randomBatch'
+import { _resetSampleCacheForTest } from '../../../server/utils/randomSample'
 
 const row = (id: string) => ({ id, title: 't', artist: 'a', album: 'al', duration: 100, localReleaseId: null })
 
+// sampleIds asks for reltuples, then the sampled ids (possibly escalating), then fetchRandomTrackRows loads the rows.
 const fakePrisma = (results: unknown[][]): PrismaClient => {
   const queryRaw = vi.fn()
   for (const r of results) {queryRaw.mockImplementationOnce(() => Promise.resolve(r))}
@@ -11,30 +13,23 @@ const fakePrisma = (results: unknown[][]): PrismaClient => {
 }
 
 describe('fetchRandomTrackRows', () => {
-  it('returns the first-tier BERNOULLI(0.05) result when it already has enough rows', async () => {
-    const prisma = fakePrisma([[row('a'), row('b')]])
+  beforeEach(() => _resetSampleCacheForTest())
+
+  it('returns the sampled rows in sampled (shuffled) order', async () => {
+    const prisma = fakePrisma([[{ rows: 2_000_000 }], [{ id: 'b' }, { id: 'a' }], [row('a'), row('b')]])
     const rows = await fetchRandomTrackRows(prisma, 2)
-    expect(rows.map(r => r.id)).toEqual(['a', 'b'])
-    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1)
+    expect(rows.map(r => r.id)).toEqual(['b', 'a'])
   })
 
-  it('falls back to BERNOULLI(1) when the first tier comes up short', async () => {
-    const prisma = fakePrisma([[row('a')], [row('a'), row('b'), row('c')]])
-    const rows = await fetchRandomTrackRows(prisma, 3)
-    expect(rows.map(r => r.id)).toEqual(['a', 'b', 'c'])
+  it('returns nothing without a second query when the sample is empty', async () => {
+    const prisma = fakePrisma([[{ rows: 0 }], []])
+    expect(await fetchRandomTrackRows(prisma, 5)).toEqual([])
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(2)
   })
 
-  it('falls back all the way to plain ORDER BY random() when both TABLESAMPLE tiers come up short (small library)', async () => {
-    const prisma = fakePrisma([[row('a')], [row('a')], [row('a'), row('b')]])
+  it('drops ids whose row vanished between the sample and the load', async () => {
+    const prisma = fakePrisma([[{ rows: 2_000_000 }], [{ id: 'a' }, { id: 'gone' }], [row('a')]])
     const rows = await fetchRandomTrackRows(prisma, 2)
-    expect(rows.map(r => r.id)).toEqual(['a', 'b'])
-    expect(prisma.$queryRaw).toHaveBeenCalledTimes(3)
-  })
-
-  it('returns whatever the final tier has even if still short of count (library smaller than requested count)', async () => {
-    const prisma = fakePrisma([[], [], [row('only')]])
-    const rows = await fetchRandomTrackRows(prisma, 10)
-    expect(rows.map(r => r.id)).toEqual(['only'])
+    expect(rows.map(r => r.id)).toEqual(['a'])
   })
 })

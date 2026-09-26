@@ -90,7 +90,7 @@ const ENERGY_CONFIGS: EnergyConfig[] = [
 ]
 
 // Era slider configs: [yearMin, yearMax]
-const ERA_CONFIGS: [number, number][] = [
+export const ERA_CONFIGS: [number, number][] = [
   [1960, 1969], // 0: 60s
   [1970, 1979], // 1: 70s
   [1980, 1989], // 2: 80s
@@ -165,10 +165,24 @@ function hasMoodData(meta: Record<string, string | number> | null): boolean {
   return getMeta(meta, 'MOOD_HAPPY') !== undefined
 }
 
+const BPM_KEYS = ['IntegerBpm', 'BPM', 'Bpm', 'FBPM', 'fBPM', '----:com.apple.iTunes:fBPM', 'fBPM2'] as const
+
+// Every tag key scoreTrack can read, MP3 and iTunes spellings both. The candidate query projects exactly these
+// out of LocalReleaseTrack.metadata (~3.3 KB of JSON per row) instead of shipping the whole blob for each of
+// 500 candidates - add a key here whenever a scorer starts reading a new one.
+const SCORED_MOOD_KEYS = new Set<string>([
+  ...ENERGY_CONFIGS.flatMap(c => Object.keys(c.moods)),
+  'MOOD_HAPPY', 'MOOD_ACOUSTIC', 'MOOD_ELECTRONIC', 'TIMBRE_BRIGHTNESS',
+])
+export const EXPLORE_METADATA_KEYS: string[] = [
+  ...BPM_KEYS,
+  ...[...SCORED_MOOD_KEYS].flatMap(k => [k, `----:com.apple.iTunes:${k}`]),
+]
+
 // Get BPM from any available key variant, returns integer or null
 function getBpm(meta: Record<string, string | number> | null): number | null {
   if (!meta) {return null}
-  for (const key of ['IntegerBpm', 'BPM', 'Bpm', 'FBPM', 'fBPM', '----:com.apple.iTunes:fBPM', 'fBPM2']) {
+  for (const key of BPM_KEYS) {
     if (meta[key] !== undefined) {
       const v = typeof meta[key] === 'string' ? parseFloat(meta[key] as string) : meta[key] as number
       if (!isNaN(v) && v > 0) {return Math.round(v)}
