@@ -42,6 +42,8 @@ Optional vars (image storage, S3, etc.) are documented in `.env` itself.
 
 ### Encrypting stored credentials (`SETTINGS_ENCRYPTION_KEY`)
 
+**Status:** on since 2026-09-26. Both variables live in the NAS `.env` (`/mnt/SSD/web/dmp/.env`, which `docker compose` reads and passes into the container - `.env.bak-d2d3` beside it is the file from before), and the key is also kept in the local `web/.env`.
+
 The keys entered in Settings (slskd, S3, Fanart.tv, Genius, the Last.fm application secret) and every user's Last.fm
 session key sit in the database, so a `./backup` dump or a replica would carry them in the clear. Setting
 `SETTINGS_ENCRYPTION_KEY` (at least 32 characters, `openssl rand -base64 32`) in the NAS `.env` encrypts them at rest with
@@ -59,6 +61,8 @@ AES-256-GCM (`web/server/utils/secretBox.ts`). It is deliberately not `SESSION_S
 - **Turning it off:** removing the variable does not decrypt anything; the encrypted values become unreadable as above.
 
 ### Least-privilege database role for the web app (`WEB_DATABASE_URL`)
+
+**Status:** applied 2026-09-26 (role created, `WEB_DATABASE_URL` in the NAS `.env`, container recreated). Changing either variable means `cd /mnt/SSD/web/dmp && sudo docker compose up -d web`.
 
 Until it is set, the web app, the Rust scripts, migrations and backups all connect as the same Postgres role (`dmp`, a
 superuser), so an injection through any web query would have full control of the cluster. `scripts/sql/create_web_role.sql`
