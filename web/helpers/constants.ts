@@ -458,3 +458,6 @@ export const MAX_EXCLUDE_IDS = 200
 
 // A queue or radio session gives up after this many unplayable tracks in a row (missing file, decode error).
 export const MAX_CONSECUTIVE_PLAYBACK_ERRORS = 3
+
+// Guest artists listed on an artist page ("appears with"): the most frequent collaborators, not every credit.
+export const RELATED_ARTISTS_LIMIT = 50

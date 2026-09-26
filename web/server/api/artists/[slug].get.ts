@@ -3,6 +3,7 @@ import { cachedResponse } from '~/server/utils/cache'
 import { verifyImage } from '~/server/utils/images'
 import { currentUserId } from '~/server/utils/libraryOwnership'
 import { artistPlayTotals } from '~/server/utils/userPlays'
+import { fetchRelatedArtists } from '~/server/utils/relatedArtists'
 
 export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'private, max-age=600, stale-while-revalidate=60')
@@ -33,31 +34,15 @@ export default defineEventHandler(async (event) => {
 
     if (!artist) {throw createError({ statusCode: 404, statusMessage: 'Artist not found' })}
 
-    const connectedArtists = await prisma.artist.findMany({
-      where: { primaryArtistId: artist.id },
-      select: { id: true },
-    })
-    const connectedStats = await prisma.artist.aggregate({
-      where: { primaryArtistId: artist.id },
-      _sum: { totalTracks: true, totalFileSize: true },
-    })
-
-    const relatedArtists = await prisma.$queryRaw<Array<{
-      id: string
-      name: string
-      slug: string
-      image: string | null
-      imageUrl: string | null
-    }>>`
-      SELECT DISTINCT a.id, a.name, a.slug, a.image, a."imageUrl"
-      FROM "Artist" a
-      JOIN "TrackRelatedArtist" tra ON tra."artistId" = a.id
-      JOIN "LocalReleaseTrack" lrt ON lrt.id = tra."trackId"
-      JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lrt."localReleaseId"
-      WHERE lra."artistId" = ${artist.id}
-        AND a.id != ${artist.id}
-      ORDER BY a.name ASC
-    `
+    // Independent of each other, so one round trip's worth of latency instead of three.
+    const [connectedArtists, connectedStats, relatedArtists] = await Promise.all([
+      prisma.artist.findMany({ where: { primaryArtistId: artist.id }, select: { id: true } }),
+      prisma.artist.aggregate({
+        where: { primaryArtistId: artist.id },
+        _sum: { totalTracks: true, totalFileSize: true },
+      }),
+      fetchRelatedArtists(artist.id),
+    ])
 
     const img = verifyImage(artist.image, artist.imageUrl, 'artists')
 
