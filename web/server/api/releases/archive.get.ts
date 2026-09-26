@@ -1,7 +1,6 @@
 import { prisma } from '~/server/utils/prisma'
-import { cachedResponse } from '~/server/utils/cache'
 import { RELEASE_TILE_SELECT, toReleaseTile } from '~/server/utils/releaseTiles'
-import { shuffleArray } from '~/helpers/playerLogic'
+import { randomArchivedReleaseIds } from '~/server/utils/releaseArchive'
 import { currentUserId } from '~/server/utils/libraryOwnership'
 
 export default defineEventHandler(async (event) => {
@@ -11,38 +10,12 @@ export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const limit = Math.min(Number(query.limit) || 8, 50)
 
-  // Cache the underlying 50-candidate pool only - shuffling happens on every request, below, so
-  // "random" doesn't mean "the same 8 for 5 minutes" (audit #86).
-  const releases = await cachedResponse(`releases:archive:pool:${userId}`, 300, async () => {
-    const twoYearsAgo = new Date()
-    twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2)
+  // "Archived" is per-user (nothing played in two years), decided by the database and sampled at random - the
+  // response is a fresh draw each time rather than a 5-minute-cached pool of the newest 50 (audit #86).
+  const ids = await randomArchivedReleaseIds(prisma, userId, limit)
+  if (ids.length === 0) {return []}
 
-    // Per-user "archived": either this user's last play on it is over 2 years old, or they've
-    // never played it and it was added over 2 years ago.
-    const lastPlays = await prisma.$queryRaw<{ localReleaseId: string, lastPlayedAt: Date }[]>`
-      SELECT lrt."localReleaseId" AS "localReleaseId", MAX(p."lastPlayedAt") AS "lastPlayedAt"
-      FROM "LocalReleaseTrackPlay" p
-      JOIN "LocalReleaseTrack" lrt ON lrt.id = p."trackId"
-      WHERE p."userId" = ${userId} AND lrt."localReleaseId" IS NOT NULL
-      GROUP BY lrt."localReleaseId"
-    `
-    const staleReleaseIds = lastPlays.filter(p => p.lastPlayedAt < twoYearsAgo).map(p => p.localReleaseId)
-    const playedReleaseIds = lastPlays.map(p => p.localReleaseId)
-
-    return prisma.localRelease.findMany({
-      where: {
-        OR: [
-          { id: { in: staleReleaseIds } },
-          { id: { notIn: playedReleaseIds }, createdAt: { lt: twoYearsAgo } },
-        ],
-      },
-      take: 50,
-      orderBy: { createdAt: 'desc' },
-      select: RELEASE_TILE_SELECT,
-    })
-  })
-
-  const shuffled = shuffleArray([...releases]).slice(0, limit)
-
-  return shuffled.map(toReleaseTile)
+  const rows = await prisma.localRelease.findMany({ where: { id: { in: ids } }, select: RELEASE_TILE_SELECT })
+  const byId = new Map(rows.map(r => [r.id, r]))
+  return ids.flatMap(id => byId.get(id) ?? []).map(toReleaseTile)
 })
