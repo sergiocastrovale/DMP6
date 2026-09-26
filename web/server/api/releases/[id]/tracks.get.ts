@@ -5,6 +5,7 @@ import { currentUserId } from '~/server/utils/libraryOwnership'
 import { trackPlaysByIds, withTrackPlay } from '~/server/utils/userPlays'
 import { buildDiscTitles } from '~/server/utils/discTitles'
 import { attachTrackFavorites } from '~/server/utils/favorites'
+import { PREFERRED_LOCAL_COPY_ORDER } from '~/server/utils/localCopy'
 
 const normalizeTitle = (title: string): string => {
   return title
@@ -50,6 +51,7 @@ const loadReleaseTracks = async (userId: number, id: string) => {
       title: true,
       localReleases: {
         select: { id: true },
+        orderBy: PREFERRED_LOCAL_COPY_ORDER,
         take: 1,
       },
       tracks: {
