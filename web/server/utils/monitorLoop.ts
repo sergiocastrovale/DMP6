@@ -10,6 +10,7 @@ import { runScript, type ScriptError } from '~/server/utils/runScript'
 import { withDeadline } from '~/server/utils/timeout'
 import { isDownloadsPaused } from '~/server/utils/pauseState'
 import { monitorLog } from '~/server/utils/monitorLog'
+import { createWorker } from '~/server/utils/worker'
 import {
   getSlskdActiveDownloads,
   isSlskdTerminal,
@@ -22,11 +23,6 @@ const log = (msg: string) => monitorLog('notice', msg)
 const logWarn = (msg: string) => monitorLog('warn', msg)
 const logErr = (msg: string) => monitorLog('error', msg)
 
-let gapsCycleRunning = false
-let lastGapsRunAt = 0
-let autoMergeRunning = false
-let lastAutoMergeAt = 0
-let reconcileRunning = false
 const finalizing = new Set<string>()
 
 // A row stuck this long with no file-level progress yet (never enqueued) is a restart orphan, not
@@ -66,166 +62,158 @@ const baseName = (f: string) => basename(f.replace(/\\/g, '/'))
  *  - transfers still active but older than the hard timeout -> cancel + FAILED
  * Runs frequently (server plugin) so a refresh/poll always reflects reality.
  */
-export async function reconcileDownloads(): Promise<void> {
-  if (reconcileRunning) {return}
-  reconcileRunning = true
+export const reconcileDownloads = (): Promise<void> => reconcileWorker.tick()
+
+const reconcileWorker = createWorker({ name: 'reconcile', run: async () => {
   let failed = 0
   let finalized = 0
-  try {
-    const rows = await prisma.downloadedRelease.findMany({
-      where: { status: { in: ['SEARCHING', 'DOWNLOADING', 'ENRICHING'] } },
-      include: { artist: { select: { name: true } } },
-    })
-    if (rows.length === 0) {return}
+  const rows = await prisma.downloadedRelease.findMany({
+    where: { status: { in: ['SEARCHING', 'DOWNLOADING', 'ENRICHING'] } },
+    include: { artist: { select: { name: true } } },
+  })
+  if (rows.length === 0) {return}
 
-    const settings = await resolveDownloadSettings()
-    if (!settings.downloadsPath) {return}
-    const mon = await resolveMonitorSettings()
-    const maxAttempts = Math.max(1, mon.maxDownloadAttempts)
-    const enrichRows = rows.filter(r => r.status === 'ENRICHING')
-    // SEARCHING rows have no files yet, same as a fresh DOWNLOADING row before its search resolves —
-    // they fall straight into this loop's "not yet enqueued" orphan-timeout branch below.
-    const downloadingRows = rows.filter(r => r.status === 'DOWNLOADING' || r.status === 'SEARCHING')
-    if (enrichRows.length > 0) {
-      finalized += await drainEnriching(enrichRows, maxAttempts)
+  const settings = await resolveDownloadSettings()
+  if (!settings.downloadsPath) {return}
+  const mon = await resolveMonitorSettings()
+  const maxAttempts = Math.max(1, mon.maxDownloadAttempts)
+  const enrichRows = rows.filter(r => r.status === 'ENRICHING')
+  // SEARCHING rows have no files yet, same as a fresh DOWNLOADING row before its search resolves —
+  // they fall straight into this loop's "not yet enqueued" orphan-timeout branch below.
+  const downloadingRows = rows.filter(r => r.status === 'DOWNLOADING' || r.status === 'SEARCHING')
+  if (enrichRows.length > 0) {
+    finalized += await drainEnriching(enrichRows, maxAttempts)
+  }
+  if (downloadingRows.length === 0) {
+    if (failed || finalized) {log(`reconcile done: ${finalized} -> READY, ${failed} -> FAILED/ABANDONED`)}
+    return
+  }
+  // Distinguish "slskd unreachable" from "genuinely no active transfers" — swallowing the fetch error
+  // into an empty array would make every DOWNLOADING row look like its transfer already finished
+  // (ours=[] -> active=false -> falls straight into finalize/fail), prematurely failing live downloads
+  // during a transient slskd outage instead of just waiting for the next tick.
+  let transfersUnknown = false
+  const transfers = await withDeadline(signal => getSlskdActiveDownloads(signal), 15_000, { label: 'slskd transfer list' }).catch(() => { transfersUnknown = true; return [] })
+  if (transfersUnknown) {
+    logWarn(`reconcile: slskd unreachable — skipping finalize for ${downloadingRows.length} downloading row(s) this tick`)
+    if (failed || finalized) {log(`reconcile done: ${finalized} -> READY, ${failed} -> FAILED/ABANDONED`)}
+    return
+  }
+
+  const noProgressMs = Math.max(15, mon.noProgressSec) * 1000
+  log(`reconcile: ${downloadingRows.length} downloading, ${transfers.length} slskd transfers`)
+
+  for (const row of downloadingRows) {
+    if (finalizing.has(row.id)) {continue}
+    const files = (row.files as Array<{ filename: string; size: number }> | null) ?? []
+    const ageMin = (Date.now() - row.updatedAt.getTime()) / 60000
+
+    // Row created but not yet enqueued (autoDownload creates the row, then runs a slow
+    // Soulseek search before files exist). Restart-orphan if it lingers.
+    if (files.length === 0) {
+      if (ageMin > ORPHAN_MIN) { await failAttempt(row, maxAttempts, 'never enqueued (no files)'); failed++ }
+      continue
     }
-    if (downloadingRows.length === 0) {
-      if (failed || finalized) {log(`reconcile done: ${finalized} -> READY, ${failed} -> FAILED/ABANDONED`)}
-      return
+
+    const expected = new Set(files.map(f => baseName(String(f.filename))))
+    const ours = transfers.filter(t => t.username === row.slskUsername && expected.has(baseName(t.filename)))
+    const active = ours.some(t => !isSlskdTerminal(t.state))
+
+    // Peer disconnected mid-download: slskd flips the transfer(s) to a failed terminal state
+    // (Errored / TimedOut / Cancelled / Rejected). One drop kills the whole peer, so treat ANY
+    // failed transfer as a dead download — cancel stragglers, fail + purge immediately. No grace
+    // wait, no partial-sibling promotion: a fresh retry re-fetches the lot.
+    if (ours.some(t => isSlskdFailed(t.state))) {
+      for (const t of ours) { await cancelSlskdDownload(row.slskUsername!, t.id).catch(() => {}) }
+      await failAttempt(row, maxAttempts, 'slskd transfer failed (peer disconnected)')
+      await purgeDownloadedSourceFiles(settings.downloadsPath, files).catch(() => {})
+      failed++
+      continue
     }
-    // Distinguish "slskd unreachable" from "genuinely no active transfers" — swallowing the fetch error
-    // into an empty array would make every DOWNLOADING row look like its transfer already finished
-    // (ours=[] -> active=false -> falls straight into finalize/fail), prematurely failing live downloads
-    // during a transient slskd outage instead of just waiting for the next tick.
-    let transfersUnknown = false
-    const transfers = await withDeadline(signal => getSlskdActiveDownloads(signal), 15_000, { label: 'slskd transfer list' }).catch(() => { transfersUnknown = true; return [] })
-    if (transfersUnknown) {
-      logWarn(`reconcile: slskd unreachable — skipping finalize for ${downloadingRows.length} downloading row(s) this tick`)
-      if (failed || finalized) {log(`reconcile done: ${finalized} -> READY, ${failed} -> FAILED/ABANDONED`)}
-      return
-    }
 
-    const noProgressMs = Math.max(15, mon.noProgressSec) * 1000
-    log(`reconcile: ${downloadingRows.length} downloading, ${transfers.length} slskd transfers`)
-
-    for (const row of downloadingRows) {
-      if (finalizing.has(row.id)) {continue}
-      const files = (row.files as Array<{ filename: string; size: number }> | null) ?? []
-      const ageMin = (Date.now() - row.updatedAt.getTime()) / 60000
-
-      // Row created but not yet enqueued (autoDownload creates the row, then runs a slow
-      // Soulseek search before files exist). Restart-orphan if it lingers.
-      if (files.length === 0) {
-        if (ageMin > ORPHAN_MIN) { await failAttempt(row, maxAttempts, 'never enqueued (no files)'); failed++ }
+    // Goal 1: a download that isn't moving must die. Track the byte watermark.
+    let stalled = false
+    if (active) {
+      const bytes = ours.reduce((s, t) => s + (t.bytesTransferred || 0), 0)
+      const prevBytes = Number(row.bytesTransferred || 0)
+      const lastProgress = (row.lastProgressAt ?? row.updatedAt).getTime()
+      if (bytes > prevBytes) {
+        await prisma.downloadedRelease.update({
+          where: { id: row.id },
+          data: { bytesTransferred: BigInt(bytes), lastProgressAt: new Date() },
+        }).catch(() => {})
         continue
       }
+      if (Date.now() - lastProgress <= noProgressMs) { continue } // still within the no-progress grace window
+      // Stalled: cancel the stuck transfers, then fall through to finalize so any siblings that DID
+      // complete are still captured into the library before we give up on the rest.
+      for (const t of ours) {await cancelSlskdDownload(row.slskUsername!, t.id).catch(() => {})}
+      stalled = true
+    }
 
-      const expected = new Set(files.map(f => baseName(String(f.filename))))
-      const ours = transfers.filter(t => t.username === row.slskUsername && expected.has(baseName(t.filename)))
-      const active = ours.some(t => !isSlskdTerminal(t.state))
-
-      // Peer disconnected mid-download: slskd flips the transfer(s) to a failed terminal state
-      // (Errored / TimedOut / Cancelled / Rejected). One drop kills the whole peer, so treat ANY
-      // failed transfer as a dead download — cancel stragglers, fail + purge immediately. No grace
-      // wait, no partial-sibling promotion: a fresh retry re-fetches the lot.
-      if (ours.some(t => isSlskdFailed(t.state))) {
-        for (const t of ours) { await cancelSlskdDownload(row.slskUsername!, t.id).catch(() => {}) }
-        await failAttempt(row, maxAttempts, 'slskd transfer failed (peer disconnected)')
-        await purgeDownloadedSourceFiles(settings.downloadsPath, files).catch(() => {})
+    // Reached here: every transfer is terminal (finished/dropped) or we just cancelled a stall.
+    // Finalize — relocate whatever landed; only give up if nothing usable is on disk.
+    finalizing.add(row.id)
+    try {
+      if (!row.artist?.name) { await failAttempt(row, maxAttempts, 'missing artist'); failed++; continue }
+      // Bounded so one slow transfer/transcode can't wedge the whole reconcile loop. On timeout the work is
+      // ABORTED and awaited (server/utils/timeout.ts), so nothing is still moving files when the purge below runs.
+      const artistName = row.artist.name
+      const res = await withDeadline(signal => relocateDownloadedFiles({
+        username: row.slskUsername!,
+        files,
+        downloadsPath: settings.downloadsPath,
+        dirTemplate: settings.downloadDirTemplate,
+        artistName,
+        albumTitle: row.title,
+        year: row.year ?? null,
+      }, signal), 5 * 60_000, { label: `relocate ${row.title}` })
+      if (res.transcodeFailed > 0) {
+        // ffmpeg missing/errored on one or more convertible files — the layout transform only
+        // recognizes .mp3, so a partially-transcoded folder is not a usable release. Purge the
+        // broken relocation and retry from scratch rather than marching it to ENRICHING/READY.
+        await rm(res.targetDir, { recursive: true, force: true }).catch(() => {})
+        await failAttempt(row, maxAttempts, `${res.transcodeFailed} file(s) failed to transcode (ffmpeg missing/errored)`)
         failed++
-        continue
       }
-
-      // Goal 1: a download that isn't moving must die. Track the byte watermark.
-      let stalled = false
-      if (active) {
-        const bytes = ours.reduce((s, t) => s + (t.bytesTransferred || 0), 0)
-        const prevBytes = Number(row.bytesTransferred || 0)
-        const lastProgress = (row.lastProgressAt ?? row.updatedAt).getTime()
-        if (bytes > prevBytes) {
+      else if (res.movedCount > 0) {
+        if (await resolveSongkongEnabled() && !(await songkongBacklogStalled())) {
+          // Hand off to SongKong (host cron drainer) for enrichment before the layout transform.
+          const dirs = songkongDirs()
+          await mkdir(dirs.spool, { recursive: true })
+          await writeFile(join(dirs.spool, row.id), `${res.targetDir}\n`)
           await prisma.downloadedRelease.update({
             where: { id: row.id },
-            data: { bytesTransferred: BigInt(bytes), lastProgressAt: new Date() },
-          }).catch(() => {})
-          continue
-        }
-        if (Date.now() - lastProgress <= noProgressMs) { continue } // still within the no-progress grace window
-        // Stalled: cancel the stuck transfers, then fall through to finalize so any siblings that DID
-        // complete are still captured into the library before we give up on the rest.
-        for (const t of ours) {await cancelSlskdDownload(row.slskUsername!, t.id).catch(() => {})}
-        stalled = true
-      }
-
-      // Reached here: every transfer is terminal (finished/dropped) or we just cancelled a stall.
-      // Finalize — relocate whatever landed; only give up if nothing usable is on disk.
-      finalizing.add(row.id)
-      try {
-        if (!row.artist?.name) { await failAttempt(row, maxAttempts, 'missing artist'); failed++; continue }
-        // Bounded so one slow transfer/transcode can't wedge the whole reconcile loop. On timeout the work is
-        // ABORTED and awaited (server/utils/timeout.ts), so nothing is still moving files when the purge below runs.
-        const artistName = row.artist.name
-        const res = await withDeadline(signal => relocateDownloadedFiles({
-          username: row.slskUsername!,
-          files,
-          downloadsPath: settings.downloadsPath,
-          dirTemplate: settings.downloadDirTemplate,
-          artistName,
-          albumTitle: row.title,
-          year: row.year ?? null,
-        }, signal), 5 * 60_000, { label: `relocate ${row.title}` })
-        if (res.transcodeFailed > 0) {
-          // ffmpeg missing/errored on one or more convertible files — the layout transform only
-          // recognizes .mp3, so a partially-transcoded folder is not a usable release. Purge the
-          // broken relocation and retry from scratch rather than marching it to ENRICHING/READY.
-          await rm(res.targetDir, { recursive: true, force: true }).catch(() => {})
-          await failAttempt(row, maxAttempts, `${res.transcodeFailed} file(s) failed to transcode (ffmpeg missing/errored)`)
-          failed++
-        }
-        else if (res.movedCount > 0) {
-          if (await resolveSongkongEnabled() && !(await songkongBacklogStalled())) {
-            // Hand off to SongKong (host cron drainer) for enrichment before the layout transform.
-            const dirs = songkongDirs()
-            await mkdir(dirs.spool, { recursive: true })
-            await writeFile(join(dirs.spool, row.id), `${res.targetDir}\n`)
-            await prisma.downloadedRelease.update({
-              where: { id: row.id },
-              data: { status: 'ENRICHING', stagingPath: res.targetDir, error: null },
-            })
-            log(`reconcile: ${row.title} -> ENRICHING (spooled ${res.movedCount} files)`)
-          }
-          else {
-            const releaseRoot = await transformToLibraryLayout(row.id, res.targetDir)
-            await settleFinished(row.id, releaseRoot, null)
-            finalized++
-            log(`reconcile: ${row.title} -> ready (${res.movedCount} files)`)
-          }
+            data: { status: 'ENRICHING', stagingPath: res.targetDir, error: null },
+          })
+          log(`reconcile: ${row.title} -> ENRICHING (spooled ${res.movedCount} files)`)
         }
         else {
-          const reason = stalled ? `no progress for ${mon.noProgressSec}s` : 'no files landed in the staging folder'
-          await failAttempt(row, maxAttempts, reason, res.targetDir)
-          // Nothing usable landed — purge whatever stray/partial source files exist for this download.
-          await purgeDownloadedSourceFiles(settings.downloadsPath, files).catch(() => {})
-          failed++
+          const releaseRoot = await transformToLibraryLayout(row.id, res.targetDir)
+          await settleFinished(row.id, releaseRoot, null)
+          finalized++
+          log(`reconcile: ${row.title} -> ready (${res.movedCount} files)`)
         }
       }
-      catch (e: any) {
-        await failAttempt(row, maxAttempts, String(e?.message || e).slice(0, 500))
+      else {
+        const reason = stalled ? `no progress for ${mon.noProgressSec}s` : 'no files landed in the staging folder'
+        await failAttempt(row, maxAttempts, reason, res.targetDir)
+        // Nothing usable landed — purge whatever stray/partial source files exist for this download.
         await purgeDownloadedSourceFiles(settings.downloadsPath, files).catch(() => {})
         failed++
       }
-      finally {
-        finalizing.delete(row.id)
-      }
     }
-    if (failed || finalized) {log(`reconcile done: ${finalized} -> READY, ${failed} -> FAILED/ABANDONED`)}
+    catch (e: any) {
+      await failAttempt(row, maxAttempts, String(e?.message || e).slice(0, 500))
+      await purgeDownloadedSourceFiles(settings.downloadsPath, files).catch(() => {})
+      failed++
+    }
+    finally {
+      finalizing.delete(row.id)
+    }
   }
-  catch (e: any) {
-    logErr(`reconcile failed: ${e?.message || e}`)
-  }
-  finally {
-    reconcileRunning = false
-  }
-}
+  if (failed || finalized) {log(`reconcile done: ${finalized} -> READY, ${failed} -> FAILED/ABANDONED`)}
+} })
 
 // Finalize a finished download: record the staged layout, then automatically move it into the
 // `_ready` folder and mark it READY ("Ready to merge"). No approval gate — the only manual step left
@@ -329,14 +317,14 @@ async function drainEnriching(
  * (--only is semicolon-separated). Self-throttled (gapsIntervalMin) + guarded; scales to 19K by
  * cycling everyone through over a configurable window instead of one giant 24h burst.
  */
-export async function runGapsCycle(): Promise<void> {
-  if (gapsCycleRunning) {return}
-  if (await isDownloadsPaused()) {return}
-  const mon = await resolveMonitorSettings()
-  if (Date.now() - lastGapsRunAt < Math.max(1, mon.gapsIntervalMin) * 60_000) {return}
-  gapsCycleRunning = true
-  lastGapsRunAt = Date.now()
-  try {
+export const runGapsCycle = (): Promise<void> => gapsWorker.tick()
+
+const gapsWorker = createWorker({
+  name: 'gaps cycle',
+  shouldRun: async () => !(await isDownloadsPaused()),
+  minIntervalMs: async () => Math.max(1, (await resolveMonitorSettings()).gapsIntervalMin) * 60_000,
+  run: async () => {
+    const mon = await resolveMonitorSettings()
     const batch = await prisma.artist.findMany({
       // Skip compound/junk artists: ';' splits the --only arg; '/' is a path separator in Rust.
       where: {
@@ -381,39 +369,25 @@ export async function runGapsCycle(): Promise<void> {
       data: { lastGapsCheckedAt: new Date() },
     })
     log(`gaps: refreshed ${batch.length} artist(s)`)
-  }
-  catch (e: any) {
-    logErr(`gaps cycle failed: ${e?.message || e}`)
-  }
-  finally {
-    gapsCycleRunning = false
-  }
-}
+  },
+})
 
 /**
  * Optional hands-off merge: when `autoMergeDownloads` is enabled, batch-merge READY downloads into
  * the library. Ships OFF (merge stays a manual gate by default). Throttled + guarded.
  */
-export async function runAutoMergeCycle(): Promise<void> {
-  if (autoMergeRunning) {return}
-  if (await isDownloadsPaused()) {return}
-  const { autoMergeDownloads } = await resolveDownloadSettings()
-  if (!autoMergeDownloads) {return}
-  if (Date.now() - lastAutoMergeAt < 120_000) {return}
-  autoMergeRunning = true
-  lastAutoMergeAt = Date.now()
-  try {
+export const runAutoMergeCycle = (): Promise<void> => autoMergeWorker.tick()
+
+const autoMergeWorker = createWorker({
+  name: 'auto-merge',
+  shouldRun: async () => !(await isDownloadsPaused()) && (await resolveDownloadSettings()).autoMergeDownloads,
+  minIntervalMs: 120_000,
+  run: async () => {
     const ids = (await prisma.downloadedRelease.findMany({
       where: { status: 'READY' }, select: { id: true }, take: 50,
     })).map(r => r.id)
     if (ids.length === 0) {return}
     const { merged } = await mergeManyDownloadedReleases(ids)
     if (merged) {log(`auto-merge: ${merged} -> PROMOTED`)}
-  }
-  catch (e: any) {
-    logErr(`auto-merge failed: ${e?.message || e}`)
-  }
-  finally {
-    autoMergeRunning = false
-  }
-}
+  },
+})

@@ -6,6 +6,7 @@ import { findBestSlskdResult, acquireRelease } from '~/server/utils/acquire'
 import { isDownloadsEnabled } from '~/server/utils/acquisitionStatus'
 import { isDownloadsPaused } from '~/server/utils/pauseState'
 import { monitorLog } from '~/server/utils/monitorLog'
+import { createWorker } from '~/server/utils/worker'
 import type { AcquisitionTarget, MissingPick } from '~/types/download'
 
 // Mark a search-miss: slskd had no result. NOT a failure — never abandons. Bumps the tries counter
@@ -106,9 +107,6 @@ export async function forceRetryDownloads(ids: string[]): Promise<{ retried: num
   return { retried, failed }
 }
 
-let lastTopUpAt = 0
-let topUpRunning = false
-
 // Fresh pool: random monitored, non-junk artists (indexed), one never-tried MISSING album/EP each
 // (no DownloadedRelease row exists yet -> implicit priority 10). Avoids a full random sort over the
 // whole MISSING pool every tick at 19K.
@@ -194,19 +192,17 @@ async function pickCandidates(slots: number, cooldownDays: number): Promise<Miss
  * album/EP releases of random monitored artists, skipping handled / recently-failed. Creates each row
  * SEARCHING before searching so the next tick excludes it. Run-guarded + throttled + disk-gated.
  */
-export async function topUpDownloads(): Promise<void> {
-  if (topUpRunning) {return}
-  const settings = await resolveDownloadSettings()
-  if (!settings.downloadsPath) {return}
-  if (!(await isDownloadsEnabled())) {return}
-  const mon = await resolveMonitorSettings()
+export const topUpDownloads = (): Promise<void> => topUpWorker.tick()
 
-  if (Date.now() - lastTopUpAt < Math.max(5, mon.searchIntervalSec) * 1000) {return}
-  if (await isDownloadsPaused()) {return} // global pause (manual or disk-full); see pauseState.ts
-
-  topUpRunning = true
-  lastTopUpAt = Date.now()
-  try {
+const topUpWorker = createWorker({
+  name: 'top-up',
+  shouldRun: async () => !!(await resolveDownloadSettings()).downloadsPath
+    && await isDownloadsEnabled()
+    && !(await isDownloadsPaused()), // global pause (manual or disk-full); see pauseState.ts
+  minIntervalMs: async () => Math.max(5, (await resolveMonitorSettings()).searchIntervalSec) * 1000,
+  run: async () => {
+    const settings = await resolveDownloadSettings()
+    const mon = await resolveMonitorSettings()
     const maxConc = Math.max(1, mon.maxConcurrentDownloads)
     const inFlight = await prisma.downloadedRelease.count({ where: { status: { in: ['DOWNLOADING', 'SEARCHING'] } } })
     const slots = Math.min(maxConc - inFlight, Math.max(1, mon.searchPicksPerInterval))
@@ -244,8 +240,5 @@ export async function topUpDownloads(): Promise<void> {
         await failNoResult(row.id, p.attempts, p.priority, 'no Soulseek result (search miss)')
       }
     }
-  }
-  finally {
-    topUpRunning = false
-  }
-}
+  },
+})
