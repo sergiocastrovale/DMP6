@@ -6,8 +6,8 @@ import { createReadyGuard, waitForHydration } from './helpers/fixtures'
 // The big pages (playlist detail, timeline, statistics, labs) were split into composables and components; this loads
 // each against seeded data and fails on any uncaught page error or hydration warning, so a broken import or a lost
 // binding in a refactor shows up here rather than in the browser. With SHOT_DIR set it also writes a screenshot per
-// page for a visual comparison (see e2e/capture.spec.ts). The mosaic page is left out: its listing proxies to
-// REMOTE_SERVER_URL when that is set in the environment.
+// page for a visual comparison (see e2e/capture.spec.ts). The mosaic page needs the app built without
+// REMOTE_SERVER_URL (`REMOTE_SERVER_URL= pnpm build`), otherwise its listing proxies to that server.
 
 const prisma = new PrismaClient()
 const { markReady } = createReadyGuard()
@@ -60,9 +60,10 @@ const routes = (): [string, string, RegExp][] => [
   ['labs-decades', '/labs/decades', /Decade/i],
   ['labs-map', '/labs/map', /Back to Labs/],
   ['labs-network', '/labs/network', /Network|Collaborat/i],
+  ['labs-mosaic', '/labs/mosaic', /Album Mosaic/],
 ]
 
-for (const name of ['playlist-detail', 'timeline', 'statistics', 'labs-decades', 'labs-map', 'labs-network']) {
+for (const name of ['playlist-detail', 'timeline', 'statistics', 'labs-decades', 'labs-map', 'labs-network', 'labs-mosaic']) {
   test(`${name} loads without page errors`, async ({ page }) => {
     const [, path, heading] = routes().find(r => r[0] === name)!
     const problems: string[] = []

@@ -553,3 +553,12 @@ describe('errorMessage / errorCode', () => {
     expect(errorCode(null)).toBeUndefined()
   })
 })
+
+describe('formatMosaicSize', () => {
+  it('uses KB below a megabyte and one-decimal MB above', async () => {
+    const { formatMosaicSize } = await import('../../helpers/functions')
+    expect(formatMosaicSize(512 * 1024)).toBe('512 KB')
+    expect(formatMosaicSize(1_048_576)).toBe('1.0 MB')
+    expect(formatMosaicSize(5 * 1_048_576 + 524_288)).toBe('5.5 MB')
+  })
+})

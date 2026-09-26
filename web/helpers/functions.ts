@@ -308,3 +308,9 @@ export const errorCode = (e: unknown): string | undefined => {
   const code = (e as { code?: unknown } | null)?.code
   return typeof code === 'string' ? code : undefined
 }
+
+// A mosaic file's size: whole KB below a megabyte, one-decimal MB above.
+export const formatMosaicSize = (bytes: number): string =>
+  bytes >= 1_048_576
+    ? `${(bytes / 1_048_576).toFixed(1)} MB`
+    : `${(bytes / 1024).toFixed(0)} KB`
