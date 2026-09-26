@@ -158,7 +158,9 @@ const queryReleases = async (type: string, search: string, skip: number, pageSiz
     })), total, { page, pageSize, skip })
 }
 
-// The stored library total, or a real count when there is none yet (no scan has run, so Statistics is empty).
+// The stored library total, or a real count when there is none yet (no scan has run, so Statistics is empty). Only the
+// Rust scripts add or remove tracks and each of them (index, sync, tidy, fix, delete, nuke) refreshes Statistics when it
+// finishes, so this can trail the table only while a scan is still running; a real count of 1.9M rows costs seconds.
 const storedTrackTotal = async (): Promise<number> => {
   const stored = (await db().statistics.findUnique({ where: { id: 'main' }, select: { tracks: true } }))?.tracks
   return stored || db().localReleaseTrack.count()
