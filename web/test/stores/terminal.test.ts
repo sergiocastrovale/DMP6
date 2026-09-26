@@ -295,6 +295,14 @@ describe('useTerminalStore', () => {
     expect(store.lines).toContain('Lock cleared.')
   })
 
+  it('unlock() uses the shared scan-unlock endpoint and leaves the lock holder running', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal('fetch', fetchMock)
+    await useTerminalStore().unlock()
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/scan/unlock', expect.objectContaining({ method: 'POST', body: JSON.stringify({ signalOwn: false }) }))
+  })
+
   it('unlock() appends a failure line when the request throws', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')))
     const store = useTerminalStore()
@@ -307,7 +315,7 @@ describe('useTerminalStore', () => {
   it('unlockAndRerun() clears the lock then re-runs the last command/args/session', async () => {
     const fakeFetch = vi.fn()
       .mockResolvedValueOnce(sseResponse('event: done\ndata: 1\n\n')) // rejected run (lock held)
-      .mockResolvedValueOnce({ ok: true }) // /api/terminal/unlock, from unlockAndRerun
+      .mockResolvedValueOnce({ ok: true }) // /api/scan/unlock, from unlockAndRerun
       .mockResolvedValueOnce(sseResponse('event: done\ndata: 0\n\n')) // successful rerun
     vi.stubGlobal('fetch', fakeFetch)
     const store = useTerminalStore()
@@ -341,7 +349,7 @@ describe('useTerminalStore', () => {
   it('unlockAndRerun() also retries a runStream operation (e.g. merge), not just run()', async () => {
     const fakeFetch = vi.fn()
       .mockResolvedValueOnce(sseResponse('event: done\ndata: 1\n\n')) // rejected merge (lock held)
-      .mockResolvedValueOnce({ ok: true }) // /api/terminal/unlock, from unlockAndRerun
+      .mockResolvedValueOnce({ ok: true }) // /api/scan/unlock, from unlockAndRerun
       .mockResolvedValueOnce(sseResponse('event: done\ndata: 0\n\n')) // successful retry
     vi.stubGlobal('fetch', fakeFetch)
     const store = useTerminalStore()

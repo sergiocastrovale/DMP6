@@ -182,7 +182,7 @@ NAS: `sudo docker exec dmp cat /app/data/logs/errors.log`
 
 **Labs**: `GET /labs/map/countries` (24h cache), `/labs/map/artists`, `/network/graph`, `/decades/stats`, `/api/labs/mosaic/*`
 
-**Ops**: `POST /api/terminal/run` (SSE, tmux), `/terminal/{stop,reconnect,unlock}`, `GET /terminal/sessions` (live reconnectable tmux sessions, backs auto-reconnect), `GET /scan/status`, `POST /scan/unlock`, `GET /api/health`
+**Ops**: `POST /api/terminal/run` (SSE, tmux), `/terminal/{stop,reconnect}`, `GET /terminal/sessions` (live reconnectable tmux sessions, backs auto-reconnect), `GET /scan/status`, `POST /scan/unlock` (the one lock-clearing endpoint, body `{signalOwn?}`), `GET /api/health`
 
 ## Pages
 

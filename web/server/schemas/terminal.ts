@@ -11,3 +11,7 @@ export const terminalRunBodySchema = z.object({
   args: z.array(z.string()).optional(),
   session,
 })
+
+export const unlockBodySchema = z.object({
+  signalOwn: z.boolean().optional().default(true),
+})

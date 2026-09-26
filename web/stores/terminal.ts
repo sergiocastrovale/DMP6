@@ -289,7 +289,7 @@ export const useTerminalStore = defineStore('terminal', () => {
   // running. Caller decides what runs next; see unlockAndRerun() for the "run alongside it" path.
   async function unlock() {
     try {
-      await fetch('/api/terminal/unlock', { method: 'POST' })
+      await fetch('/api/scan/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ signalOwn: false }) })
       lines.value.push('Lock cleared.')
     }
     catch {
