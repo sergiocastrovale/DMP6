@@ -29,7 +29,7 @@ export const useBrowseStore = defineStore('browse', () => {
   // (from a filter that's since changed) can never land after - and overwrite - a fresher one.
   let abortController: AbortController | null = null
 
-  async function fetchArtists(append = false) {
+  const fetchArtists = async (append = false) => {
     abortController?.abort()
     const controller = new AbortController()
     abortController = controller
@@ -89,7 +89,7 @@ export const useBrowseStore = defineStore('browse', () => {
     }
   }
 
-  async function loadMore() {
+  const loadMore = async () => {
     // Guard on `loading` too, not just `loadingMore`: a filter/sort change kicks off a fresh
     // page-1 fetch, and if the sentinel is still intersecting mid-reload (list momentarily short
     // or empty), the IntersectionObserver fires `@load` concurrently. Without this guard that
@@ -100,13 +100,13 @@ export const useBrowseStore = defineStore('browse', () => {
     await fetchArtists(true)
   }
 
-  function setLetterFilter(letter: string | null) {
+  const setLetterFilter = (letter: string | null) => {
     letterFilter.value = letter
     searchQuery.value = ''
     fetchArtists()
   }
 
-  function toggleGenre(genre: string) {
+  const toggleGenre = (genre: string) => {
     const index = genreFilters.value.indexOf(genre)
     if (index === -1) {
       genreFilters.value.push(genre)
@@ -119,7 +119,7 @@ export const useBrowseStore = defineStore('browse', () => {
 
   // Choosing a different column resets to that column's own default direction; re-choosing the
   // one already active flips it, which is what clicking its table header means.
-  function setSortBy(sort: string) {
+  const setSortBy = (sort: string) => {
     sortDir.value = sortBy.value === sort
       ? (sortDir.value === 'asc' ? 'desc' : 'asc')
       : defaultSortDirection(sort)
@@ -130,7 +130,7 @@ export const useBrowseStore = defineStore('browse', () => {
   // Explicit-pair sort chips (browse/FiltersSidebar.vue) set both column and direction in one shot,
   // rather than going through setSortBy's "reselecting the active column flips it" table-header
   // convention - a pair button always means exactly the order it's labelled.
-  function setSort(sort: string, dir: SortDirection) {
+  const setSort = (sort: string, dir: SortDirection) => {
     if (sortBy.value === sort && sortDir.value === dir) {
       return
     }
@@ -139,7 +139,7 @@ export const useBrowseStore = defineStore('browse', () => {
     fetchArtists()
   }
 
-  function setSortDir(dir: SortDirection) {
+  const setSortDir = (dir: SortDirection) => {
     if (sortDir.value === dir) {
       return
     }
@@ -147,23 +147,23 @@ export const useBrowseStore = defineStore('browse', () => {
     fetchArtists()
   }
 
-  function toggleSortDir() {
+  const toggleSortDir = () => {
     setSortDir(sortDir.value === 'asc' ? 'desc' : 'asc')
   }
 
-  function setSearch(query: string) {
+  const setSearch = (query: string) => {
     searchQuery.value = query
     if (query) {letterFilter.value = null}
     fetchArtists()
   }
 
-  function setCompletenessRange(min: number | null, max: number | null) {
+  const setCompletenessRange = (min: number | null, max: number | null) => {
     minCompleteness.value = min
     maxCompleteness.value = max
     fetchArtists()
   }
 
-  function setViewMode(mode: 'expanded' | 'summarized') {
+  const setViewMode = (mode: 'expanded' | 'summarized') => {
     if (viewMode.value === mode) {
       return
     }
@@ -172,7 +172,7 @@ export const useBrowseStore = defineStore('browse', () => {
     fetchArtists()
   }
 
-  function setPageSize(size: number) {
+  const setPageSize = (size: number) => {
     if (pageSize.value === size) {
       return
     }
@@ -182,7 +182,7 @@ export const useBrowseStore = defineStore('browse', () => {
 
   // Genres + completeness band, cleared together in one refetch - Sort isn't a "filter" in this
   // count (it always has a value), so a fresh page with nothing ticked reads as 0.
-  function clearFilters() {
+  const clearFilters = () => {
     genreFilters.value = []
     minCompleteness.value = null
     maxCompleteness.value = null

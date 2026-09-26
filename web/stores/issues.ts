@@ -26,7 +26,7 @@ export const useIssuesStore = defineStore('issues', () => {
   const typeAbortControllers: Record<string, AbortController> = {}
   const resolvedAbortControllers: Record<string, AbortController> = {}
 
-  async function fetchSummary() {
+  const fetchSummary = async () => {
     summaryLoading.value = true
     try {
       summary.value = await $fetch<IssueSummary>('/api/issues/summary')
@@ -35,7 +35,7 @@ export const useIssuesStore = defineStore('issues', () => {
     }
   }
 
-  async function fetchType(type: IssueType, reset = false) {
+  const fetchType = async (type: IssueType, reset = false) => {
     if (reset) {
       page.value[type] = 1
       items.value[type] = []
@@ -72,7 +72,7 @@ export const useIssuesStore = defineStore('issues', () => {
     }
   }
 
-  async function fetchResolved(type: IssueType, reset = false) {
+  const fetchResolved = async (type: IssueType, reset = false) => {
     if (reset) {
       resolvedPage.value[type] = 1
       resolvedItems.value[type] = []
@@ -109,17 +109,17 @@ export const useIssuesStore = defineStore('issues', () => {
     }
   }
 
-  async function setPage(type: IssueType, p: number) {
+  const setPage = async (type: IssueType, p: number) => {
     page.value[type] = p
     await fetchType(type)
   }
 
-  async function setResolvedPage(type: IssueType, p: number) {
+  const setResolvedPage = async (type: IssueType, p: number) => {
     resolvedPage.value[type] = p
     await fetchResolved(type)
   }
 
-  async function setSort(type: IssueType, key: string) {
+  const setSort = async (type: IssueType, key: string) => {
     if (sort.value[type] === key) {
       order.value[type] = order.value[type] === 'asc' ? 'desc' : 'asc'
     } else {
@@ -130,13 +130,13 @@ export const useIssuesStore = defineStore('issues', () => {
     await fetchType(type)
   }
 
-  async function setSearch(type: IssueType, q: string) {
+  const setSearch = async (type: IssueType, q: string) => {
     search.value[type] = q
     page.value[type] = 1
     await fetchType(type)
   }
 
-  async function queueIds(type: IssueType, ids: string[]) {
+  const queueIds = async (type: IssueType, ids: string[]) => {
     const res = await $fetch<{ queued: number }>(`/api/issues/${type}/queue`, {
       method: 'POST',
       body: { ids },
@@ -144,7 +144,7 @@ export const useIssuesStore = defineStore('issues', () => {
     return res.queued
   }
 
-  async function queueRevert(type: IssueType, ids: string[], mode: 'undo' | 'undo-resolved') {
+  const queueRevert = async (type: IssueType, ids: string[], mode: 'undo' | 'undo-resolved') => {
     const res = await $fetch<{ queued: number; mode: string }>(`/api/issues/${type}/queue-revert`, {
       method: 'POST',
       body: { ids, mode },
@@ -152,7 +152,7 @@ export const useIssuesStore = defineStore('issues', () => {
     return res.queued
   }
 
-  async function patchIssue(type: IssueType, id: string, body: Record<string, unknown>) {
+  const patchIssue = async (type: IssueType, id: string, body: Record<string, unknown>) => {
     await $fetch(`/api/issues/${type}/${id}`, { method: 'PATCH', body })
     const list = items.value[type]
     if (!list) {return}
@@ -168,12 +168,12 @@ export const useIssuesStore = defineStore('issues', () => {
   const historyLoading = ref<Record<string, boolean>>({})
   const historyCounts = ref<{ corrupted: number; missing: number }>({ corrupted: 0, missing: 0 })
 
-  async function fetchHistoryCounts() {
+  const fetchHistoryCounts = async () => {
     const res = await $fetch<{ counts: typeof historyCounts.value; total: number }>('/api/issues/history', { query: { mode: 'counts' } })
     historyCounts.value = res.counts
   }
 
-  async function fetchHistory(type: HistoryIssueType, reset = false) {
+  const fetchHistory = async (type: HistoryIssueType, reset = false) => {
     if (reset) {
       historyPage.value[type] = 1
       historyItems.value[type] = []
@@ -192,16 +192,16 @@ export const useIssuesStore = defineStore('issues', () => {
     }
   }
 
-  async function setHistoryPage(type: HistoryIssueType, p: number) {
+  const setHistoryPage = async (type: HistoryIssueType, p: number) => {
     historyPage.value[type] = p
     await fetchHistory(type)
   }
 
-  async function clearHistoryItems(ids: string[]) {
+  const clearHistoryItems = async (ids: string[]) => {
     await $fetch('/api/issues/history', { method: 'DELETE', body: { ids } })
   }
 
-  async function undoHistoryItems(ids: string[]) {
+  const undoHistoryItems = async (ids: string[]) => {
     const res = await $fetch<{ queued: Record<string, number> }>('/api/issues/history-undo', {
       method: 'POST',
       body: { ids },

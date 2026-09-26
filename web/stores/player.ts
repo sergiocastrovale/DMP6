@@ -47,7 +47,7 @@ export const usePlayerStore = defineStore('player', () => {
     seek: (time: number) => { seek(time) },
   })
 
-  function trackMeta(track: PlayerTrack): MediaSessionTrackMeta {
+  const trackMeta = (track: PlayerTrack): MediaSessionTrackMeta => {
     return {
       title: track.title,
       artist: track.artist,
@@ -58,7 +58,7 @@ export const usePlayerStore = defineStore('player', () => {
 
   // A file that is missing on disk or will not decode must not stop a queue or radio session dead: log it as a
   // skip, tell the user, and move on - unless several in a row fail, which means something bigger is wrong.
-  function onPlaybackError(code: number | undefined) {
+  const onPlaybackError = (code: number | undefined) => {
     const outcome = playbackErrorAction(consecutivePlaybackErrors, code, MAX_CONSECUTIVE_PLAYBACK_ERRORS)
     consecutivePlaybackErrors = outcome.consecutiveErrors
     if (outcome.action === 'ignore') {return}
@@ -72,7 +72,7 @@ export const usePlayerStore = defineStore('player', () => {
     next()
   }
 
-  function getAudio(): HTMLAudioElement {
+  const getAudio = (): HTMLAudioElement => {
     if (!audio && import.meta.client) {
       audio = new Audio()
       audio.addEventListener('timeupdate', () => {
@@ -102,7 +102,7 @@ export const usePlayerStore = defineStore('player', () => {
     return audio!
   }
 
-  async function playTrack(track: PlayerTrack, newQueue?: PlayerTrack[], source?: PlaySource) {
+  const playTrack = async (track: PlayerTrack, newQueue?: PlayerTrack[], source?: PlaySource) => {
     // Delegate entirely to setQueue, which calls back into playTrack(track) with no newQueue - a single
     // history push and a single audio/metadata setup, instead of doing both here AND in the recursive call.
     if (newQueue) {
@@ -150,7 +150,7 @@ export const usePlayerStore = defineStore('player', () => {
     }
   }
 
-  function togglePlay() {
+  const togglePlay = () => {
     const a = getAudio()
     if (!currentTrack.value) {return}
     if (isPlaying.value) {
@@ -166,7 +166,7 @@ export const usePlayerStore = defineStore('player', () => {
     }
   }
 
-  function seek(time: number) {
+  const seek = (time: number) => {
     const a = getAudio()
     if (a.src) {
       a.currentTime = time
@@ -174,20 +174,20 @@ export const usePlayerStore = defineStore('player', () => {
     }
   }
 
-  function setVolume(val: number) {
+  const setVolume = (val: number) => {
     volume.value = val
     isMuted.value = false
     const a = getAudio()
     a.volume = val
   }
 
-  function toggleMute() {
+  const toggleMute = () => {
     isMuted.value = !isMuted.value
     const a = getAudio()
     a.volume = isMuted.value ? 0 : volume.value
   }
 
-  function dismiss() {
+  const dismiss = () => {
     const a = getAudio()
     a.pause()
     isPlaying.value = false
@@ -197,7 +197,7 @@ export const usePlayerStore = defineStore('player', () => {
     playEvents.finish('dismissed')
   }
 
-  function setQueue(tracks: PlayerTrack[], startTrack?: PlayerTrack) {
+  const setQueue = (tracks: PlayerTrack[], startTrack?: PlayerTrack) => {
     currentPlaylistSlug.value = null
     originalQueue.value = [...tracks]
     queue.value = shuffleMode.value !== 'off' ? shuffleArray([...tracks]) : [...tracks]
@@ -209,7 +209,7 @@ export const usePlayerStore = defineStore('player', () => {
     }
   }
 
-  function playPlaylist(slug: string, tracks: PlayerTrack[]) {
+  const playPlaylist = (slug: string, tracks: PlayerTrack[]) => {
     currentPlaylistSlug.value = slug
     originalQueue.value = [...tracks]
     queue.value = shuffleMode.value !== 'off' ? shuffleArray([...tracks]) : [...tracks]
@@ -218,7 +218,7 @@ export const usePlayerStore = defineStore('player', () => {
     }
   }
 
-  async function refillCatalogueBuffer() {
+  const refillCatalogueBuffer = async () => {
     if (catalogueBufferFetching || catalogueBuffer.value.length >= 5) {return}
     catalogueBufferFetching = true
     try {
@@ -229,7 +229,7 @@ export const usePlayerStore = defineStore('player', () => {
     finally { catalogueBufferFetching = false }
   }
 
-  async function fetchExplorerTrack(params: ExploreParams): Promise<PlayerTrack | null> {
+  const fetchExplorerTrack = async (params: ExploreParams): Promise<PlayerTrack | null> => {
     try {
       return await $fetch<PlayerTrack>('/api/tracks/explore', {
         method: 'POST',
@@ -240,7 +240,7 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   // Called from the Explore page button - fetches next track, updates session state, plays it
-  async function pickExplorerTrack(params: ExploreParams): Promise<void> {
+  const pickExplorerTrack = async (params: ExploreParams): Promise<void> => {
     if (explorerCurrentTrack.value) {
       unshiftCapped(explorerSessionHistory.value, explorerCurrentTrack.value, EXPLORER_SESSION_HISTORY_CAP)
     }
@@ -256,7 +256,7 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   // Called when replaying a history track from the Explore page
-  function setExplorerTrack(track: PlayerTrack, params: ExploreParams): void {
+  const setExplorerTrack = (track: PlayerTrack, params: ExploreParams): void => {
     if (explorerCurrentTrack.value && explorerCurrentTrack.value.id !== track.id) {
       unshiftCapped(explorerSessionHistory.value, explorerCurrentTrack.value, EXPLORER_SESSION_HISTORY_CAP)
     }
@@ -267,7 +267,7 @@ export const usePlayerStore = defineStore('player', () => {
     playTrack(track)
   }
 
-  async function next() {
+  const next = async () => {
     if (shuffleMode.value === 'explorer') {
       if (!explorerParams.value) {return}
       if (explorerCurrentTrack.value) {
@@ -315,7 +315,7 @@ export const usePlayerStore = defineStore('player', () => {
     }
   }
 
-  function previous() {
+  const previous = () => {
     if (currentTime.value > 3) {
       seek(0)
       return
@@ -329,14 +329,14 @@ export const usePlayerStore = defineStore('player', () => {
     }
   }
 
-  async function fetchReleaseTracks(localReleaseId: string): Promise<PlayerTrack[]> {
+  const fetchReleaseTracks = async (localReleaseId: string): Promise<PlayerTrack[]> => {
     const res = await $fetch<{ release: { image: string | null, imageUrl: string | null, artistSlug: string } | null, tracks: any[] }>(`/api/releases/${localReleaseId}/tracks`)
     return res.tracks
       .filter(t => !t.missing)
       .map(t => toPlayerTrack(t, { artistSlug: res.release?.artistSlug, releaseImage: res.release?.image, releaseImageUrl: res.release?.imageUrl }))
   }
 
-  async function cycleShuffleMode() {
+  const cycleShuffleMode = async () => {
     // Explorer mode is toggled off directly - not part of the normal cycle
     if (shuffleMode.value === 'explorer') {
       shuffleMode.value = 'off'
@@ -483,7 +483,7 @@ export const usePlayerStore = defineStore('player', () => {
     watch(currentTime, savePosition)
   }
 
-  function getAudioElement(): HTMLAudioElement | null {
+  const getAudioElement = (): HTMLAudioElement | null => {
     return audio
   }
 

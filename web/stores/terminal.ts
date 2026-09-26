@@ -58,7 +58,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     return t !== undefined && Date.now() - t < RECONNECT_STOP_GUARD_MS
   }
 
-  async function streamSSE(url: string, body: Record<string, any>) {
+  const streamSSE = async (url: string, body: Record<string, any>) => {
     lines.value = []
     exitCode.value = null
     isRunning.value = true
@@ -143,7 +143,7 @@ export const useTerminalStore = defineStore('terminal', () => {
   // failed) - RECONNECT_BACKOFF_MS[attempt] is the delay before trying retry number attempt+1. Not
   // wired into runStream() (e.g. merge): there is no reconnect-equivalent resume endpoint for
   // non-tmux SSE operations, and auto-retrying a non-idempotent op would be wrong.
-  async function maybeAutoReconnect(session: string, attempt = 0) {
+  const maybeAutoReconnect = async (session: string, attempt = 0) => {
     if (!connectionLost.value) {return}
     if (wasRecentlyStopped(session)) {
       connectionLost.value = false
@@ -159,7 +159,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     await reconnect(session, attempt + 1)
   }
 
-  async function run(command: string, args: string[], session?: string) {
+  const run = async (command: string, args: string[], session?: string) => {
     const resolvedSession = session ?? `dmp-${command.replace('./', '')}`
     currentSession.value = resolvedSession
     currentCommand.value = command
@@ -170,10 +170,10 @@ export const useTerminalStore = defineStore('terminal', () => {
 
   // Runs stages back to back, stopping at the first one the user cancels. `stopOnFailure` also stops
   // at the first stage that exits non-zero (a multi-disc delete must not carry on past a failed disc).
-  async function runSequence(
+  const runSequence = async (
     steps: Array<{ command: string, args: string[], session?: string }>,
     options: { stopOnFailure?: boolean } = {},
-  ) {
+  ) => {
     const gen = ++sequenceGeneration
     stageTotal.value = steps.length
     try {
@@ -196,25 +196,25 @@ export const useTerminalStore = defineStore('terminal', () => {
   // `attempt` is passed through from maybeAutoReconnect when this is an automatic retry (so a failure
   // here continues the same backoff sequence rather than restarting it); defaults to 0 for a fresh
   // manual reconnect (e.g. RealTimeStatus.vue's button, or autoReconnectOrphan() below).
-  async function reconnect(session: string, attempt = 0) {
+  const reconnect = async (session: string, attempt = 0) => {
     currentSession.value = session
     await streamSSE('/api/terminal/reconnect', { session })
     await maybeAutoReconnect(session, attempt)
   }
 
   // Generic SSE streamer for non-script operations (e.g. merge) that want their output in the terminal.
-  async function runStream(url: string, body: Record<string, any>, session: string, label: string) {
+  const runStream = async (url: string, body: Record<string, any>, session: string, label: string) => {
     currentSession.value = session
     currentCommand.value = label
     lastRetry.value = () => runStream(url, body, session, label)
     return streamSSE(url, body)
   }
 
-  function expand() {
+  const expand = () => {
     viewMode.value = 'sidebar'
   }
 
-  function minimize() {
+  const minimize = () => {
     viewMode.value = 'toast'
   }
 
@@ -222,7 +222,7 @@ export const useTerminalStore = defineStore('terminal', () => {
   // the recorded PID is verified to belong to this session's process, so an unrelated session (or a
   // different machine/container sharing the same DB) never gets its lock wiped out from under it.
   // Use the "Force unlock" button (hasLockError below) to explicitly clear a lock reported as stuck.
-  async function stop() {
+  const stop = async () => {
     stoppedGeneration = sequenceGeneration
     if (currentSession.value) {
       // Recorded synchronously, before any await, so the guard is in place the instant Stop is
@@ -247,7 +247,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     && lines.value.some(l => typeof l === 'string' && l.includes('lock held')),
   )
 
-  async function stopAndClose() {
+  const stopAndClose = async () => {
     if (isRunning.value) {
       await stop()
     }
@@ -267,7 +267,7 @@ export const useTerminalStore = defineStore('terminal', () => {
   // Orphan recovery for a store instance that never saw the run start (a fresh page load, a reload
   // after a drop, or the drop happened on a page that wasn't even watching it). No-ops while already
   // attached to something - checkForOrphanSessions() only matters when idle.
-  async function checkForOrphanSessions() {
+  const checkForOrphanSessions = async () => {
     if (isRunning.value || currentSession.value) {return}
     try {
       const res = await $fetch<TerminalSessionsResponse>('/api/terminal/sessions')
@@ -276,7 +276,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     catch { /* best-effort */ }
   }
 
-  async function autoReconnectOrphan() {
+  const autoReconnectOrphan = async () => {
     await checkForOrphanSessions()
     if (isRunning.value || currentSession.value) {return}
     const first = orphanSessions.value[0]
@@ -287,7 +287,7 @@ export const useTerminalStore = defineStore('terminal', () => {
 
   // Clears the DB scan lock without touching whatever process holds it - the other script keeps
   // running. Caller decides what runs next; see unlockAndRerun() for the "run alongside it" path.
-  async function unlock() {
+  const unlock = async () => {
     try {
       await fetch('/api/scan/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ signalOwn: false }) })
       lines.value.push('Lock cleared.')
@@ -301,7 +301,7 @@ export const useTerminalStore = defineStore('terminal', () => {
   // untouched) then re-issues whatever just got rejected - a script run or a runStream operation like
   // merge - so it now starts in parallel with whatever still holds - or held - the lock. Collisions are
   // the accepted risk of pressing this; gated behind an explicit confirm dialog in TerminalForceUnlock.vue.
-  async function unlockAndRerun() {
+  const unlockAndRerun = async () => {
     const retry = lastRetry.value
     await unlock()
     if (retry) {
