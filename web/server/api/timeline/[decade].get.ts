@@ -73,5 +73,5 @@ export default defineEventHandler(async (event) => {
       hasMore: skip + limit < total,
       years,
     }
-  })
+  }, { shared: true })
 })

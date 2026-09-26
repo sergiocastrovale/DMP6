@@ -163,7 +163,7 @@ export default defineEventHandler(async (event) => {
       pageSize,
       hasMore: page * pageSize < total,
     }
-  })
+  }, { shared: true })
 
   // Per-user, so attached after the shared cache rather than baked into it (its Redis entry is
   // process-wide, not per caller) - same pattern as app-stats.get.ts's playlist/favorite counts.

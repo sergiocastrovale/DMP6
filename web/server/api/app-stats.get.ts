@@ -27,7 +27,7 @@ export default defineEventHandler(async (event) => {
         issues,
         activeDownloads,
       }
-    }),
+    }, { shared: true }),
     // Sidebar "Playlists" count - the user's own MANUAL playlists only, not the shared GENRE/REGION
     // ones every user sees (visiblePlaylistsWhere would include those too). Per-user, so kept out of
     // the shared cache above (its Redis entry is process-wide, not per caller).

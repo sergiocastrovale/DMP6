@@ -16,5 +16,5 @@ export default defineEventHandler(async (event) => {
       ORDER BY decade DESC
     `
     return rows.map(r => ({ decade: r.decade, count: Number(r.count) }))
-  })
+  }, { shared: true })
 })

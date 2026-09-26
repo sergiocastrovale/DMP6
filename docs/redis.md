@@ -31,6 +31,10 @@ Nuxt/Nitro server
 
 **Write-through**: a cache miss always populates Redis, next identical request is served from cache.
 
+**Library-versioned keys.** Anything derived from the library is cached with `{ shared: true }`, which prefixes the key with the current *library version*: `lib:<version>:<key>`. The version is `Statistics.updatedAt` (epoch ms, read at most every 5 s - `server/utils/libraryVersion.ts`). Every lock-holding Rust script (`index`, `sync`, `tidy`, `delete`, `nuke`, ...) writes that column when it takes the scan lock, at checkpoints and when it releases it, and the scripts can't reach Redis - so instead of trying to delete keys, a scan or merge simply changes the version and every old key stops being read (it ages out by TTL). Web-side edits that don't bump the version (`artists/[slug]/photo`, `artists/[slug]` PATCH, `artists/added/[mbid]`) call `invalidateShared(pattern)`, which deletes `lib:*:<pattern>` across versions. Per-user keys (`releases:last-played:<userId>:*`, `releases:archive:pool:<userId>`) are not shared and keep their own invalidation.
+
+The key column in the tables below is the logical key; shared entries physically carry the `lib:<version>:` prefix.
+
 ---
 
 ## Implementation

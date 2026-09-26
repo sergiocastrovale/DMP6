@@ -81,7 +81,7 @@ export default defineEventHandler(async (event) => {
         ...verifyImage(a.image, a.imageUrl, 'artists'),
       })),
     }
-  })
+  }, { shared: true })
 
   const playTotals = await artistPlayTotals(userId, [cached.id, ...cached.connectedArtistIds])
   const totalPlayCount = [...playTotals.values()].reduce((sum, n) => sum + n, 0)

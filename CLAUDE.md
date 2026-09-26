@@ -226,7 +226,7 @@ Optional sidecar, falls through to DB silently if unavailable.
 | `/api/releases/archive` | 5 min |
 | `/api/labs/map/countries` | 24 h |
 
-Invalidated on track play (`last-played`) and on artist photo/monitor edits and `./add`.
+Library-derived entries (`{ shared: true }` in `cachedResponse`) embed a **library version** in their key (`lib:<Statistics.updatedAt ms>:<key>`, `server/utils/libraryVersion.ts`): every lock-holding script bumps `Statistics.updatedAt`, so a scan/merge makes all old keys unreachable at once. Web-side edits that don't bump it (artist photo/monitor toggle, `./add`) call `invalidateShared(pattern)`. `last-played` is per-user and invalidated on counted plays.
 
 ## NAS / Deploy
 

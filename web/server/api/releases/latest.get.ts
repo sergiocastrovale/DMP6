@@ -42,5 +42,5 @@ export default defineEventHandler(async (event) => {
       artist: release.artists[0]?.artist ?? null,
       musicBrainzId: release.release?.id || null,
     }))
-  })
+  }, { shared: true })
 })

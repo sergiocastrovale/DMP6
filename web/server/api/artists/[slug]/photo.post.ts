@@ -1,6 +1,6 @@
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
-import { invalidateCache } from '~/server/utils/cache'
+import { invalidateShared } from '~/server/utils/cache'
 import { verifyImage, forgetImageExists } from '~/server/utils/images'
 
 // Called by useArtistPage's fetchPhoto() right after `./artist-photos --id <id>` exits 0 - that
@@ -19,8 +19,8 @@ export default defineEventHandler(async (event) => {
   if (!artist) {throw createError({ statusCode: 404, statusMessage: 'Artist not found' })}
 
   forgetImageExists('artists', artist.image)
-  await invalidateCache(`artist:${slug}`)
-  await invalidateCache('artists:*')
+  await invalidateShared(`artist:${slug}`)
+  await invalidateShared('artists:*')
 
   return verifyImage(artist.image, artist.imageUrl, 'artists')
 })

@@ -86,7 +86,7 @@ export default defineEventHandler(async (event) => {
       lastScanEndedAt: stats.lastScanEndedAt?.toISOString() || null,
       ...curation,
     }
-  })
+  }, { shared: true })
 
   // Per-user, so kept out of the shared cache above (its Redis entry is process-wide, not per caller).
   const [plays, recentPlays] = await Promise.all([userTotalPlays(userId), recentPlayCounts(userId)])

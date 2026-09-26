@@ -1,5 +1,5 @@
 import { requirePermission } from '~/server/utils/permissions'
-import { invalidateCache } from '~/server/utils/cache'
+import { invalidateShared } from '~/server/utils/cache'
 import { findArtistByMbid } from '~/server/utils/artistByMbid'
 
 // Called by /add's Search.vue right after `./add --mbid <mbid>` exits 0. `./add` writes straight to
@@ -16,6 +16,6 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Artist not found after add' })
   }
 
-  await invalidateCache('artists:*')
+  await invalidateShared('artists:*')
   return artist
 })

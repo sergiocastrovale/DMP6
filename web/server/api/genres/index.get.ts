@@ -30,5 +30,5 @@ export default defineEventHandler(async (event) => {
       name: g.name,
       artistCount: g._count.artists,
     }))
-  })
+  }, { shared: true })
 })

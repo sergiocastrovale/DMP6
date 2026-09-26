@@ -1,5 +1,5 @@
 import { prisma } from '~/server/utils/prisma'
-import { invalidateCache } from '~/server/utils/cache'
+import { invalidateShared } from '~/server/utils/cache'
 import { requirePermission } from '~/server/utils/permissions'
 
 export default defineEventHandler(async (event) => {
@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
     select: { id: true, name: true, monitored: true },
   })
 
-  await invalidateCache(`artist:${slug}`)
+  await invalidateShared(`artist:${slug}`)
 
   // No per-artist kick: the global trickle worker (topUpDownloads) covers all monitored artists
   // uniformly, throttled + concurrency-capped, so toggling many can't flood Soulseek.
