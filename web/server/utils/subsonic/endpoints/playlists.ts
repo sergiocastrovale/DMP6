@@ -1,6 +1,7 @@
 import type { H3Event } from 'h3'
 import { prisma } from '~/server/utils/prisma'
 import { generateSlug } from '~/server/utils/slug'
+import { createManualPlaylist } from '~/server/utils/playlistWrites'
 import { visiblePlaylistsWhere } from '~/server/utils/libraryOwnership'
 import { trackPlaysByIds } from '~/server/utils/userPlays'
 import { favoriteTrackDates } from '~/server/utils/favorites'
@@ -99,12 +100,7 @@ export const createPlaylist = async (_event: H3Event, ctx: HandlerContext): Prom
     throw new SubsonicApiError(SubsonicErrorCode.GENERIC, 'Playlist name must contain at least one letter or number')
   }
 
-  const existing = await prisma.playlist.findFirst({ where: { slug, ...visiblePlaylistsWhere(ctx.user.id) } })
-  if (existing) {
-    throw createError({ statusCode: 409, statusMessage: 'Playlist with this name already exists' })
-  }
-
-  const playlist = await prisma.playlist.create({ data: { name, slug, userId: ctx.user.id } })
+  const playlist = await createManualPlaylist(ctx.user.id, { name, slug })
   if (songIds.length) {
     await prisma.playlistTrack.createMany({
       data: songIds.map((trackId, i) => ({ playlistId: playlist.id, trackId, position: i })),

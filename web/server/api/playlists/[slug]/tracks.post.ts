@@ -1,4 +1,4 @@
-import { prisma } from '~/server/utils/prisma'
+import { appendPlaylistTrack } from '~/server/utils/playlistWrites'
 import { requirePermission } from '~/server/utils/permissions'
 import { isForeignKeyError, isUniqueConstraintError } from '~/server/utils/prismaErrors'
 import { readBodyOf } from '~/server/utils/requestValidation'
@@ -24,20 +24,7 @@ export default defineEventHandler(async (event) => {
 
   let playlistTrack
   try {
-    playlistTrack = await prisma.$transaction(async (tx) => {
-      const top = await tx.playlistTrack.findFirst({
-        where: { playlistId: playlist.id },
-        orderBy: { position: 'desc' },
-        select: { position: true },
-      })
-      return tx.playlistTrack.create({
-        data: {
-          playlistId: playlist.id,
-          trackId: body.trackId,
-          position: (top?.position ?? -1) + 1,
-        },
-      })
-    })
+    playlistTrack = await appendPlaylistTrack(playlist.id, body.trackId)
   }
   catch (e) {
     if (isUniqueConstraintError(e)) {
