@@ -6,8 +6,7 @@ import { createReadyGuard, waitForHydration } from './helpers/fixtures'
 // The big pages (playlist detail, timeline, statistics, labs) were split into composables and components; this loads
 // each against seeded data and fails on any uncaught page error or hydration warning, so a broken import or a lost
 // binding in a refactor shows up here rather than in the browser. With SHOT_DIR set it also writes a screenshot per
-// page for a visual comparison (see e2e/capture.spec.ts). The mosaic page needs the app built without
-// REMOTE_SERVER_URL (`REMOTE_SERVER_URL= pnpm build`), otherwise its listing proxies to that server.
+// page for a visual comparison (see e2e/capture.spec.ts).
 
 const prisma = new PrismaClient()
 const { markReady } = createReadyGuard()

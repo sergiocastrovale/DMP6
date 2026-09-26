@@ -23,6 +23,10 @@ const serverEnv = {
   ...(process.env as Record<string, string>),
   SESSION_SECRET: process.env.SESSION_SECRET || 'e2e-session-secret-fixed-for-determinism',
   PORT: port,
+  // `.env` carries REMOTE_SERVER_URL for dev, and `pnpm build` bakes it into the bundle, which would make the
+  // image, audio and mosaic routes proxy to that real server instead of the test one. Nitro lets NUXT_* env
+  // override runtimeConfig at run time, so the suite pins it empty regardless of how the app was built.
+  NUXT_REMOTE_SERVER_URL: '',
 }
 
 // Runs against the PRODUCTION build (the service worker only exists in `pnpm build` output -
