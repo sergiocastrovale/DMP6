@@ -1,4 +1,6 @@
 import { Prisma } from '@prisma/client'
+import { prisma } from '~/server/utils/prisma'
+import { cachedResponse } from '~/server/utils/cache'
 import type { NetworkGraph, NetworkNode, NetworkLink, FullPairRow, FocusPairRow, NetworkTrackRow } from '~/types/labs'
 
 export default defineEventHandler(async (event): Promise<NetworkGraph> => {
@@ -6,10 +8,16 @@ export default defineEventHandler(async (event): Promise<NetworkGraph> => {
   const artistId = query.artistId as string | undefined
   const minShared = Math.max(1, Number(query.minShared) || 2)
 
+  // Both graphs aggregate TrackRelatedArtist x LocalReleaseTrack x LocalReleaseArtist with COUNT(DISTINCT) - fine
+  // once, wasteful on every visit. Library-versioned, so a scan refreshes them; the focused one is per artist.
   if (artistId) {
-    return getFocusedGraph(artistId)
+    // artistId is caller-supplied text that would become part of a Redis key: only well-formed ids are cached.
+    if (!/^[a-z0-9]{8,40}$/.test(artistId)) {
+      return getFocusedGraph(artistId)
+    }
+    return cachedResponse(`labs:network:focus:${artistId}`, 600, () => getFocusedGraph(artistId), { shared: true })
   }
-  return getFullGraph(minShared)
+  return cachedResponse(`labs:network:full:${minShared}`, 86400, () => getFullGraph(minShared), { shared: true })
 })
 
 const getFullGraph = async (minShared: number): Promise<NetworkGraph> => {

@@ -1,68 +1,17 @@
-import type { DecadeStats, DecadeRow, GenreRow } from '~/types/labs'
+import type { DecadeStats } from '~/types/labs'
+import { prisma } from '~/server/utils/prisma'
+import { cachedResponse } from '~/server/utils/cache'
 import { currentUserId } from '~/server/utils/libraryOwnership'
+import { decadeAggregates, decadePlayTotals, withPlayTotals } from '~/server/utils/decadeStats'
 
 export default defineEventHandler(async (event): Promise<DecadeStats[]> => {
   const userId = currentUserId(event)
-  const rows = await prisma.$queryRaw<DecadeRow[]>`
-    SELECT
-      (FLOOR(lr.year / 10) * 10)::int AS decade,
-      COUNT(DISTINCT lr.id) AS release_count,
-      COUNT(DISTINCT lrt.id) AS track_count,
-      COUNT(DISTINCT lra."artistId") AS artist_count,
-      AVG(lrt.duration)::float AS avg_duration,
-      AVG(lrt.bitrate)::float AS avg_bitrate,
-      COALESCE(SUM(p."playCount"), 0) AS total_play_count
-    FROM "LocalRelease" lr
-    JOIN "LocalReleaseTrack" lrt ON lrt."localReleaseId" = lr.id
-    LEFT JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
-    LEFT JOIN "LocalReleaseTrackPlay" p ON p."trackId" = lrt.id AND p."userId" = ${userId}
-    WHERE lr.year IS NOT NULL
-    GROUP BY decade
-    ORDER BY decade
-  `
 
-  const genreRows = await prisma.$queryRaw<GenreRow[]>`
-    SELECT
-      (FLOOR(lr.year / 10) * 10)::int AS decade,
-      lrt.genre,
-      COUNT(*) AS cnt
-    FROM "LocalRelease" lr
-    JOIN "LocalReleaseTrack" lrt ON lrt."localReleaseId" = lr.id
-    WHERE lr.year IS NOT NULL AND lrt.genre IS NOT NULL AND lrt.genre != ''
-    GROUP BY decade, lrt.genre
-    ORDER BY decade, cnt DESC
-  `
-
-  const genresByDecade = new Map<number, Map<string, number>>()
-  for (const row of genreRows) {
-    if (!genresByDecade.has(row.decade)) {
-      genresByDecade.set(row.decade, new Map())
-    }
-    const genres = row.genre.split(/[;,/]/).map((g) => g.trim().toLowerCase()).filter(Boolean)
-    const decadeGenres = genresByDecade.get(row.decade)!
-    for (const genre of genres) {
-      decadeGenres.set(genre, (decadeGenres.get(genre) || 0) + Number(row.cnt))
-    }
-  }
-
-  return rows.map((row) => {
-    const decadeGenres = genresByDecade.get(row.decade)
-    const topGenres = decadeGenres
-      ? [...decadeGenres.entries()]
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 5)
-          .map(([name, count]) => ({ name, count }))
-      : []
-
-    return {
-      decade: `${row.decade}s`,
-      releaseCount: Number(row.release_count),
-      trackCount: Number(row.track_count),
-      artistCount: Number(row.artist_count),
-      avgDuration: Math.round(row.avg_duration || 0),
-      avgBitrate: Math.round(row.avg_bitrate || 0),
-      topGenres,
-      totalPlayCount: Number(row.total_play_count),
-    }
-  })
+  // The library-wide part is cached for a day (and dropped the moment a scan changes the library); only this
+  // user's play totals are computed per request.
+  const [aggregates, plays] = await Promise.all([
+    cachedResponse('labs:decades', 86400, () => decadeAggregates(prisma), { shared: true }),
+    decadePlayTotals(prisma, userId),
+  ])
+  return withPlayTotals(aggregates, plays)
 })
