@@ -384,20 +384,8 @@ export const usePlayerStore = defineStore('player', () => {
         || originalQueue.value.find(t => t.artistSlug)?.artistSlug
       if (artistSlug) {
         try {
-          const rawTracks = await $fetch<any[]>(`/api/artists/${artistSlug}/tracks`)
-          const tracks: PlayerTrack[] = rawTracks
-            .filter(t => t.filePath)
-            .map(t => ({
-              id: t.id,
-              title: t.title || 'Unknown',
-              artist: t.artist || t.albumArtist || 'Unknown',
-              album: t.album || 'Unknown',
-              duration: t.duration || 0,
-              artistSlug,
-              releaseImage: null,
-              releaseImageUrl: null,
-              localReleaseId: t.localReleaseId,
-            }))
+          // Server-sampled and already shaped for the player, with cover art (the old mapping left it null).
+          const tracks = await $fetch<PlayerTrack[]>(`/api/artists/${artistSlug}/shuffle`)
           originalQueue.value = tracks
           queue.value = shuffleArray([...tracks])
         }

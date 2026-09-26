@@ -2,6 +2,7 @@ import { prisma } from '~/server/utils/prisma'
 import { currentUserId } from '~/server/utils/libraryOwnership'
 import { trackPlaysByIds, withTrackPlay } from '~/server/utils/userPlays'
 import { attachTrackFavorites } from '~/server/utils/favorites'
+import { listArtistTrackIds } from '~/server/utils/artistTracks'
 
 export default defineEventHandler(async (event) => {
   const userId = currentUserId(event)
@@ -15,13 +16,9 @@ export default defineEventHandler(async (event) => {
 
   if (!artist) {throw createError({ statusCode: 404, statusMessage: 'Artist not found' })}
 
+  const ids = await listArtistTrackIds(artist.id)
   const tracks = await prisma.localReleaseTrack.findMany({
-    where: {
-      OR: [
-        { localRelease: { artists: { some: { artistId: artist.id } } } },
-        { trackRelatedArtists: { some: { artistId: artist.id } } },
-      ],
-    },
+    where: { id: { in: ids } },
     select: {
       id: true,
       title: true,
@@ -42,7 +39,6 @@ export default defineEventHandler(async (event) => {
       },
     },
     orderBy: [{ album: 'asc' }, { discNumber: 'asc' }, { trackNumber: 'asc' }],
-    take: 2000,
   })
 
   const plays = await trackPlaysByIds(userId, tracks.map(t => t.id))

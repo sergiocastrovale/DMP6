@@ -438,3 +438,6 @@ export const MBID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9
 export const SEARCH_MIN_CHARS = { artists: 2, releases: 3, tracks: 3 } as const
 export const SEARCH_TIER_CAP = 500
 export const SEARCH_TOTAL_CAP = 1000
+
+// How many random tracks /api/artists/[slug]/shuffle returns for the player's artist-shuffle queue.
+export const ARTIST_SHUFFLE_SIZE = 500

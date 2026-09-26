@@ -2,6 +2,7 @@ import type { Ref } from 'vue'
 import type { Artist } from '~/types/artist'
 import type { UnifiedRelease } from '~/types/release'
 import type { Track } from '~/types/track'
+import type { PlayerTrack } from '~/types/player'
 import type { DlStatusValue, DlStatusItem } from '~/types/download'
 import { useTerminalStore } from '~/stores/terminal'
 import { useToastStore } from '~/stores/toast'
@@ -215,8 +216,7 @@ export const useArtistPage = (slug: Ref<string>) => {
     }
     shufflingAll.value = true
     try {
-      const tracks = await $fetch<Track[]>(`/api/artists/${slug.value}/tracks`)
-      const playerTracks = tracksToPlayerTracks(tracks, slug.value)
+      const playerTracks = await $fetch<PlayerTrack[]>(`/api/artists/${slug.value}/shuffle`)
       if (!playerTracks.length) {
         return
       }

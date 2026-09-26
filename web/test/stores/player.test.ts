@@ -338,6 +338,24 @@ describe('usePlayerStore', () => {
     expect(store.shuffleMode).toBe('off')
   })
 
+  it('artist shuffle loads a server-sampled queue from /shuffle and keeps its cover art', async () => {
+    const sampled = [
+      track({ id: 's1', artistSlug: 'someone', releaseImage: 'cover.jpg', localReleaseId: 'r9' }),
+      track({ id: 's2', artistSlug: 'someone', releaseImage: 'cover.jpg', localReleaseId: 'r9' }),
+    ]
+    fetchMock.mockImplementation(async (url: string) => (url === '/api/artists/someone/shuffle' ? sampled : []))
+    const store = usePlayerStore()
+    await store.playTrack(track({ id: 'now', artistSlug: 'someone', localReleaseId: 'r1' }))
+    store.shuffleMode = 'release'
+
+    await store.cycleShuffleMode() // release -> artist
+
+    expect(store.shuffleMode).toBe('artist')
+    expect(fetchMock).toHaveBeenCalledWith('/api/artists/someone/shuffle')
+    expect(store.originalQueue.map(t => t.id)).toEqual(['s1', 's2'])
+    expect(store.originalQueue[0]!.releaseImage).toBe('cover.jpg')
+  })
+
   it('cycleShuffleMode exits explorer mode directly to off and clears explorer state', async () => {
     fetchMock.mockResolvedValue({ release: null, tracks: [] })
     const store = usePlayerStore()
