@@ -469,3 +469,8 @@ export const STATS_STATEMENT_TIMEOUT_MS = 20_000
 export const LABS_STATEMENT_TIMEOUT_MS = 30_000
 // Queries slower than this are logged (server/utils/slowQuery.ts).
 export const SLOW_QUERY_MS = 1_000
+
+// The browse artist grid only windows (renders just the rows near the viewport) past this many items; below it the
+// whole list is cheaper to keep than to measure. Overscan is in grid rows, above and below the viewport.
+export const WINDOWED_GRID_MIN_ITEMS = 150
+export const WINDOWED_GRID_OVERSCAN_ROWS = 4
