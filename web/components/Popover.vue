@@ -78,20 +78,20 @@ const clampToViewport = () => {
   }
 }
 
-function onTriggerClick() {
+const onTriggerClick = () => {
   if (isClick.value) {
     open.value = !open.value
     if (open.value) {nextTick(updatePosition)}
   }
 }
 
-function scheduleClose() {
+const scheduleClose = () => {
   if (!isClick.value) {
     hoverTimeout = setTimeout(() => { open.value = false }, 100)
   }
 }
 
-function cancelClose() {
+const cancelClose = () => {
   if (!isClick.value) {
     if (hoverTimeout) { clearTimeout(hoverTimeout) }
     open.value = true
@@ -99,7 +99,7 @@ function cancelClose() {
   }
 }
 
-function close() {
+const close = () => {
   open.value = false
 }
 

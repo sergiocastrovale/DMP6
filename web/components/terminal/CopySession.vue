@@ -3,7 +3,7 @@ import { Copy } from 'lucide-vue-next'
 
 const props = defineProps<{ session: string | null }>()
 
-function copy() {
+const copy = () => {
   navigator.clipboard.writeText(`tmux attach-session -t ${props.session}`)
 }
 </script>

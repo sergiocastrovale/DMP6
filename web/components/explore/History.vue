@@ -44,7 +44,7 @@ const goNewer = () => {
   page.value = clampPage(page.value - 1, props.tracks.length, EXPLORE_HISTORY_PAGE_SIZE)
 }
 
-async function openTrackInfo(track: PlayerTrack) {
+const openTrackInfo = async (track: PlayerTrack) => {
   const localReleaseId = track.localReleaseId
   if (!localReleaseId) {
     return

@@ -17,7 +17,7 @@ const status = ref<ScanStatus | null>(null)
 const loading = ref(true)
 const polling = ref(false)
 
-async function fetchStatus() {
+const fetchStatus = async () => {
   try {
     status.value = await $fetch<ScanStatus>('/api/scan/status')
   }
@@ -30,12 +30,12 @@ async function fetchStatus() {
 // Pauses while the tab is hidden and never overlaps a slow request (helpers/poller.ts).
 const poller = createPoller({ run: fetchStatus, delay: () => SCAN_STATUS_POLL_MS })
 
-function startPolling() {
+const startPolling = () => {
   poller.start()
   polling.value = true
 }
 
-function stopPolling() {
+const stopPolling = () => {
   poller.stop()
   polling.value = false
 }
@@ -67,7 +67,7 @@ const staleLock = computed(() =>
 
 const reconnecting = ref(false)
 
-async function reconnectSession() {
+const reconnectSession = async () => {
   const sessionName = staleLock.value?.sessionName
   if (!sessionName) { return }
   reconnecting.value = true

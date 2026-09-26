@@ -17,12 +17,12 @@ const loading = ref(true)
 const playlists = ref<PlaylistSummary[]>([])
 const showCreate = ref(false)
 
-async function onCreated() {
+const onCreated = async () => {
   global.stats.playlists++
   await loadPlaylists()
 }
 
-async function loadPlaylists() {
+const loadPlaylists = async () => {
   loading.value = true
   try {
     playlists.value = await $fetch<PlaylistSummary[]>('/api/playlists')

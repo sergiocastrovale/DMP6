@@ -24,7 +24,7 @@ watch(() => props.modelValue, (open) => {
   }
 })
 
-async function save() {
+const save = async () => {
   if (!name.value.trim() || !slug.value) {
     error.value = 'Please enter a valid name'
     return

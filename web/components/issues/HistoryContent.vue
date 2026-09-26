@@ -46,7 +46,7 @@ const allChecked = computed(() =>
   groups.value.length > 0 && groups.value.every((g) => g.ids.every((id) => selected.value.has(id)))
 )
 
-function toggleAll() {
+const toggleAll = () => {
   const next = new Set(selected.value)
   if (allChecked.value) {
     for (const g of groups.value) {
@@ -64,27 +64,27 @@ function toggleAll() {
   selected.value = next
 }
 
-function isGroupChecked(g: HistoryFolderGroup): boolean {
+const isGroupChecked = (g: HistoryFolderGroup): boolean => {
   return g.ids.every((id) => selected.value.has(id))
 }
 
-function isGroupPartial(g: HistoryFolderGroup): boolean {
+const isGroupPartial = (g: HistoryFolderGroup): boolean => {
   const count = g.ids.filter((id) => selected.value.has(id)).length
   return count > 0 && count < g.ids.length
 }
 
-function selectedInGroup(g: HistoryFolderGroup): number {
+const selectedInGroup = (g: HistoryFolderGroup): number => {
   return g.ids.filter((id) => selected.value.has(id)).length
 }
 
 const groupAnchor = ref<string | null>(null)
 let pendingGroupShiftKey = false
 
-function captureGroupClick(event: MouseEvent) {
+const captureGroupClick = (event: MouseEvent) => {
   pendingGroupShiftKey = event.shiftKey
 }
 
-function toggleGroup(g: HistoryFolderGroup) {
+const toggleGroup = (g: HistoryFolderGroup) => {
   const folders = groups.value.map((gr) => gr.folder)
   const wasChecked = isGroupChecked(g)
   const next = new Set(selected.value)
@@ -115,11 +115,11 @@ function toggleGroup(g: HistoryFolderGroup) {
 const fileAnchor = ref<string | null>(null)
 let pendingFileShiftKey = false
 
-function captureFileClick(event: MouseEvent) {
+const captureFileClick = (event: MouseEvent) => {
   pendingFileShiftKey = event.shiftKey
 }
 
-function toggleFile(id: string) {
+const toggleFile = (id: string) => {
   const ids = dialogGroup.value?.items.map((item) => item.id) ?? [id]
   selected.value = toggleRowSelection(ids, selected.value, id, { shiftKey: pendingFileShiftKey }, fileAnchor.value)
   fileAnchor.value = id
@@ -165,7 +165,7 @@ watch(() => terminal.exitCode, (code) => {
   }
 })
 
-async function clearSelected() {
+const clearSelected = async () => {
   const ids = [...selected.value]
   if (!ids.length) {
     return
@@ -179,7 +179,7 @@ async function clearSelected() {
   ])
 }
 
-async function undoSelected() {
+const undoSelected = async () => {
   const ids = [...selected.value]
   if (!ids.length) {
     return

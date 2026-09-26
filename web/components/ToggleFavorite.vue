@@ -31,7 +31,7 @@ const canCrud = hasPerm('favorites.crud')
 const selfFavorite = ref(false)
 const isFavorite = computed(() => isControlled.value ? props.active! : selfFavorite.value)
 
-async function checkFavorite() {
+const checkFavorite = async () => {
   if (!player.currentTrack?.id) {
      return
   }
@@ -43,7 +43,7 @@ async function checkFavorite() {
   catch { /* a stale heart is not worth interrupting playback for */ }
 }
 
-async function toggleSelf() {
+const toggleSelf = async () => {
   const ok = await api.run(() => $fetch<unknown>(`/api/favorites/tracks/${player.currentTrack?.id}`, {
     method: selfFavorite.value ? 'DELETE' : 'POST',
   }), 'Could not update the favorite')
@@ -53,7 +53,7 @@ async function toggleSelf() {
   }
 }
 
-function handleClick() {
+const handleClick = () => {
   isControlled.value ? emit('toggle') : toggleSelf()
 }
 

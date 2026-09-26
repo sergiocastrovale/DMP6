@@ -37,7 +37,7 @@ watch(searchInput, (q) => {
   issuesStore.setSearch(props.type, q)
 })
 
-async function fixSelected() {
+const fixSelected = async () => {
   const ids = [...selected.value]
   if (!ids.length) {
     return
@@ -48,7 +48,7 @@ async function fixSelected() {
   terminal.run('./fix', [`--${props.type}`], `fix`)
 }
 
-async function revertSelected(mode: 'undo' | 'undo-resolved') {
+const revertSelected = async (mode: 'undo' | 'undo-resolved') => {
   const ids = [...selectedResolved.value]
   if (!ids.length) {
     return
@@ -187,11 +187,11 @@ const typeDescriptions: Record<IssueType, { detection: string; fix: string }> = 
   },
 }
 
-async function onEdit(id: string, key: string, value: unknown) {
+const onEdit = async (id: string, key: string, value: unknown) => {
   await issuesStore.patchIssue(props.type, id, { [key]: value })
 }
 
-function getFolderPath(item: any): string {
+const getFolderPath = (item: any): string => {
   const fp = item.track?.filePath || item.folderPath || ''
   if (!fp) {
     return '-'
@@ -200,15 +200,15 @@ function getFolderPath(item: any): string {
   return parts.slice(0, -1).join('/')
 }
 
-function formatDate(date: string): string {
+const formatDate = (date: string): string => {
   return new Date(date).toLocaleDateString()
 }
 
-function formatDateTime(date: string): string {
+const formatDateTime = (date: string): string => {
   return new Date(date).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-function getHistoryPreviousEntries(item: any): { key: string; value: string }[] {
+const getHistoryPreviousEntries = (item: any): { key: string; value: string }[] => {
   const history = item.fixHistory?.[0]
   if (!history) {
     return []
@@ -220,7 +220,7 @@ function getHistoryPreviousEntries(item: any): { key: string; value: string }[] 
     .map(([k, v]) => ({ key: k, value: String(v) }))
 }
 
-function getHistoryAppliedEntries(item: any): { key: string; value: string }[] {
+const getHistoryAppliedEntries = (item: any): { key: string; value: string }[] => {
   const history = item.fixHistory?.[0]
   if (!history) {
     return []
@@ -231,7 +231,7 @@ function getHistoryAppliedEntries(item: any): { key: string; value: string }[] {
     .map(([k, v]) => ({ key: k, value: String(v) }))
 }
 
-function getHistoryDate(item: any): string {
+const getHistoryDate = (item: any): string => {
   const history = item.fixHistory?.[0]
   return history ? formatDateTime(history.appliedAt) : '-'
 }

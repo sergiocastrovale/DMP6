@@ -55,7 +55,7 @@ const allChecked = computed(() =>
 
 const totalPages = computed(() => Math.ceil(props.total / props.pageSize))
 
-function toggleAll() {
+const toggleAll = () => {
   const next = new Set(props.selected)
   if (allChecked.value) {
     props.items.forEach(i => next.delete(i.id))
@@ -68,11 +68,11 @@ function toggleAll() {
 const anchorId = ref<string | null>(null)
 let pendingShiftKey = false
 
-function captureRowClick(event: MouseEvent) {
+const captureRowClick = (event: MouseEvent) => {
   pendingShiftKey = event.shiftKey
 }
 
-function toggleRow(id: string) {
+const toggleRow = (id: string) => {
   const ids = props.items.map(i => i.id)
   const next = toggleRowSelection(ids, props.selected, id, { shiftKey: pendingShiftKey }, anchorId.value)
   anchorId.value = id
@@ -80,20 +80,20 @@ function toggleRow(id: string) {
   emit('update:selected', next)
 }
 
-function getNestedValue(obj: any, key: string): unknown {
+const getNestedValue = (obj: any, key: string): unknown => {
   return key.split('.').reduce((o, k) => o?.[k], obj)
 }
 
 const editingCell = ref<{ id: string; key: string } | null>(null)
 const editValue = ref('')
 
-function startEdit(item: any, col: IssueColumn) {
+const startEdit = (item: any, col: IssueColumn) => {
   if (!col.editable) {return}
   editingCell.value = { id: item.id, key: col.editKey ?? col.key }
   editValue.value = String(getNestedValue(item, col.key) ?? '')
 }
 
-function commitEdit(item: any, col: IssueColumn) {
+const commitEdit = (item: any, col: IssueColumn) => {
   if (!editingCell.value) {return}
   emit('edit', item.id, editingCell.value.key, editValue.value)
   editingCell.value = null

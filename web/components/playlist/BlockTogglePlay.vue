@@ -28,7 +28,7 @@ const isPlaying = computed(() => isCurrent.value && playerStore.isPlaying)
 
 const handleClick = () => isCurrent.value ? playerStore.togglePlay() : play()
 
-async function play() {
+const play = async () => {
   try {
     const data = await $fetch<any>(`/api/playlists/${props.playlist.slug}`)
     const tracks: PlayerTrack[] = (data.tracks || []).map((pt: any) => playlistTrackToPlayerTrack(pt.track))

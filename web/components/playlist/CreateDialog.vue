@@ -18,7 +18,7 @@ watch(show, (open) => {
   }
 })
 
-async function create() {
+const create = async () => {
   if (!name.value.trim() || creating.value) {
     return
   }

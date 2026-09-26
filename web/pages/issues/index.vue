@@ -24,11 +24,11 @@ watch(() => terminal.exitCode, (code) => {
   }
 })
 
-function runAudit() {
+const runAudit = () => {
   terminal.run('./audit', [], 'audit')
 }
 
-async function fetchHistoryCount() {
+const fetchHistoryCount = async () => {
   const res = await $fetch<{ count: number }>('/api/issues/history')
   historyCount.value = res.count
 }

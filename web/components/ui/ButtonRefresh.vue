@@ -8,7 +8,7 @@ const terminal = useTerminalStore()
 
 const sessionName = computed(() => scanSessionName('refresh', (props.only ?? []).join('-')))
 
-async function run() {
+const run = async () => {
   const session = sessionName.value
   if (props.folders?.length && props.only?.length) {
     await terminal.runSequence([

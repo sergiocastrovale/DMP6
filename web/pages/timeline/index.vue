@@ -17,7 +17,7 @@ const loadingMore = ref(false)
 const { releaseImage } = useImageUrl()
 const api = useApi()
 
-async function loadDecades() {
+const loadDecades = async () => {
   loading.value = true
   try {
     decades.value = await $fetch<Decade[]>('/api/timeline/decades')
@@ -36,7 +36,7 @@ async function loadDecades() {
 let requestToken = 0
 let currentController: AbortController | null = null
 
-async function fetchDecadeData(url: string) {
+const fetchDecadeData = async (url: string) => {
   currentController?.abort()
   const controller = new AbortController()
   currentController = controller
@@ -58,13 +58,13 @@ async function fetchDecadeData(url: string) {
   }
 }
 
-async function selectDecade(decade: number) {
+const selectDecade = async (decade: number) => {
   selectedDecade.value = decade
   selectedYear.value = null
   await fetchDecadeData(`/api/timeline/${decade}`)
 }
 
-async function selectYear(year: number | null) {
+const selectYear = async (year: number | null) => {
   if (!selectedDecade.value) {return}
   selectedYear.value = year
   const url = year
@@ -73,7 +73,7 @@ async function selectYear(year: number | null) {
   await fetchDecadeData(url)
 }
 
-async function loadMore() {
+const loadMore = async () => {
   if (!decadeData.value || !decadeData.value.hasMore || loadingMore.value) {return}
   loadingMore.value = true
   try {

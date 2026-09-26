@@ -151,7 +151,7 @@ watch(viewMode, (val) => {
   router.replace({ query })
 }, { immediate: true })
 
-function toReleaseSlug(title: string) {
+const toReleaseSlug = (title: string) => {
   return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }
 
@@ -201,12 +201,12 @@ const confirmRedownload = async () => {
   await acquireRelease(release, release.localReleaseId)
 }
 
-function openCancelDialog(release: UnifiedRelease) {
+const openCancelDialog = (release: UnifiedRelease) => {
   cancelRelease.value = release
   showCancelDialog.value = true
 }
 
-async function confirmCancelDownload() {
+const confirmCancelDownload = async () => {
   showCancelDialog.value = false
   const id = cancelRelease.value?.downloadedReleaseId
   cancelRelease.value = null
@@ -219,7 +219,7 @@ async function confirmCancelDownload() {
 
 // One `./refresh --release` stage per LocalRelease - a dissolved box row carries one per disc, so a
 // single click refreshes the whole box as one run.
-function refreshRelease(edition: UnifiedRelease) {
+const refreshRelease = (edition: UnifiedRelease) => {
   terminal.runSequence(actionReleaseIds(edition).map(id => ({
     command: './refresh',
     args: ['--release', id, '--overwrite'],
@@ -227,7 +227,7 @@ function refreshRelease(edition: UnifiedRelease) {
   })))
 }
 
-async function openInfoDialog(edition: UnifiedRelease) {
+const openInfoDialog = async (edition: UnifiedRelease) => {
   infoRelease.value = edition
   infoExtra.value = null
   showInfoDialog.value = true
@@ -236,7 +236,7 @@ async function openInfoDialog(edition: UnifiedRelease) {
   }
 }
 
-function toggleGroup(key: string) {
+const toggleGroup = (key: string) => {
   expandedGroup.value = expandedGroup.value === key ? null : key
   if (expandedGroup.value !== key) {
     expandedEdition.value = null
@@ -244,7 +244,7 @@ function toggleGroup(key: string) {
 }
 
 
-function toggleEdition(id: string) {
+const toggleEdition = (id: string) => {
   expandedEdition.value = expandedEdition.value === id ? null : id
 }
 
@@ -252,7 +252,7 @@ const getReleaseId = (r: UnifiedRelease) => r.localReleaseId || r.id
 const handleReleaseClick = (r: UnifiedRelease) => toggleOrPlay(getReleaseId(r), props.slug)
 
 let allTracksSlug = ''
-async function loadAllTracks() {
+const loadAllTracks = async () => {
   if (allTracksLoaded.value && allTracksSlug === props.slug) {
     return
   }
@@ -270,13 +270,13 @@ async function loadAllTracks() {
   }
 }
 
-function buildPlayerTracks(tracks: Track[], startTrack: Track) {
+const buildPlayerTracks = (tracks: Track[], startTrack: Track) => {
   const playerTracks = tracks.map(t => toPlayerTrack(t, { artistSlug: props.slug }))
   const start = playerTracks.find(pt => pt.id === startTrack.id)
   player.setQueue(playerTracks, start)
 }
 
-async function toggleFavoriteRelease(release: UnifiedRelease) {
+const toggleFavoriteRelease = async (release: UnifiedRelease) => {
   const localId = favoriteTargetId(release)
   if (!localId) {
     return
@@ -299,7 +299,7 @@ async function toggleFavoriteRelease(release: UnifiedRelease) {
 
 const selectedTrackId = ref<string | null>(null)
 
-async function expandAndScrollTo(release: UnifiedRelease) {
+const expandAndScrollTo = async (release: UnifiedRelease) => {
   const groupKey = release.releaseGroupId || `solo:${release.id}`
   expandedGroup.value = groupKey
   expandedEdition.value = release.id
@@ -310,7 +310,7 @@ async function expandAndScrollTo(release: UnifiedRelease) {
 
 // An "also part of" link in the info dialog: the box's MusicBrainz release id, which is the card's own id
 // for a box that is a gap or a dissolved box, or its mbReleaseRowId for a box kept as one local release.
-async function goToReleaseById(releaseId: string) {
+const goToReleaseById = async (releaseId: string) => {
   const release = props.releases.find(r => r.id === releaseId || r.localReleaseId === releaseId)
     ?? props.releases.find(r => r.mbReleaseRowId === releaseId)
   if (!release) {
@@ -319,7 +319,7 @@ async function goToReleaseById(releaseId: string) {
   await expandAndScrollTo(release)
 }
 
-async function handleReleaseDeepLink() {
+const handleReleaseDeepLink = async () => {
   const targetSlug = route.query.release as string | undefined
   const targetId = route.query.releaseId as string | undefined
   if (!targetSlug && !targetId) {
@@ -336,7 +336,7 @@ async function handleReleaseDeepLink() {
   await expandAndScrollTo(release)
 }
 
-async function goToBundleParent(release: UnifiedRelease) {
+const goToBundleParent = async (release: UnifiedRelease) => {
   const parent = findBundleParentRelease(props.releases, release)
   if (!parent) {
     return
