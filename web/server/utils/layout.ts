@@ -73,6 +73,7 @@ const removeEmptyDirsUp = async (startDir: string, stopAt: string): Promise<void
 export const transformToLibraryLayout = async (
   downloadId: string,
   stagingDir: string,
+  signal?: AbortSignal,
 ): Promise<string> => {
   const row = await prisma.downloadedRelease.findUnique({
     where: { id: downloadId },
@@ -85,7 +86,7 @@ export const transformToLibraryLayout = async (
 
   // Pass 1: probe every track (multi-disc detection + year fallback).
   const files = (await collectAudioFiles(stagingDir)).filter(f => TRACK_EXTENSIONS.has(ext(f)))
-  const probed = await Promise.all(files.map(async f => ({ file: f, tags: await probeTags(f) })))
+  const probed = await Promise.all(files.map(async f => ({ file: f, tags: await probeTags(f, signal) })))
   const discTotal = probed.reduce(
     (max, p) => Math.max(max, parseLeadingInt(p.tags.discTotal), parseLeadingInt(p.tags.disc)),
     1,
@@ -102,6 +103,7 @@ export const transformToLibraryLayout = async (
   // Pass 2: move each file into its destination.
   let moved = 0
   for (const { file, tags } of probed) {
+    signal?.throwIfAborted()
     const discNo = parseLeadingInt(tags.disc) || 1
     const subDir = discTotal > 1 ? `CD ${pad2(discNo)}` : ''
     const dest = join(releaseRoot, subDir, fileNameFromTags(tags, file))
@@ -116,6 +118,7 @@ export const transformToLibraryLayout = async (
 
   // Carry over any non-audio extras (cover art, etc.) sitting alongside the tracks.
   for (const f of (await collectAudioFiles(stagingDir)).filter(f => !TRACK_EXTENSIONS.has(ext(f)))) {
+    signal?.throwIfAborted()
     await safeMoveFile(f, join(releaseRoot, basename(f))).catch(() => {})
   }
 

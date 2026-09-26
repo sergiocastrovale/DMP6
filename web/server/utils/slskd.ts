@@ -99,8 +99,8 @@ export async function startSlskdDownload(
   })
 }
 
-export async function getSlskdActiveDownloads(): Promise<SlskdTransfer[]> {
-  const response = await slskdFetch('/transfers/downloads')
+export async function getSlskdActiveDownloads(signal?: AbortSignal): Promise<SlskdTransfer[]> {
+  const response = await slskdFetch('/transfers/downloads', { signal })
   const data = await response.json()
 
   // slskd returns a nested structure: [{ username, directories: [{ files: [...] }] }]
@@ -212,7 +212,7 @@ export function scoreSlskdResult(
  * Artist/Album folder and normalize to MP3-320. Assumes the transfer is already finished —
  * does NOT wait. Used by the reconciler, which gates on slskd transfer state itself.
  */
-export async function relocateDownloadedFiles(args: SlskdMoveArgs): Promise<SlskdMoveResult> {
+export async function relocateDownloadedFiles(args: SlskdMoveArgs, signal?: AbortSignal): Promise<SlskdMoveResult> {
   const log = (msg: string) => monitorLog('notice', `slskd move: ${msg}`)
   // slskd writes all downloads flat under one shared root (no per-transfer subfolder to scope a scan
   // to — see docs/downloader/downloads_slskd.md), so two concurrent downloads can share a same-named track. Match
@@ -228,7 +228,7 @@ export async function relocateDownloadedFiles(args: SlskdMoveArgs): Promise<Slsk
   await mkdir(targetDir, { recursive: true })
 
   // Locate files by basename+size under the downloads root and move them.
-  const found = await findFilesByBasename(args.downloadsPath, expected, 10)
+  const found = await findFilesByBasename(args.downloadsPath, expected, 10, signal)
   log(`found ${found.length}/${expected.size} files under ${args.downloadsPath} -> ${targetDir}`)
   if (found.length === 0) {
     return { targetDir, movedCount: 0, transcodeFailed: 0 }
@@ -238,6 +238,7 @@ export async function relocateDownloadedFiles(args: SlskdMoveArgs): Promise<Slsk
   let movedCount = 0
 
   for (const srcPath of found) {
+    signal?.throwIfAborted()
     const destPath = join(targetDir, stripSlskdSuffix(basename(srcPath)))
     if (srcPath === destPath) { movedCount++; continue } // already in place
     try {
@@ -280,7 +281,7 @@ export async function relocateDownloadedFiles(args: SlskdMoveArgs): Promise<Slsk
   // those as tracks too, not just .mp3.
   const { flacToMp3, flacToMp3Bitrate } = await resolveDownloadSettings()
   const { failed: transcodeFailed } = flacToMp3
-    ? await transcodeDirToMp3320(targetDir, flacToMp3Bitrate)
+    ? await transcodeDirToMp3320(targetDir, flacToMp3Bitrate, signal)
     : { failed: 0 }
 
   return { targetDir, movedCount, transcodeFailed }
@@ -306,6 +307,7 @@ async function findFilesByBasename(
   root: string,
   names: Map<string, number>,
   maxDepth: number,
+  signal?: AbortSignal,
 ): Promise<string[]> {
   const results: string[] = []
   // Match on the suffix-stripped basename so slskd collision tokens don't defeat the lookup.
@@ -316,6 +318,7 @@ async function findFilesByBasename(
   const skipNames = new Set(['_ready', '.dmp-songkong', '_torrents'])
 
   async function walk(dir: string, depth: number) {
+    signal?.throwIfAborted()
     if (depth > maxDepth) {return}
     let entries: { name: string; isFile: boolean; isDir: boolean }[]
     try {

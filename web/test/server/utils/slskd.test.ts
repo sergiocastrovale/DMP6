@@ -245,7 +245,7 @@ describe('relocateDownloadedFiles: flacToMp3 gate', () => {
       year: 2024,
     })
 
-    expect(transcodeMocks.transcodeDirToMp3320).toHaveBeenCalledWith(expect.any(String), 192)
+    expect(transcodeMocks.transcodeDirToMp3320).toHaveBeenCalledWith(expect.any(String), 192, undefined)
   })
 })
 

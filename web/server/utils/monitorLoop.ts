@@ -7,6 +7,7 @@ import { resolveSongkongEnabled, songkongDirs, songkongMaxWaitMin, isSongkongSta
 import { transformToLibraryLayout } from '~/server/utils/layout'
 import { moveToReady, mergeManyDownloadedReleases } from '~/server/utils/promote'
 import { runScript, type ScriptError } from '~/server/utils/runScript'
+import { withDeadline } from '~/server/utils/timeout'
 import { isDownloadsPaused } from '~/server/utils/pauseState'
 import { monitorLog } from '~/server/utils/monitorLog'
 import {
@@ -97,7 +98,7 @@ export async function reconcileDownloads(): Promise<void> {
     // (ours=[] -> active=false -> falls straight into finalize/fail), prematurely failing live downloads
     // during a transient slskd outage instead of just waiting for the next tick.
     let transfersUnknown = false
-    const transfers = await withTimeout(getSlskdActiveDownloads(), 15_000).catch(() => { transfersUnknown = true; return [] })
+    const transfers = await withDeadline(signal => getSlskdActiveDownloads(signal), 15_000, { label: 'slskd transfer list' }).catch(() => { transfersUnknown = true; return [] })
     if (transfersUnknown) {
       logWarn(`reconcile: slskd unreachable — skipping finalize for ${downloadingRows.length} downloading row(s) this tick`)
       if (failed || finalized) {log(`reconcile done: ${finalized} -> READY, ${failed} -> FAILED/ABANDONED`)}
@@ -160,16 +161,18 @@ export async function reconcileDownloads(): Promise<void> {
       finalizing.add(row.id)
       try {
         if (!row.artist?.name) { await failAttempt(row, maxAttempts, 'missing artist'); failed++; continue }
-        // Bounded so one slow transfer/transcode can't wedge the whole reconcile loop.
-        const res = await withTimeout(relocateDownloadedFiles({
+        // Bounded so one slow transfer/transcode can't wedge the whole reconcile loop. On timeout the work is
+        // ABORTED and awaited (server/utils/timeout.ts), so nothing is still moving files when the purge below runs.
+        const artistName = row.artist.name
+        const res = await withDeadline(signal => relocateDownloadedFiles({
           username: row.slskUsername!,
           files,
           downloadsPath: settings.downloadsPath,
           dirTemplate: settings.downloadDirTemplate,
-          artistName: row.artist.name,
+          artistName,
           albumTitle: row.title,
           year: row.year ?? null,
-        }), 5 * 60_000)
+        }, signal), 5 * 60_000, { label: `relocate ${row.title}` })
         if (res.transcodeFailed > 0) {
           // ffmpeg missing/errored on one or more convertible files — the layout transform only
           // recognizes .mp3, so a partially-transcoded folder is not a usable release. Purge the
@@ -253,13 +256,6 @@ async function settleFinished(id: string, stagingPath: string, error: string | n
   }
 }
 
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`timeout after ${ms}ms`)), ms)),
-  ])
-}
-
 // Increment the attempt counter; after maxAttempts give up permanently (ABANDONED). Also lowers
 // priority (floor 0) so a repeatedly-failing download sinks behind fresher candidates on retry.
 async function failAttempt(
@@ -305,7 +301,7 @@ async function drainEnriching(
 
     finalizing.add(row.id)
     try {
-      const releaseRoot = await withTimeout(transformToLibraryLayout(row.id, row.stagingPath), 5 * 60_000)
+      const releaseRoot = await withDeadline(signal => transformToLibraryLayout(row.id, row.stagingPath!, signal), 5 * 60_000, { label: `layout ${row.title}` })
       await settleFinished(row.id, releaseRoot, enriched ? null : 'SongKong enrichment timed out; merged without enrichment')
       await rm(join(dirs.spool, row.id), { force: true }).catch(() => {})
       await rm(join(dirs.done, row.id), { force: true }).catch(() => {})

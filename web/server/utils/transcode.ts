@@ -33,8 +33,10 @@ export const sanitize = (s: string) => s
  * - existing .mp3 files are kept as-is (but still renamed from tags)
  * - other audio formats are re-encoded (tags + embedded cover preserved) and the source removed
  * Returns the number of files converted. ffmpeg/ffprobe must be on PATH.
+ * `signal` cancels the run: the in-flight ffmpeg is killed and the function throws instead of carrying on with
+ * the remaining files (the monitor loop's deadline uses this so a timed-out relocate really stops).
  */
-export async function transcodeDirToMp3320(dir: string, bitrate = 320): Promise<{ converted: number; failed: number }> {
+export async function transcodeDirToMp3320(dir: string, bitrate = 320, signal?: AbortSignal): Promise<{ converted: number; failed: number }> {
   const log = (msg: string) => monitorLog('notice', `transcode: ${msg}`)
   const warn = (msg: string) => monitorLog('warn', `transcode: ${msg}`)
   let converted = 0
@@ -53,6 +55,7 @@ export async function transcodeDirToMp3320(dir: string, bitrate = 320): Promise<
   }
 
   for (const src of toConvert) {
+    signal?.throwIfAborted()
     const out = src.replace(/\.[^.]+$/, '.mp3')
     const part = `${out}.part`
     try {
@@ -68,13 +71,15 @@ export async function transcodeDirToMp3320(dir: string, bitrate = 320): Promise<
         '-b:a', `${bitrate}k`,
         '-f', 'mp3', // required: muxer can't be inferred from the .part extension
         part,
-      ], { maxBuffer: 1024 * 1024 * 16 })
+      ], { maxBuffer: 1024 * 1024 * 16, signal })
       await rename(part, out)
       // remove the source (unless it shared the .mp3 name, which can't happen here)
       if (src !== out) {await unlink(src).catch(e => warn(`could not delete source ${basename(src)}: ${e.message}`))}
       converted++
     }
     catch (e: any) {
+      await unlink(part).catch(() => {})
+      if (signal?.aborted) {throw e}
       failed++
       await unlink(part).catch(() => {})
       warn(`failed ${basename(src)}: ${e.message?.split('\n')[0] || e}`)
@@ -84,6 +89,7 @@ export async function transcodeDirToMp3320(dir: string, bitrate = 320): Promise<
   // Rename every mp3 to `NN. Track Title.mp3` from its tags.
   const mp3s = (await collectAudioFiles(dir)).filter(f => ext(f) === 'mp3')
   for (const file of mp3s) {
+    signal?.throwIfAborted()
     await renameFromTags(file).catch(e => warn(`rename failed ${basename(file)}: ${e.message || e}`))
   }
 
@@ -92,14 +98,14 @@ export async function transcodeDirToMp3320(dir: string, bitrate = 320): Promise<
 }
 
 /** Read track/disc/title/year tags via ffprobe (checks both format and stream tags). */
-export async function probeTags(file: string): Promise<AudioTags> {
+export async function probeTags(file: string, signal?: AbortSignal): Promise<AudioTags> {
   const keys = 'track,tracknumber,title,disc,discnumber,disctotal,totaldiscs,date,year,originalyear,originaldate'
   const { stdout } = await execFileAsync('ffprobe', [
     '-v', 'quiet',
     '-show_entries', `format_tags=${keys}:stream_tags=${keys}`,
     '-of', 'json',
     file,
-  ], { maxBuffer: 1024 * 1024 })
+  ], { maxBuffer: 1024 * 1024, signal })
   const parsed = JSON.parse(stdout || '{}')
   const sources = [parsed.format?.tags, ...(parsed.streams ?? []).map((s: any) => s.tags)].filter(Boolean)
   const pick = (...keys: string[]) => {

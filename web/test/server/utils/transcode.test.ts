@@ -172,6 +172,53 @@ describe('transcodeDirToMp3320: ffmpeg pre-flight gate (audit item 2)', () => {
     expect(ffmpegCall![1]).toEqual(expect.arrayContaining(['-b:a', '192k']))
   })
 
+  it('aborts mid-run: throws instead of carrying on with the remaining files, and removes the partial output', async () => {
+    await writeFile(join(dir, 'a.flac'), 'x')
+    await writeFile(join(dir, 'b.flac'), 'x')
+    const controller = new AbortController()
+
+    execFileMock.mockImplementation((...args: unknown[]) => {
+      const cb = args[args.length - 1] as (e: Error | null, o: string, err: string) => void
+      const cmd = args[0]
+      const cmdArgs = args[1] as string[]
+      if (cmd === 'ffmpeg' && cmdArgs.includes('-version')) {
+        cb(null, 'ffmpeg version 6.0', '')
+        return
+      }
+      if (cmd === 'ffmpeg') {
+        // The first conversion is in flight when the deadline fires: it leaves a .part file and is killed.
+        const part = cmdArgs[cmdArgs.length - 1]!
+        writeFile(part, 'half-written').then(() => {
+          controller.abort()
+          cb(Object.assign(new Error('The operation was aborted'), { name: 'AbortError', code: 'ABORT_ERR' }), '', '')
+        })
+        return
+      }
+      cb(null, JSON.stringify({ format: { tags: {} }, streams: [] }), '')
+    })
+
+    await expect(transcodeDirToMp3320(dir, 320, controller.signal)).rejects.toMatchObject({ name: 'AbortError' })
+
+    const ffmpegRuns = execFileMock.mock.calls.filter(c => c[0] === 'ffmpeg' && (c[1] as string[]).includes('-b:a'))
+    expect(ffmpegRuns).toHaveLength(1) // b.flac was never attempted
+    await expect(readFile(join(dir, 'a.mp3.part'), 'utf8')).rejects.toThrow() // partial output cleaned up
+    await expect(readFile(join(dir, 'a.flac'), 'utf8')).resolves.toBe('x') // sources untouched
+    await expect(readFile(join(dir, 'b.flac'), 'utf8')).resolves.toBe('x')
+  })
+
+  it('an already-aborted signal converts nothing', async () => {
+    await writeFile(join(dir, 'a.flac'), 'x')
+    execFileMock.mockImplementation((...args: unknown[]) => {
+      const cb = args[args.length - 1] as (e: Error | null, o: string, err: string) => void
+      cb(null, 'ffmpeg version 6.0', '')
+    })
+    const controller = new AbortController()
+    controller.abort()
+
+    await expect(transcodeDirToMp3320(dir, 320, controller.signal)).rejects.toBeDefined()
+    expect(execFileMock.mock.calls.filter(c => (c[1] as string[]).includes('-b:a'))).toHaveLength(0)
+  })
+
   it('no convertible files present (empty dir): skips the ffmpeg pre-flight entirely', async () => {
     const result = await transcodeDirToMp3320(dir)
 
