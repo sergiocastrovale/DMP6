@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client'
 import { SLOW_QUERY_MS } from '~/helpers/constants'
 import { createSlowQueryLogger } from '~/server/utils/slowQuery'
 import { webDatabaseUrl } from '~/server/utils/databaseUrl'
+import { isDownloadWrite, notifyDownloadsChanged } from '~/server/utils/downloadEvents'
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient }
 
@@ -9,7 +10,12 @@ const createClient = (): PrismaClient => {
   const client = new PrismaClient({ datasourceUrl: webDatabaseUrl(), log: [{ emit: 'event', level: 'query' }] })
   // console, not monitorLog: monitorLog persists warnings as MonitorEvent rows and this module is what it imports.
   const report = createSlowQueryLogger(SLOW_QUERY_MS, line => console.warn(`[${new Date().toISOString()}][warn] ${line}`))
-  client.$on('query', report)
+  client.$on('query', (e) => {
+    report(e)
+    if (isDownloadWrite(e.query)) {
+      notifyDownloadsChanged()
+    }
+  })
   return client as unknown as PrismaClient
 }
 

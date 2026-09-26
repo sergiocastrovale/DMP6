@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { waitForHydration } from './helpers/fixtures'
 
 // Settings → Subsonic (per-user API keys for the /rest/* Subsonic API - docs/feature_subsonic.md).
 // These specs check the one thing a unit/integration test can't: the plaintext key really only
@@ -7,6 +8,7 @@ import type { Page } from '@playwright/test'
 
 const gotoSubsonic = async (page: Page) => {
   await page.goto('/settings/subsonic')
+  await waitForHydration(page)
   await expect(page.getByRole('heading', { name: 'Subsonic API keys' })).toBeVisible()
 }
 

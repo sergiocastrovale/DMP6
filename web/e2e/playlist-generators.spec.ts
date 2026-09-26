@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client'
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import type { CapturedRun } from '~/types/scan'
+import { waitForHydration } from './helpers/fixtures'
 
 // /playlists/setup/generated is the only UI that can trigger ./playlists (via the Generate/
 // Regenerate button), so every test stubs POST /api/terminal/run rather than shelling out for real.
@@ -44,6 +45,7 @@ test.afterAll(async () => {
 test('lists seeded generators and offers Generate when none have run yet', async ({ page }) => {
   await stubTerminal(page)
   await page.goto('/playlists/setup/generated')
+  await waitForHydration(page)
 
   await expect(page.getByRole('link', { name: rockName, exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: /generate playlists/i })).toBeVisible()
@@ -52,6 +54,7 @@ test('lists seeded generators and offers Generate when none have run yet', async
 test('editing a generator\'s terms persists', async ({ page }) => {
   await stubTerminal(page)
   await page.goto('/playlists/setup/generated')
+  await waitForHydration(page)
   await page.getByRole('link', { name: rockName, exact: true }).click()
   await expect(page).toHaveURL(`/playlists/setup/generated/${rockId}`)
 
@@ -70,6 +73,7 @@ test('adding a new generator shows it in the table', async ({ page }) => {
   const name = `E2E Japan ${randomUUID().slice(0, 8)}`
 
   await page.goto('/playlists/setup/generated/new')
+  await waitForHydration(page)
   await page.getByLabel('Type').selectOption('REGION')
   await page.getByLabel('Name').fill(name)
   const termsField = page.locator('textarea').nth(1)
@@ -94,6 +98,7 @@ test('removing a generator deletes it (and cascades its generated playlist)', as
   })
 
   await page.goto('/playlists/setup/generated')
+  await waitForHydration(page)
   const row = page.locator('tr', { has: page.getByRole('link', { name }) })
   await row.getByRole('button', { name: `Remove ${name}` }).click()
   await page.getByRole('button', { name: 'Remove', exact: true }).click()
@@ -106,6 +111,7 @@ test('removing a generator deletes it (and cascades its generated playlist)', as
 test('clicking Generate/Regenerate runs ./playlists', async ({ page }) => {
   const runs = await stubTerminal(page)
   await page.goto('/playlists/setup/generated')
+  await waitForHydration(page)
 
   await page.getByRole('button', { name: /generate playlists/i }).click()
 
@@ -115,6 +121,7 @@ test('clicking Generate/Regenerate runs ./playlists', async ({ page }) => {
 test('row-scoped Regenerate runs ./playlists --group <slug> for just that generator', async ({ page }) => {
   const runs = await stubTerminal(page)
   await page.goto('/playlists/setup/generated')
+  await waitForHydration(page)
 
   const row = page.locator('tr', { has: page.getByRole('link', { name: rockName }) })
   await row.getByRole('button', { name: `Regenerate ${rockName}` }).click()

@@ -3,6 +3,7 @@ import { refreshSettings } from '~/server/utils/settings'
 import { clearDownloadEnvironmentCache } from '~/server/utils/downloadEnvironment'
 import { clearSlskdConfigCache } from '~/server/utils/slskd'
 import { requirePermission } from '~/server/utils/permissions'
+import { notifyDownloadsChanged } from '~/server/utils/downloadEvents'
 import { encryptSettingsSecrets, maskSettingsSecrets } from '~/server/utils/settingsSecrets'
 import { readBodyOf } from '~/server/utils/requestValidation'
 import { settingsBodySchema } from '~/server/schemas/settings'
@@ -29,6 +30,8 @@ export default defineEventHandler(async (event) => {
   await refreshSettings()
   clearDownloadEnvironmentCache()
   clearSlskdConfigCache()
+  // Downloads on/off, the slskd address and the like change what the Downloads pages show.
+  notifyDownloadsChanged()
 
   return maskSettingsSecrets(settings)
 })

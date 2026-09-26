@@ -2,7 +2,8 @@ import { defineStore } from 'pinia'
 import { apiErrorMessage } from '~/helpers/apiError'
 import { useTerminalStore } from '~/stores/terminal'
 import { createPoller } from '~/helpers/poller'
-import { QUEUE_POLL_ACTIVE_MS, QUEUE_POLL_IDLE_MS } from '~/helpers/constants'
+import { createPushChannel } from '~/helpers/pushChannel'
+import { QUEUE_POLL_ACTIVE_MS, QUEUE_POLL_IDLE_MS, QUEUE_POLL_PUSH_BACKSTOP_MS } from '~/helpers/constants'
 import type { DownloadSourceStatus, DownloadedReleaseItem, Acquisition, SongkongHealth, DownloadEnvironment, MergeProgressEntry } from '~/types/download'
 
 export const useDownloadsStore = defineStore('downloads', () => {
@@ -129,10 +130,14 @@ export const useDownloadsStore = defineStore('downloads', () => {
   // progress feels live; 15 s while merely "acquisition could start a download any tick" - the monitor's own
   // cadence is minutes, so faster polling just re-runs a heavy endpoint for nothing. null when there is
   // nothing to watch at all (paused / acquisition off): the loop stops itself.
+  // While the server pushes changes (GET /api/downloads/events) the poll is only a backstop.
+  const pushConnected = ref(false)
   const queuePollDelay = (): number | null =>
-    hasInFlight.value || mergeActive.value
-      ? QUEUE_POLL_ACTIVE_MS
-      : (!paused.value && !!acquisition.value?.canAcquire) ? QUEUE_POLL_IDLE_MS : null
+    !(hasInFlight.value || mergeActive.value || (!paused.value && !!acquisition.value?.canAcquire))
+      ? null
+      : pushConnected.value
+        ? QUEUE_POLL_PUSH_BACKSTOP_MS
+        : hasInFlight.value || mergeActive.value ? QUEUE_POLL_ACTIVE_MS : QUEUE_POLL_IDLE_MS
 
   const checkStatus = async () => {
     try {
@@ -202,14 +207,53 @@ export const useDownloadsStore = defineStore('downloads', () => {
     },
   })
 
+  // The server says when the queue, the pause state or the merge batch changed; one read at a time, and a change that
+  // lands during a read schedules exactly one more.
+  let reading = false
+  let readAgain = false
+  const refetchOnPush = async () => {
+    if (reading) {
+      readAgain = true
+      return
+    }
+    reading = true
+    try {
+      await fetchQueue()
+    }
+    finally {
+      reading = false
+    }
+    if (readAgain) {
+      readAgain = false
+      await refetchOnPush()
+    }
+  }
+
+  const pushChannel = createPushChannel({
+    url: '/api/downloads/events',
+    onChange: () => { void refetchOnPush() },
+    onConnectedChange: (connected) => {
+      pushConnected.value = connected
+      // Slow the loop down (or speed it back up) now rather than after the wait already scheduled.
+      if (queuePoller.active) {
+        queuePoller.reschedule()
+      }
+    },
+  })
+
   const stopQueuePolling = () => {
     queuePoller.stop()
+    pushChannel.close()
     firstRound = true
   }
 
   const startQueuePolling = () => {
     queuePoller.start()
   }
+
+  // Opened by the Downloads page (and closed by stopQueuePolling when it goes): only a page that is showing the queue
+  // needs to hear about it, and one that is idle/paused still needs to hear that it was resumed.
+  const listenForChanges = () => pushChannel.open()
 
   // Called after every queue read and every action that changes it: starts the loop if there is now work to
   // watch, and re-evaluates the cadence if it is already running (idle 15 s -> active 2 s the moment a
@@ -380,5 +424,6 @@ export const useDownloadsStore = defineStore('downloads', () => {
     mergeSelected,
     startQueuePolling,
     stopQueuePolling,
+    listenForChanges,
   }
 })

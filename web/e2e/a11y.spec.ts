@@ -58,12 +58,20 @@ const AUTHENTICATED_ROUTES = [
   '/settings/lastfm',
 ]
 
+// The Downloads pages keep a server-sent-events stream open (/api/downloads/events), which Playwright's `networkidle`
+// counts as a request that never finishes. Those pages are settled by their own first queue read instead, which has to be
+// awaited from before the navigation because it can land before `goto` returns.
+const goSettled = async (page: Page, route: string) => {
+  const queueRead = route.startsWith('/downloads') ? page.waitForResponse(r => r.url().includes('/api/downloads/queue')) : null
+  await page.goto(route)
+  await (queueRead ?? page.waitForLoadState('networkidle'))
+}
+
 for (const route of AUTHENTICATED_ROUTES) {
   test(`${route} has no serious/critical a11y violations or hydration mismatches`, async ({ page }) => {
     await stubTerminal(page)
     const hydrationWarnings = watchForHydrationWarnings(page)
-    await page.goto(route)
-    await page.waitForLoadState('networkidle')
+    await goSettled(page, route)
 
     const results = await runAxe(page)
     const serious = results.violations.filter(v => v.impact === 'serious' || v.impact === 'critical')

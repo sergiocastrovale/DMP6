@@ -83,6 +83,8 @@ onMounted(() => {
   // downloads, or acquisition possible). When idle/paused it stays off until a source is enabled or the
   // page is reloaded — no endless /queue hammering.
   store.fetchQueue()
+  // The server announces changes to the queue, the pause state and the merge batch; the poll above becomes a backstop.
+  store.listenForChanges()
 })
 
 onUnmounted(() => {

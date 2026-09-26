@@ -2,7 +2,9 @@
 
 LIBRARY
 
-remove all singles, bootlegs for extra space
+multi-disk albums that are not all in a parent folder will never be seen as part of the same box set / collection. Must fix in folders
+
+equate removing all singles, bootlegs for extra space
 
 Before full backup to external drive: Build a script (check if `sync --only-write-mb-to-files` already does this all) that goes through EVERY release and, for every file and if no release MB ID is found, takes that MB ID from the DB and writes it into the metadata of the file. This prevents us having to go fishing for MB IDs again and again by querying Musicbrainz every time we need to nuke the DB and re-sync.
 
@@ -30,16 +32,12 @@ BUGS
 
 Disabiguating artists: NAPA's catalogue features both portuguese and chilean band in one catalogue. These catalogues should be separated - best strategy? The name of the band isn't the problem - it's the slug generation and the way we catalogue them (they can't be together).
 
-multi-disk albums that are not all in a parent folder will never be seen as part of the same box set / collection. Must fix in folders
 
 3 identical "Dear Michael: The Motown Collection" cards — diagnosed, not fixed: the album matcher bound three separate 9-12 track albums to one 257-track box. See `docs/sync_decisions.md` §19 item 7.
 
 Compilations owned by dozens of unrelated artists (a Harold Land compilation on Lana Del Rey's page) — scattered per-track artist tags; index ownership. See `docs/sync_decisions.md` §19 item 8.
 
 124 "Chronological Classics" bindings whose files agree on the wrong volume — retag the files. List: `docs/specs/spec_tidy_observations_cc_retag.tsv`, background in `docs/sync_decisions.md` §19 item 9.
-
-(Fixed 2026-09-18 and removed from this list: 22-20s "Got It If You Want It" disc 1 + disc 2 shown as two cards — `docs/sync_decisions.md` §9; "Harold in the Land of Jazz" / Chronological Classics compilations bound to the wrong album by scattered tags — §7. Full open-bug list: §19.)
-
 
 UI
 

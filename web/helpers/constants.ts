@@ -383,6 +383,12 @@ export const ARTIST_SHUFFLE_SIZE = 500
 // page is open only because acquisition *could* start a download - the monitor's own cadence is minutes.
 export const QUEUE_POLL_ACTIVE_MS = 2000
 export const QUEUE_POLL_IDLE_MS = 15_000
+// While the server is pushing changes (GET /api/downloads/events) the queue poll is only a safety net for a push that
+// never arrived (a proxy that swallowed the stream, a change made by a process that has no push to send).
+export const QUEUE_POLL_PUSH_BACKSTOP_MS = 60_000
+// A burst of download writes (one monitor tick touches many rows) is announced once, this long after the first. The wait is
+// also what lets a write inside a transaction commit before a client re-reads the queue in response.
+export const DOWNLOAD_EVENTS_SETTLE_MS = 250
 // Settings → Library scan status while a script is running (components/settings/RealTimeStatus.vue).
 export const SCAN_STATUS_POLL_MS = 3000
 

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { PrismaClient } from '@prisma/client'
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { createReadyGuard, onlyId } from './helpers/fixtures'
+import { createReadyGuard, onlyId, waitForHydration } from './helpers/fixtures'
 
 // Browse's Filters button opens BrowseFiltersSidebar as a right-docked panel at lg+ and an
 // ~90%-width/height dialog below it (both with a blurred scrim) - see docs/design_system.md and
@@ -18,6 +18,7 @@ let genreName: string
 
 const gotoBrowse = async (page: Page) => {
   await page.goto('/browse')
+  await waitForHydration(page)
   await expect(page.getByRole('heading', { name: 'Browse' })).toBeVisible()
 }
 

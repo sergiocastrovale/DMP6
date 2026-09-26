@@ -2,6 +2,7 @@ import { statfs } from 'node:fs/promises'
 import { prisma } from '~/server/utils/prisma'
 import { getSettingsRow, invalidateSettings } from '~/server/utils/settings'
 import { monitorLog } from '~/server/utils/monitorLog'
+import { notifyDownloadsChanged } from '~/server/utils/downloadEvents'
 import type { PauseReason } from '~/types/download'
 
 /** Free space (GB) under a path; -1 if unavailable (never block on a stat error). */
@@ -26,6 +27,7 @@ export const setDownloadsPaused = async (paused: boolean, reason: PauseReason | 
     data: { downloadsPaused: paused, downloadsPausedReason: paused ? reason : null },
   }).catch(() => {})
   invalidateSettings()
+  notifyDownloadsChanged()
 }
 
 /**

@@ -175,7 +175,9 @@ NAS: `sudo docker exec dmp cat /app/data/logs/errors.log`
 
 **Presence**: `POST /me/presence` (heartbeat, any logged-in user), `POST /me/presence/leave` (sendBeacon-only, pagehide), `GET /users/presence` (admin — Settings → Users "connected now" panel, see Data Model "Presence")
 
-**Downloads** (gated `sync.view`/`downloads.crud`, table-driven via `RolePermission`; `/downloads` pages use `middleware: 'downloads'`): `GET /downloads/{queue,active,status,enabled}`, `POST /downloads/{acquire,merge/[id],merge-all,pause,cleanup,cancel/[id],reject/[id],reject-all,requeue/[id],requeue-all,retry/[id]}`, `GET /artists/monitoring`, `PATCH /artists/[slug]` (toggle `monitored`)
+**Downloads** (gated `sync.view`/`downloads.crud`, table-driven via `RolePermission`; `/downloads` pages use `middleware: 'downloads'`): `GET /downloads/{queue,active,status,enabled,events}`, `POST /downloads/{acquire,merge/[id],merge-all,pause,cleanup,cancel/[id],reject/[id],reject-all,requeue/[id],requeue-all,retry/[id]}`, `GET /artists/monitoring`, `PATCH /artists/[slug]` (toggle `monitored`)
+
+**Downloads push**: `GET /api/downloads/events` (SSE, `sync.view`) sends `changed` whenever the queue rows, the pause state or the merge batch change; the Downloads shell (`stores/downloads.ts` `listenForChanges`, `helpers/pushChannel.ts`) then re-reads `/queue`, and its poll drops to a 60 s backstop while connected (2 s/15 s again if the stream is down). The trigger is central: `server/utils/prisma.ts` watches the query log for writes to `DownloadedRelease` (`downloadEvents.ts` `isDownloadWrite`), so no write site has to remember to announce itself; in-memory state (`mergeProgress.ts`, `setDownloadsPaused`, settings PUT) calls `notifyDownloadsChanged()`. Coalesced by `changeNotifier.ts` (250 ms settle, which also lets a transaction commit before clients read). In-process, single-instance like presence.
 
 **Issues**: `GET /issues/summary`, `/issues/[type]`, `PATCH /issues/[type]/[id]`, `POST /issues/[type]/queue`, `/issues/[type]/queue-revert`, `GET /issues/history`, `POST /issues/history-undo`, `DELETE /issues/history`
 

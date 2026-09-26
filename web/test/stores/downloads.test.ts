@@ -264,6 +264,89 @@ describe('useDownloadsStore - queue polling', () => {
   })
 })
 
+describe('useDownloadsStore - server push', () => {
+  class FakeEventSource {
+    static last: FakeEventSource | null = null
+    onopen: (() => void) | null = null
+    onerror: (() => void) | null = null
+    readyState = 0
+    listeners: Record<string, () => void> = {}
+    close = vi.fn()
+    constructor(public url: string) { FakeEventSource.last = this }
+    addEventListener(type: string, listener: () => void) { this.listeners[type] = listener }
+  }
+
+  const queueCalls = () => fetchMock.mock.calls.filter(c => c[0] === '/api/downloads/queue').length
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    fetchMock.mockReset()
+    FakeEventSource.last = null
+    vi.stubGlobal('EventSource', FakeEventSource)
+    vi.useFakeTimers()
+    fetchMock.mockImplementation((url: string) => Promise.resolve(url === '/api/downloads/merge-progress'
+      ? {}
+      : { active: [{ id: '1', status: 'DOWNLOADING' }], ready: [], rejected: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: { canAcquire: true }, songkong: null }))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+    vi.stubGlobal('$fetch', fetchMock)
+    vi.stubGlobal('fetch', vi.fn())
+  })
+
+  it('re-reads the queue when the server announces a change', async () => {
+    const store = useDownloadsStore()
+    store.listenForChanges()
+    expect(FakeEventSource.last?.url).toBe('/api/downloads/events')
+    FakeEventSource.last!.onopen!()
+
+    FakeEventSource.last!.listeners.changed!()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(queueCalls()).toBe(1)
+  })
+
+  it('reads once more, not once per event, when changes arrive during a read', async () => {
+    const store = useDownloadsStore()
+    store.listenForChanges()
+    FakeEventSource.last!.onopen!()
+
+    FakeEventSource.last!.listeners.changed!()
+    FakeEventSource.last!.listeners.changed!()
+    FakeEventSource.last!.listeners.changed!()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(queueCalls()).toBe(2)
+  })
+
+  it('slows the poll to a backstop while connected and speeds it back up when the stream drops', async () => {
+    const store = useDownloadsStore()
+    await store.fetchQueue()
+    store.listenForChanges()
+    FakeEventSource.last!.onopen!()
+    const before = queueCalls()
+
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(queueCalls()).toBe(before)
+
+    await vi.advanceTimersByTimeAsync(31_000)
+    expect(queueCalls()).toBeGreaterThan(before)
+
+    FakeEventSource.last!.onerror!()
+    const afterDrop = queueCalls()
+    await vi.advanceTimersByTimeAsync(2100)
+    expect(queueCalls()).toBeGreaterThan(afterDrop)
+  })
+
+  it('closes the stream when polling is stopped', () => {
+    const store = useDownloadsStore()
+    store.listenForChanges()
+    store.stopQueuePolling()
+    expect(FakeEventSource.last!.close).toHaveBeenCalled()
+  })
+})
+
 describe('useDownloadsStore - simple fetch/action wrappers', () => {
   beforeEach(() => {
     setActivePinia(createPinia())

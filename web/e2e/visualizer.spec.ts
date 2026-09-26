@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client'
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { VISUALIZER_HUD_IDLE_MS } from '~/helpers/constants'
-import { createReadyGuard, onlyId } from './helpers/fixtures'
+import { createReadyGuard, onlyId, waitForHydration } from './helpers/fixtures'
 
 // The fullscreen visualizer, driven through the real app: the toggle in the player bar, the WebGL
 // canvas the overlay mounts, the auto-hiding HUD, and Escape as the way out.
@@ -37,6 +37,7 @@ let artistName: string
 // these assertions depend on.
 const startPlayback = async (page: Page) => {
   await page.goto(`/artist/${artistSlug}`)
+  await waitForHydration(page)
   await page.getByRole('button', { name: 'Play', exact: true }).first().click()
   await expect(page.getByTestId('visualizer-toggle')).toBeEnabled({ timeout: 15000 })
 }
@@ -92,9 +93,11 @@ test.describe('fullscreen visualizer', () => {
     // toggle is not on the page at all. Explore's copy of it is, and must be disabled - there is
     // no audio element to tap before first playback, so opening would show a black screen.
     await page.goto('/')
+    await waitForHydration(page)
     await expect(page.getByTestId('visualizer-toggle')).toHaveCount(0)
 
     await page.goto('/explore')
+    await waitForHydration(page)
     await expect(page.getByTestId('visualizer-toggle')).toBeDisabled()
   })
 
@@ -170,6 +173,7 @@ test.describe('fullscreen visualizer', () => {
 
   test('Explore keeps its TV-mode button alongside the new one', async ({ page }) => {
     await page.goto('/explore')
+    await waitForHydration(page)
     await expect(page.getByRole('button', { name: 'Enter fullscreen' })).toBeVisible()
     await expect(page.getByTestId('visualizer-toggle')).toBeVisible()
   })
