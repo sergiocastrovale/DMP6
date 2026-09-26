@@ -21,9 +21,9 @@ export const createPlayEventTracker = () => {
     $fetch(`/api/play-events/${eventId}`, { method: 'PATCH', body }).catch(() => {})
   }
 
-  // Regular finish - track changed, natural end, or an in-app dismiss. Sent as a normal PATCH since
+  // Regular finish - track changed, natural end, an unplayable file, or an in-app dismiss. Sent as a normal PATCH since
   // the page is still alive to wait for it.
-  const finish = (reason: 'ended' | 'changed' | 'dismissed') => {
+  const finish = (reason: 'ended' | 'changed' | 'dismissed' | 'error') => {
     if (!eventId) {return}
     const id = eventId
     eventId = null

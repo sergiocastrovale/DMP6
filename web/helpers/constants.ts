@@ -455,3 +455,6 @@ export const PLAYLIST_PAGE_CAP = 500
 
 // The client sends its whole explorer history; a hostile or buggy one must not become a giant NOT IN list.
 export const MAX_EXCLUDE_IDS = 200
+
+// A queue or radio session gives up after this many unplayable tracks in a row (missing file, decode error).
+export const MAX_CONSECUTIVE_PLAYBACK_ERRORS = 3

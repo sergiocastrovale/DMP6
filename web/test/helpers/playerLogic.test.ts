@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   isSkip,
   nextIndexWrap,
+  playbackErrorAction,
   pushCapped,
   QUEUE_PERSIST_CAP,
   shouldScrobble,
@@ -152,5 +153,28 @@ describe('isSkip', () => {
   it('a dismiss follows the same counted rule as a track change', () => {
     expect(isSkip('dismissed', false)).toBe(true)
     expect(isSkip('dismissed', true)).toBe(false)
+  })
+})
+
+describe('playbackErrorAction', () => {
+  it('an aborted load is ignored and leaves the streak alone', () => {
+    expect(playbackErrorAction(2, 1, 3)).toEqual({ action: 'ignore', consecutiveErrors: 2 })
+  })
+
+  it('network, decode and unsupported-source errors skip and extend the streak', () => {
+    for (const code of [2, 3, 4, undefined]) {
+      expect(playbackErrorAction(0, code, 3)).toEqual({ action: 'skip', consecutiveErrors: 1 })
+    }
+  })
+
+  it('stops at the limit and resets the streak', () => {
+    expect(playbackErrorAction(2, 4, 3)).toEqual({ action: 'stop', consecutiveErrors: 0 })
+  })
+})
+
+describe('isSkip on an unplayable track', () => {
+  it('counts as a skip until the listen was counted', () => {
+    expect(isSkip('error', false)).toBe(true)
+    expect(isSkip('error', true)).toBe(false)
   })
 })

@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { useDebounceFn, useThrottleFn } from '@vueuse/core'
 import type { PlayerTrack, ShuffleMode, ExploreParams, PersistedPlayerState, MediaSessionTrackMeta, PlaySource } from '~/types/player'
-import { EXPLORER_SESSION_HISTORY_CAP, nextIndexWrap, pushCapped, QUEUE_PERSIST_CAP, shouldScrobble, shuffleArray, sliceForPersist, unshiftCapped } from '~/helpers/playerLogic'
+import { MAX_CONSECUTIVE_PLAYBACK_ERRORS } from '~/helpers/constants'
+import { EXPLORER_SESSION_HISTORY_CAP, nextIndexWrap, playbackErrorAction, pushCapped, QUEUE_PERSIST_CAP, shouldScrobble, shuffleArray, sliceForPersist, unshiftCapped } from '~/helpers/playerLogic'
 
 export const usePlayerStore = defineStore('player', () => { 
   const currentTrack = ref<PlayerTrack | null>(null)
@@ -29,6 +30,7 @@ export const usePlayerStore = defineStore('player', () => {
   let audio: HTMLAudioElement | null = null
   let scrobbleStartTime = 0
   let scrobbled = false
+  let consecutivePlaybackErrors = 0
 
   const { resolve } = useImageUrl()
   const nativeBridge = useNativeBridge()
@@ -65,11 +67,28 @@ export const usePlayerStore = defineStore('player', () => {
     }).catch(() => {})
   }
 
+  // A file that is missing on disk or will not decode must not stop a queue or radio session dead: log it as a
+  // skip, tell the user, and move on - unless several in a row fail, which means something bigger is wrong.
+  function onPlaybackError(code: number | undefined) {
+    const outcome = playbackErrorAction(consecutivePlaybackErrors, code, MAX_CONSECUTIVE_PLAYBACK_ERRORS)
+    consecutivePlaybackErrors = outcome.consecutiveErrors
+    if (outcome.action === 'ignore') {return}
+    playEvents.finish('error')
+    const toast = useToastStore()
+    if (outcome.action === 'stop') {
+      toast.error(`Stopped after ${MAX_CONSECUTIVE_PLAYBACK_ERRORS} unplayable tracks in a row`)
+      return
+    }
+    toast.error('Skipped unplayable track')
+    next()
+  }
+
   function getAudio(): HTMLAudioElement {
     if (!audio && import.meta.client) {
       audio = new Audio()
       audio.addEventListener('timeupdate', () => {
         currentTime.value = audio!.currentTime
+        if (audio!.currentTime > 0) {consecutivePlaybackErrors = 0}
         checkScrobble()
         playEvents.onTimeUpdate(audio!.currentTime, duration.value)
         media.updatePosition()
@@ -84,6 +103,7 @@ export const usePlayerStore = defineStore('player', () => {
       audio.addEventListener('error', () => {
         isPlaying.value = false
         media.setPlaybackState('paused')
+        onPlaybackError(audio!.error?.code)
       })
       audio.volume = isMuted.value ? 0 : volume.value
       media.registerHandlers()

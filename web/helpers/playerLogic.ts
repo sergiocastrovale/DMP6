@@ -22,8 +22,8 @@ export function shouldScrobble(state: { duration: number, currentTime: number })
 
 // A finish is a skip only when it happens before the listen was counted (shouldScrobble's threshold) -
 // natural end-of-track ('ended') is never a skip regardless of counted state, since the whole track
-// was heard.
-export function isSkip(reason: 'ended' | 'changed' | 'dismissed', counted: boolean): boolean {
+// was heard. An unplayable track ('error') is a skip like any other early finish.
+export function isSkip(reason: 'ended' | 'changed' | 'dismissed' | 'error', counted: boolean): boolean {
   if (reason === 'ended') {return false}
   return !counted
 }
@@ -50,4 +50,20 @@ export function nextIndexWrap(length: number, currentIndex: number): number | nu
 // Slice a queue down to the last `cap` entries before persisting to localStorage.
 export function sliceForPersist<T>(arr: T[], cap: number = QUEUE_PERSIST_CAP): T[] {
   return arr.slice(-cap)
+}
+
+// MediaError.code: 1 = the fetch was aborted (we changed `src` ourselves), 2 = network, 3 = decode, 4 = source not
+// supported (a 404 lands here). Aborts are not failures; the rest skip to the next track until `max` fail in a row.
+export function playbackErrorAction(
+  consecutiveErrors: number,
+  code: number | undefined,
+  max: number,
+): { action: 'ignore' | 'skip' | 'stop', consecutiveErrors: number } {
+  if (code === 1) {
+    return { action: 'ignore', consecutiveErrors }
+  }
+  const failures = consecutiveErrors + 1
+  return failures >= max
+    ? { action: 'stop', consecutiveErrors: 0 }
+    : { action: 'skip', consecutiveErrors: failures }
 }

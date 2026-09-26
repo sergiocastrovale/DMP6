@@ -87,6 +87,76 @@ describe('usePlayerStore', () => {
     localStorage.removeItem('dmp-player')
   })
 
+  describe('unplayable tracks', () => {
+    const errorOn = (store: ReturnType<typeof usePlayerStore>, code = 4) => {
+      const el = store.getAudioElement() as unknown as FakeAudio & { error?: { code: number } }
+      el.error = { code }
+      el.dispatch('error')
+    }
+
+    it('skips to the next queue track, finishes the play event as a skip and toasts', async () => {
+      const store = usePlayerStore()
+      const tracks = [track({ id: 'a' }), track({ id: 'b' }), track({ id: 'c' })]
+      store.setQueue(tracks, tracks[0])
+      await vi.waitFor(() => expect(store.currentTrack?.id).toBe('a'))
+      await vi.waitFor(() => expect(fetchMock.mock.calls.some(c => String(c[0]) === '/api/play-events')).toBe(true))
+
+      errorOn(store)
+
+      await vi.waitFor(() => expect(store.currentTrack?.id).toBe('b'))
+      const finish = fetchMock.mock.calls.find(c => String(c[0]) === '/api/play-events/ev1' && (c[1] as any)?.body?.ended === true)
+      expect((finish?.[1] as any).body.skipped).toBe(true)
+      expect(useToastStore().toasts.map(t => t.message)).toContain('Skipped unplayable track')
+    })
+
+    it('gives up after three unplayable tracks in a row', async () => {
+      const store = usePlayerStore()
+      const tracks = ['a', 'b', 'c', 'd', 'e'].map(id => track({ id }))
+      store.setQueue(tracks, tracks[0])
+      await vi.waitFor(() => expect(store.currentTrack?.id).toBe('a'))
+
+      errorOn(store)
+      await vi.waitFor(() => expect(store.currentTrack?.id).toBe('b'))
+      errorOn(store)
+      await vi.waitFor(() => expect(store.currentTrack?.id).toBe('c'))
+      errorOn(store)
+
+      await Promise.resolve()
+      expect(store.currentTrack?.id).toBe('c')
+      expect(useToastStore().toasts.map(t => t.message)).toContain('Stopped after 3 unplayable tracks in a row')
+    })
+
+    it('real playback progress resets the streak', async () => {
+      const store = usePlayerStore()
+      const tracks = ['a', 'b', 'c', 'd', 'e'].map(id => track({ id }))
+      store.setQueue(tracks, tracks[0])
+      await vi.waitFor(() => expect(store.currentTrack?.id).toBe('a'))
+      const el = store.getAudioElement() as unknown as FakeAudio
+
+      errorOn(store)
+      await vi.waitFor(() => expect(store.currentTrack?.id).toBe('b'))
+      errorOn(store)
+      await vi.waitFor(() => expect(store.currentTrack?.id).toBe('c'))
+      el.currentTime = 1
+      el.dispatch('timeupdate')
+      errorOn(store)
+      await vi.waitFor(() => expect(store.currentTrack?.id).toBe('d'))
+    })
+
+    it('ignores an aborted load (we swapped the source ourselves)', async () => {
+      const store = usePlayerStore()
+      const tracks = [track({ id: 'a' }), track({ id: 'b' })]
+      store.setQueue(tracks, tracks[0])
+      await vi.waitFor(() => expect(store.currentTrack?.id).toBe('a'))
+
+      errorOn(store, 1)
+
+      await Promise.resolve()
+      expect(store.currentTrack?.id).toBe('a')
+      expect(useToastStore().toasts).toHaveLength(0)
+    })
+  })
+
   it('playTrack sets currentTrack, loads audio, and starts playback', async () => {
     const store = usePlayerStore()
     await store.playTrack(track())
