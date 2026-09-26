@@ -27,6 +27,8 @@ export default defineConfig({
           environment: 'happy-dom',
           include: ['test/helpers/**/*.test.ts', 'test/server/utils/**/*.test.ts', 'test/server/schemas/**/*.test.ts', 'test/unit/**/*.test.ts'],
           setupFiles: ['test/setup/h3-globals.ts'],
+          // Tests write the Settings row directly and expect the next read to see it (server/utils/settings.ts).
+          env: { SETTINGS_CACHE_TTL_MS: '0' },
         },
       },
       await defineVitestProject({
@@ -50,6 +52,7 @@ export default defineConfig({
           include: ['test/integration/**/*.test.ts'],
           globalSetup: ['test/setup/db.global.ts'],
           setupFiles: ['test/setup/h3-globals.ts'],
+          env: { SETTINGS_CACHE_TTL_MS: '0' },
           fileParallelism: false,
           testTimeout: 30_000,
           hookTimeout: 60_000,

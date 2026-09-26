@@ -1,6 +1,6 @@
 import { prisma } from '~/server/utils/prisma'
+import { getSettingsRow, refreshSettings } from '~/server/utils/settings'
 import { requirePermission } from '~/server/utils/permissions'
-import { invalidateSettingsCache } from '~/server/utils/settingsCache'
 import { getLastfmSession } from '~/server/utils/lastfm'
 import { OAUTH_STATE_COOKIE, oauthStatesMatch } from '~/server/utils/oauthState'
 
@@ -25,10 +25,8 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: 'Missing token' })
   }
 
-  // Straight from the DB, not settingsCache: same reasoning as connect.get.ts - this runs once,
-  // right after the settings form just saved the key/secret, and the cache's staleness window
-  // could still serve the pre-save (null) values here.
-  const settings = await prisma.settings.findUnique({ where: { id: 'main' } })
+  // Fresh read for the same reason as connect.get.ts: the key/secret were saved moments ago.
+  const settings = await getSettingsRow({ fresh: true })
   const lastfmApiKey = settings?.lastfmApiKey || process.env.LASTFM_API_KEY
   const lastfmSecret = settings?.lastfmSecret || process.env.LASTFM_SECRET
   if (!lastfmApiKey || !lastfmSecret) {
@@ -54,7 +52,7 @@ export default defineEventHandler(async (event) => {
     },
   })
 
-  invalidateSettingsCache()
+  await refreshSettings()
 
   return sendRedirect(event, '/settings/api-keys')
 })

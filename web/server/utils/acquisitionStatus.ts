@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
+import { getSettingsRow } from '~/server/utils/settings'
 import { checkDownloadEnvironment, acquireBlockReasons } from '~/server/utils/downloadEnvironment'
 import type { Acquisition } from '~/types/download'
 
@@ -8,7 +9,7 @@ import type { Acquisition } from '~/types/download'
 // env-default-then-DB-override pattern (server/utils/monitorSettings.ts).
 export async function isDownloadsEnabled(): Promise<boolean> {
   const envEnabled = process.env.DOWNLOADS_ENABLED !== 'false'
-  const settings = await prisma.settings.findUnique({ where: { id: 'main' }, select: { downloadsEnabled: true } }).catch(() => null)
+  const settings = await getSettingsRow().catch(() => null)
   return settings?.downloadsEnabled ?? envEnabled
 }
 

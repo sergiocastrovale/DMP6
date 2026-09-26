@@ -1,94 +1,44 @@
+import type { Settings } from '@prisma/client'
 import type { CachedSettings } from '~/types/api'
-import { prisma } from '~/server/utils/prisma'
+import { invalidateSettings, peekSettingsRow, getSettingsRow, refreshSettings, settingsStale, envMusicDir } from '~/server/utils/settings'
 
-const CACHE_TTL = 30_000
+// Synchronous DB → env view of the settings the request paths need (storage, keys, Last.fm, Genius). The row itself
+// comes from server/utils/settings.ts; server/middleware/00.settingsReady.ts makes sure it has loaded before the
+// first request is served, so the env-only fallback below is just a database that was unreachable at boot.
 
-let cache: CachedSettings | null = null
-let cacheExpiry = 0
+const fromRow = (s: Settings | null): CachedSettings => ({
+  musicDir: s?.musicDir || envMusicDir(),
+  imageStorage: s?.imageStorage || process.env.IMAGE_STORAGE || 'local',
+  storageImageBucket: s?.storageImageBucket || process.env.STORAGE_IMAGE_BUCKET || '',
+  storageBackupsBucket: s?.storageBackupsBucket || process.env.STORAGE_BACKUPS_BUCKET || '',
+  awsRegion: s?.awsRegion || process.env.AWS_REGION || '',
+  awsAccessKeyId: s?.awsAccessKeyId || process.env.AWS_ACCESS_KEY_ID || '',
+  awsSecretAccessKey: s?.awsSecretAccessKey || process.env.AWS_SECRET_ACCESS_KEY || '',
+  storageEndpoint: s?.storageEndpoint || process.env.STORAGE_ENDPOINT || '',
+  storagePublicUrl: s?.storagePublicUrl || process.env.STORAGE_PUBLIC_URL || '',
+  fanartApiKey: s?.fanartApiKey || process.env.FANART_API_KEY || '',
+  geniusClientId: s?.geniusClientId || process.env.GENIUS_CLIENT_ID || null,
+  geniusSecret: s?.geniusSecret || process.env.GENIUS_SECRET || null,
+  geniusAccessToken: s?.geniusAccessToken || process.env.GENIUS_ACCESS_TOKEN || null,
+  lastfmApiKey: s?.lastfmApiKey || process.env.LASTFM_API_KEY || null,
+  lastfmSecret: s?.lastfmSecret || process.env.LASTFM_SECRET || null,
+  lastfmSessionKey: s?.lastfmSessionKey || process.env.LASTFM_SESSION_KEY || null,
+  lastfmUsername: s?.lastfmUsername || process.env.LASTFM_USERNAME || null,
+})
 
-function defaults(): CachedSettings {
-  return {
-    musicDir: process.env.MUSIC_DIR || '',
-    imageStorage: process.env.IMAGE_STORAGE || 'local',
-    storageImageBucket: process.env.STORAGE_IMAGE_BUCKET || '',
-    storageBackupsBucket: process.env.STORAGE_BACKUPS_BUCKET || '',
-    awsRegion: process.env.AWS_REGION || '',
-    awsAccessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
-    awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
-    storageEndpoint: process.env.STORAGE_ENDPOINT || '',
-    storagePublicUrl: process.env.STORAGE_PUBLIC_URL || '',
-    fanartApiKey: process.env.FANART_API_KEY || '',
-    geniusClientId: process.env.GENIUS_CLIENT_ID || null,
-    geniusSecret: process.env.GENIUS_SECRET || null,
-    geniusAccessToken: process.env.GENIUS_ACCESS_TOKEN || null,
-    lastfmApiKey: process.env.LASTFM_API_KEY || null,
-    lastfmSecret: process.env.LASTFM_SECRET || null,
-    lastfmSessionKey: process.env.LASTFM_SESSION_KEY || null,
-    lastfmUsername: process.env.LASTFM_USERNAME || null,
+export const getCachedSettings = (): CachedSettings => {
+  // Serve the last loaded row and refresh behind it; before the first load that is the env values.
+  if (settingsStale()) {
+    getSettingsRow().catch(() => {})
   }
+  return fromRow(peekSettingsRow() ?? null)
 }
 
-async function refreshCache(): Promise<void> {
-  try {
-    const s = await prisma.settings.findUnique({ where: { id: 'main' } })
-    const d = defaults()
-    cache = {
-      musicDir: s?.musicDir || d.musicDir,
-      imageStorage: s?.imageStorage || d.imageStorage,
-      storageImageBucket: s?.storageImageBucket || d.storageImageBucket,
-      storageBackupsBucket: s?.storageBackupsBucket || d.storageBackupsBucket,
-      awsRegion: s?.awsRegion || d.awsRegion,
-      awsAccessKeyId: s?.awsAccessKeyId || d.awsAccessKeyId,
-      awsSecretAccessKey: s?.awsSecretAccessKey || d.awsSecretAccessKey,
-      storageEndpoint: s?.storageEndpoint || d.storageEndpoint,
-      storagePublicUrl: s?.storagePublicUrl || d.storagePublicUrl,
-      fanartApiKey: s?.fanartApiKey || d.fanartApiKey,
-      geniusClientId: s?.geniusClientId || d.geniusClientId,
-      geniusSecret: s?.geniusSecret || d.geniusSecret,
-      geniusAccessToken: s?.geniusAccessToken || d.geniusAccessToken,
-      lastfmApiKey: s?.lastfmApiKey || d.lastfmApiKey,
-      lastfmSecret: s?.lastfmSecret || d.lastfmSecret,
-      lastfmSessionKey: s?.lastfmSessionKey || d.lastfmSessionKey,
-      lastfmUsername: s?.lastfmUsername || d.lastfmUsername,
-    }
-    cacheExpiry = Date.now() + CACHE_TTL
-  }
-  catch {
-    // On error, keep stale cache or use defaults
-    if (!cache) {
-      cache = defaults()
-      cacheExpiry = Date.now() + CACHE_TTL
-    }
-  }
+export const invalidateSettingsCache = (): void => {
+  invalidateSettings()
 }
 
-export function getCachedSettings(): CachedSettings {
-  if (!cache) {
-    refreshCache().catch(() => {})
-    return defaults()
-  }
-  if (Date.now() > cacheExpiry) {
-    refreshCache().catch(() => {})
-  }
-  return cache
+// Awaitable counterpart: the very next getCachedSettings() reflects a just-written row.
+export const refreshSettingsCache = async (): Promise<void> => {
+  await refreshSettings()
 }
-
-export function invalidateSettingsCache(): void {
-  cache = null
-  cacheExpiry = 0
-}
-
-// Awaitable counterpart to invalidateSettingsCache - for a test (or any caller) that needs the very
-// next getCachedSettings() to reflect a just-written DB row synchronously. getCachedSettings()
-// itself deliberately returns process.env defaults immediately after invalidation and refreshes in
-// the background (fire-and-forget) - fine in production (30s TTL, eventually consistent, and every
-// real request is a separate call site with plenty of time for the background refresh to land) but
-// a genuine race for code asserting on the fresh DB value on the very next line. Masked locally by
-// any real value already sitting in .env (e.g. GENIUS_ACCESS_TOKEN) - only visible where the env
-// var is unset, which is exactly the CI unit job (test/integration/routes/artistFacts.test.ts).
-export async function refreshSettingsCache(): Promise<void> {
-  await refreshCache()
-}
-
-// Warm cache on module load
-refreshCache().catch(() => {})

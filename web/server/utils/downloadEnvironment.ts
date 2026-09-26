@@ -1,5 +1,6 @@
 import { access, constants } from 'node:fs/promises'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
+import { resolveMusicDir } from '~/server/utils/settings'
 import { ffmpegAvailable } from '~/server/utils/transcode'
 import { checkSlskdConnection } from '~/server/utils/slskd'
 import type { DownloadEnvironment, DownloadEnvironmentCheck } from '~/types/download'
@@ -14,9 +15,6 @@ import type { DownloadEnvironment, DownloadEnvironmentCheck } from '~/types/down
 // aborts the whole batch without it — see transcode.ts). Off: untranscoded formats pass straight
 // through (layout.ts's TRACK_EXTENSIONS covers them), so ffmpeg is reported but non-blocking.
 
-function musicDir(): string {
-  return process.env.MUSIC_DIR || process.env.NUXT_MUSIC_DIR || ''
-}
 
 const checkPath = async (label: string, path: string, mode: number): Promise<DownloadEnvironmentCheck> => {
   if (!path) {return { ok: false, detail: `${label} not configured` }}
@@ -29,7 +27,7 @@ const CACHE_TTL_MS = 10_000
 
 async function probeEnvironment(): Promise<DownloadEnvironment> {
   const { downloadsPath, downloadsReadyPath, flacToMp3 } = await resolveDownloadSettings()
-  const music = musicDir()
+  const music = await resolveMusicDir()
 
   const [downloadsPathCheck, readyPathCheck, musicDirCheck, ffmpegOk, slskd] = await Promise.all([
     checkPath('staging path', downloadsPath, constants.R_OK | constants.W_OK),

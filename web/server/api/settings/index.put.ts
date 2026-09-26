@@ -1,5 +1,7 @@
 import { prisma } from '~/server/utils/prisma'
-import { invalidateSettingsCache } from '~/server/utils/settingsCache'
+import { refreshSettings } from '~/server/utils/settings'
+import { clearDownloadEnvironmentCache } from '~/server/utils/downloadEnvironment'
+import { clearSlskdConfigCache } from '~/server/utils/slskd'
 import { requirePermission } from '~/server/utils/permissions'
 import { maskSettingsSecrets } from '~/server/utils/settingsSecrets'
 import { readBodyOf } from '~/server/utils/requestValidation'
@@ -22,7 +24,11 @@ export default defineEventHandler(async (event) => {
     create: { id: 'main', ...clean },
   })
 
-  invalidateSettingsCache()
+  // Reload now so the synchronous readers see the new values on the very next request, and drop the two
+  // caches derived from them (the environment probe and the slskd URL/key).
+  await refreshSettings()
+  clearDownloadEnvironmentCache()
+  clearSlskdConfigCache()
 
   return maskSettingsSecrets(settings)
 })

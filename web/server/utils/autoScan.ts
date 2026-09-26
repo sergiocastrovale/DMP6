@@ -1,5 +1,7 @@
 import type { AutoScanSettings } from '~/types/scan'
 import { prisma } from '~/server/utils/prisma'
+import { envInt } from '~/helpers/functions'
+import { getSettingsRow, invalidateSettings } from '~/server/utils/settings'
 import { runExclusive } from '~/server/utils/scriptLock'
 import { runScript } from '~/server/utils/runScript'
 import { monitorLog } from '~/server/utils/monitorLog'
@@ -9,15 +11,9 @@ import { monitorLog } from '~/server/utils/monitorLog'
 // starve manual runs and the downloader's own index passes.
 export const MIN_AUTO_SCAN_INTERVAL_HOURS = 1
 
-const envInt = (name: string, def: number): number => {
-  const raw = process.env[name]
-  const n = raw != null ? parseInt(raw, 10) : NaN
-  return Number.isFinite(n) ? n : def
-}
-
 /** DB → env → default, same precedence as resolveMonitorSettings. */
 export const resolveAutoScanSettings = async (): Promise<AutoScanSettings> => {
-  const s = await prisma.settings.findUnique({ where: { id: 'main' } }).catch(() => null)
+  const s = await getSettingsRow().catch(() => null)
 
   return {
     enabled: s?.autoScanEnabled ?? process.env.AUTO_SCAN_ENABLED === 'true',
@@ -77,6 +73,7 @@ export const runAutoScan = async (): Promise<void> => {
         where: { id: 'main' },
         data: { autoScanLastRunAt: new Date() },
       }).catch(() => null)
+      invalidateSettings()
     }
   })
 }

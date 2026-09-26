@@ -1,5 +1,6 @@
 import { statfs } from 'node:fs/promises'
 import { prisma } from '~/server/utils/prisma'
+import { getSettingsRow, invalidateSettings } from '~/server/utils/settings'
 import { monitorLog } from '~/server/utils/monitorLog'
 import type { PauseReason } from '~/types/download'
 
@@ -13,7 +14,7 @@ export const freeGb = async (path: string): Promise<number> => {
 }
 
 export const getPauseState = async (): Promise<{ paused: boolean; reason: string | null }> => {
-  const s = await prisma.settings.findUnique({ where: { id: 'main' }, select: { downloadsPaused: true, downloadsPausedReason: true } })
+  const s = await getSettingsRow()
   return { paused: s?.downloadsPaused ?? false, reason: s?.downloadsPausedReason ?? null }
 }
 
@@ -24,6 +25,7 @@ export const setDownloadsPaused = async (paused: boolean, reason: PauseReason | 
     where: { id: 'main' },
     data: { downloadsPaused: paused, downloadsPausedReason: paused ? reason : null },
   }).catch(() => {})
+  invalidateSettings()
 }
 
 /**

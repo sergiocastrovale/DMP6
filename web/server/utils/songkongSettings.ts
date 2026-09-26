@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { prisma } from '~/server/utils/prisma'
+import { getSettingsRow } from '~/server/utils/settings'
 import type { SongkongHealthInput } from '~/types/download'
 
 /**
@@ -22,7 +22,7 @@ export const songkongDirs = () => {
 
 /** Whether downloads should be enriched with SongKong (DB wins, then env, default off). */
 export const resolveSongkongEnabled = async (): Promise<boolean> => {
-  const settings = await prisma.settings.findUnique({ where: { id: 'main' } })
+  const settings = await getSettingsRow()
   if (typeof settings?.songkongEnabled === 'boolean') {
     return settings.songkongEnabled
   }

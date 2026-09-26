@@ -1,4 +1,4 @@
-import { prisma } from '~/server/utils/prisma'
+import { getSettingsRow } from '~/server/utils/settings'
 import { requirePermission } from '~/server/utils/permissions'
 import { getAuthUrl } from '~/server/utils/lastfm'
 import { createOAuthState, OAUTH_STATE_COOKIE, OAUTH_STATE_MAX_AGE_SECONDS } from '~/server/utils/oauthState'
@@ -6,11 +6,9 @@ import { createOAuthState, OAUTH_STATE_COOKIE, OAUTH_STATE_MAX_AGE_SECONDS } fro
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'variables.edit')
 
-  // Read straight from the DB, not the settingsCache: this handler only runs once, right after
-  // the settings form just saved the key, and the cache's 30s staleness window (or an
-  // invalidate/refetch race right after that save) previously made a key typed and saved a moment
-  // ago look "not configured". Nothing here is on a hot path that needs the cache's savings.
-  const settings = await prisma.settings.findUnique({ where: { id: 'main' } })
+  // Fresh read, not the cached row: this handler only runs once, right after the settings form saved the key,
+  // and a key typed a moment ago must not look "not configured". Nothing here is a hot path.
+  const settings = await getSettingsRow({ fresh: true })
   const lastfmApiKey = settings?.lastfmApiKey || process.env.LASTFM_API_KEY
   if (!lastfmApiKey) {
     throw createError({ statusCode: 400, message: 'Last.fm API key not configured' })

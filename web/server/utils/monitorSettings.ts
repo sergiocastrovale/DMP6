@@ -1,18 +1,13 @@
 import type { ResolvedMonitorSettings } from '~/types/download'
-import { prisma } from '~/server/utils/prisma'
+import { envInt } from '~/helpers/functions'
+import { getSettingsRow } from '~/server/utils/settings'
 
 /**
  * Monitoring/downloader knobs, resolved DB → env → default (DB wins; null in DB = use env).
  * Queried per call (like downloadSettings) so UI changes apply live, no restart.
  */
-function envInt(name: string, def: number): number {
-  const v = process.env[name]
-  const n = v != null ? parseInt(v, 10) : NaN
-  return Number.isFinite(n) ? n : def
-}
-
 export async function resolveMonitorSettings(): Promise<ResolvedMonitorSettings> {
-  const s = await prisma.settings.findUnique({ where: { id: 'main' } }).catch(() => null)
+  const s = await getSettingsRow().catch(() => null)
 
   const envEnabled = process.env.MONITOR_ENABLED !== 'false'
 

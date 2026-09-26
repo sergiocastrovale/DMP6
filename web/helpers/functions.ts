@@ -290,3 +290,10 @@ export const describeUserAgent = (ua: string | null | undefined): string => {
     : null
   return os ? `${browser} · ${os}` : browser
 }
+
+// Integer from an environment variable, or `fallback` when it is unset or not a number.
+export const envInt = (name: string, fallback: number): number => {
+  const raw = process.env[name]
+  const n = raw != null ? parseInt(raw, 10) : NaN
+  return Number.isFinite(n) ? n : fallback
+}

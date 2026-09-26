@@ -1,5 +1,6 @@
 import type { ResolvedDownloadSettings } from '~/types/download'
-import { prisma } from '~/server/utils/prisma'
+import { envInt } from '~/helpers/functions'
+import { getSettingsRow } from '~/server/utils/settings'
 
 /**
  * Resolves download-related settings, with DB values taking precedence over env vars.
@@ -9,7 +10,7 @@ import { prisma } from '~/server/utils/prisma'
 export const DEFAULT_DOWNLOAD_DIR_TEMPLATE = '{artist}/{year} - {album}'
 
 export async function resolveDownloadSettings(): Promise<ResolvedDownloadSettings> {
-  const settings = await prisma.settings.findUnique({ where: { id: 'main' } })
+  const settings = await getSettingsRow()
 
   const parsedBitrate = settings?.downloadMinBitrate
     ?? (process.env.DOWNLOAD_MIN_BITRATE ? parseInt(process.env.DOWNLOAD_MIN_BITRATE, 10) : null)

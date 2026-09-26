@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
 import type { MergeRow } from '~/types/download'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
+import { resolveMusicDir } from '~/server/utils/settings'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { getSlskdActiveDownloads, cancelSlskdDownload } from '~/server/utils/slskd'
 import { runScript } from '~/server/utils/runScript'
@@ -21,9 +22,6 @@ async function cleanupSongkongMarkers(id: string): Promise<void> {
   await rm(join(dirs.done, id), { force: true }).catch(() => {})
 }
 
-function musicDir(): string {
-  return process.env.MUSIC_DIR || process.env.NUXT_MUSIC_DIR || ''
-}
 
 /**
  * Run the Rust reconciler binary, serialized against every other script run in this process so it
@@ -351,7 +349,7 @@ export async function mergeDownloadedRelease(id: string, emit?: (line: string) =
   if (row.status !== 'READY') {throw createError({ statusCode: 409, message: `cannot merge a "${row.status}" download — must be READY` })}
   if (!row.stagingPath) {throw createError({ statusCode: 409, message: 'nothing to merge' })}
 
-  const music = musicDir()
+  const music = await resolveMusicDir()
   if (!music) {throw createError({ statusCode: 503, message: 'MUSIC_DIR not configured' })}
   const { downloadsReadyPath } = await resolveDownloadSettings()
 
@@ -389,7 +387,7 @@ export async function mergeDownloadedRelease(id: string, emit?: (line: string) =
  * the whole thing runs serialized so it can't collide with the gaps worker on the Rust lock.
  */
 export async function mergeManyDownloadedReleases(ids: string[], emit?: (line: string) => void): Promise<{ merged: number; errors: string[] }> {
-  const music = musicDir()
+  const music = await resolveMusicDir()
   if (!music) {throw createError({ statusCode: 503, message: 'MUSIC_DIR not configured' })}
   const { downloadsReadyPath } = await resolveDownloadSettings()
 
