@@ -126,6 +126,8 @@ describe('hasUnfinishedLog', () => {
     expect(await hasUnfinishedLog('s')).toBe(true)
     vi.mocked(open).mockResolvedValue(logFile('Indexing...\nDMP_EXIT:1\n').handle as never)
     expect(await hasUnfinishedLog('s')).toBe(false)
+    vi.mocked(open).mockResolvedValue(logFile('').handle as never)
+    expect(await hasUnfinishedLog('s')).toBe(true)
     vi.mocked(open).mockRejectedValue(new Error('ENOENT'))
     expect(await hasUnfinishedLog('s')).toBe(false)
   })
@@ -140,6 +142,15 @@ describe('findReconnectableSessions', () => {
       { session: 'rebuild-al-jolson', startedAt: '2026-09-19T18:26:00.000Z' },
     ])
     expect(open).toHaveBeenCalledWith(terminalLogPath('rebuild-al-jolson'), 'r')
+  })
+
+  it('includes a live session whose log is still empty (a run that has not printed anything yet)', async () => {
+    tmuxReturns('fix\n')
+    vi.mocked(open).mockResolvedValue(logFile('').handle as never)
+
+    expect(await findReconnectableSessions()).toEqual([
+      { session: 'fix', startedAt: '2026-09-19T18:26:00.000Z' },
+    ])
   })
 
   // The self-cleaning guarantee: buildScript's EXIT trap already kills its own tmux session once it

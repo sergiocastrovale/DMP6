@@ -324,8 +324,11 @@ describe('hasUnfinishedRun', () => {
     expect(hasUnfinishedRun('did stuff\nDMP_EXIT:0\n')).toBe(false)
   })
 
-  it('false when there is no previous log (null) or it is empty', () => {
+  it('false when there is no log at all', () => {
     expect(hasUnfinishedRun(null)).toBe(false)
-    expect(hasUnfinishedRun('')).toBe(false)
+  })
+
+  it('true for an empty log: the run truncated it and has not printed anything yet', () => {
+    expect(hasUnfinishedRun('')).toBe(true)
   })
 })

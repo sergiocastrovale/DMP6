@@ -136,9 +136,10 @@ export const parseExitLine = (line: string): number | null => {
   return Number.isNaN(parsed) ? 1 : parsed
 }
 
-// True when a session's previous log exists but never reached its DMP_EXIT sentinel - i.e. that
-// session's command is still running (or crashed without exiting cleanly). Starting a NEW run under
+// True when a session's log exists but never reached its DMP_EXIT sentinel - i.e. that session's command is still
+// running (or crashed without exiting cleanly). An empty log counts: a run truncates its log before it starts, so
+// "no output yet" is a run that has begun, not one that never did. Starting a NEW run under
 // the same session name would otherwise silently `tmux kill-session` it out from under whoever's
 // still watching it (audit #84's multi-tab clobber).
 export const hasUnfinishedRun = (prevLogContent: string | null): boolean =>
-  prevLogContent !== null && prevLogContent.length > 0 && !prevLogContent.includes(EXIT_PREFIX)
+  prevLogContent !== null && !prevLogContent.includes(EXIT_PREFIX)
