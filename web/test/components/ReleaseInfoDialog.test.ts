@@ -169,4 +169,41 @@ describe('ReleaseInfoDialog.vue', () => {
 
     expect(body.textContent).not.toContain('Status reason')
   })
+
+  describe('"This release is also part of..."', () => {
+    const box = { releaseId: 'box1', title: 'Deliverance & Damnation', year: 2015 }
+
+    it('lists each box as an anchor to that release on the artist page, below the cover', async () => {
+      const body = await mount(release({ alsoPartOf: [box] }), { artistSlug: 'opeth' })
+
+      expect(body.textContent).toContain('This release is also part of...')
+      const link = [...body.querySelectorAll('a')].find(a => a.textContent?.includes('Deliverance & Damnation'))
+      expect(link?.getAttribute('href')).toBe('/artist/opeth?releaseId=box1')
+      expect(link?.textContent).toContain('(2015)')
+    })
+
+    it('clicking a link closes the dialog and emits goToRelease with the box id, without navigating', async () => {
+      await mount(release({ alsoPartOf: [box] }), { artistSlug: 'opeth' })
+
+      const link = [...document.body.querySelectorAll('a')].find(a => a.textContent?.includes('Deliverance & Damnation'))!
+      const event = new MouseEvent('click', { bubbles: true, cancelable: true })
+      link.dispatchEvent(event)
+
+      expect(event.defaultPrevented).toBe(true)
+      expect(wrapper!.emitted('goToRelease')).toEqual([['box1']])
+      expect(wrapper!.emitted('update:modelValue')).toEqual([[false]])
+    })
+
+    it('is plain text when opened without an artist page to link into', async () => {
+      const body = await mount(release({ alsoPartOf: [box] }))
+
+      expect(body.textContent).toContain('Deliverance & Damnation (2015)')
+      expect([...body.querySelectorAll('a')].some(a => a.textContent?.includes('Deliverance & Damnation'))).toBe(false)
+    })
+
+    it('renders nothing when the release is in no box', async () => {
+      const body = await mount(release({}), { artistSlug: 'opeth' })
+      expect(body.textContent).not.toContain('also part of')
+    })
+  })
 })

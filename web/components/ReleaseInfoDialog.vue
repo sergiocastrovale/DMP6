@@ -15,10 +15,14 @@ const props = withDefaults(defineProps<{
   // run finishes (artist page → Releases). Other openers of this dialog (player, Explore history,
   // downloads pages) don't, so a deleted release there would silently keep sitting in their state.
   removable?: boolean
+  // Artist page the dialog is opened from. With it, "also part of" entries link to that release on the
+  // page; without it (player, Explore, downloads) they are plain text - there is no page to jump to.
+  artistSlug?: string | null
 }>(), {
   isFavorite: false,
   isAcquiring: false,
   removable: false,
+  artistSlug: null,
 })
 
 const emit = defineEmits<{
@@ -26,6 +30,7 @@ const emit = defineEmits<{
   refresh: []
   redownload: []
   removed: []
+  goToRelease: [releaseId: string]
 }>()
 
 const model = defineModel<boolean>({ required: true })
@@ -41,6 +46,15 @@ const showDeleteDialog = ref(false)
 const onRemoved = () => {
   model.value = false
   emit('removed')
+}
+
+// docs/sync_decisions.md: box sets in the catalogue reprinting this release's whole group - a pure
+// catalogue fact, shown regardless of whether this artist owns a copy of the box.
+const alsoPartOf = computed(() => props.release?.alsoPartOf ?? [])
+
+const goToRelease = (releaseId: string) => {
+  model.value = false
+  emit('goToRelease', releaseId)
 }
 
 const genreList = computed(() =>
@@ -126,6 +140,21 @@ const ddClass = 'font-mono text-xs text-stone-100/60'
               <Disc3 :size="32" />
             </div>
           </UiThumb>
+
+          <div v-if="alsoPartOf.length" class="text-xs text-stone-100/60">
+            <p>This release is also part of...</p>
+            <ul class="mt-1 space-y-1">
+              <li v-for="a in alsoPartOf" :key="a.releaseId ?? a.title">
+                <a
+                  v-if="artistSlug && a.releaseId"
+                  :href="`/artist/${artistSlug}?releaseId=${a.releaseId}`"
+                  class="text-stone-100/80 underline-offset-2 hover:text-amber-400 hover:underline"
+                  @click.prevent="goToRelease(a.releaseId)"
+                >{{ a.title }}<template v-if="a.year"> ({{ a.year }})</template></a>
+                <span v-else class="text-stone-100/80">{{ a.title }}<template v-if="a.year"> ({{ a.year }})</template></span>
+              </li>
+            </ul>
+          </div>
         </div>
 
         <dl class="flex-1 space-y-3 text-sm">

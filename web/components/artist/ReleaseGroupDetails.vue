@@ -70,10 +70,6 @@ const displayPlayCount = computed(() => props.playCount ?? props.release.totalPl
 const playableClasses = computed(() => hasPlayable.value ? 'cursor-pointer' : 'ml-6')
 
 const statusDescription = (status: string) => statuses.find(s => s.value === status)?.description ?? ''
-// docs/sync_decisions.md: box sets in the catalogue reprinting this release's whole group - a pure
-// catalogue fact, shown regardless of whether this artist owns a copy of the box.
-const alsoPartOfLabel = computed(() =>
-  (props.release.alsoPartOf ?? []).map(a => a.year ? `${a.title} (${a.year})` : a.title).join(', ') || null)
 </script>
 
 <template>
@@ -156,7 +152,6 @@ const alsoPartOfLabel = computed(() =>
           :release="release"
           :track-count="displayTrackCount"
           :play-count="displayPlayCount"
-          :also-part-of-label="alsoPartOfLabel"
           :co-artists="coArtists"
           :connected-artist-names="connectedArtistNames"
         />

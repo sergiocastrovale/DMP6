@@ -159,14 +159,10 @@ describe('artist/ReleaseGroupDetails.vue - box sets (docs/sync_decisions.md)', (
     expect(wrapper.text()).not.toContain('Box Set')
   })
 
-  it('shows an "Also part of" chip when the release group is reprinted by a box set (§7)', async () => {
-    const wrapper = await mountRelease({ alsoPartOf: [{ title: 'The Legacy Edition Box', year: 2008 }] })
-    expect(wrapper.text()).toContain('Also part of: The Legacy Edition Box (2008)')
-  })
-
-  it('shows no "Also part of" chip when alsoPartOf is empty/absent', async () => {
-    const wrapper = await mountRelease({})
+  it('no longer shows "Also part of" on the row - it lives in the info dialog', async () => {
+    const wrapper = await mountRelease({ alsoPartOf: [{ releaseId: 'box1', title: 'The Legacy Edition Box', year: 2008 }] })
     expect(wrapper.text()).not.toContain('Also part of')
+    expect(wrapper.text()).not.toContain('The Legacy Edition Box')
   })
 
   it('shows "N discs" inline next to type/year/tracks for a multi-disc release', async () => {

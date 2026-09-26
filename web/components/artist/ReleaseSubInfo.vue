@@ -7,7 +7,6 @@ const props = defineProps<{
   release: UnifiedRelease
   trackCount?: number | null
   playCount?: number | null
-  alsoPartOfLabel?: string | null
   coArtists?: { name: string, slug: string }[]
   connectedArtistNames?: string[]
 }>()
@@ -22,7 +21,6 @@ const simpleItems = computed(() => [
   { key: 'year', text: props.release.year ? String(props.release.year) : null },
   { key: 'trackCount', text: props.trackCount ? `${props.trackCount} tracks` : null, hiddenSm: true },
   { key: 'discCount', text: props.release.discCount && props.release.discCount > 1 ? `${props.release.discCount} discs` : null },
-  { key: 'alsoPartOfLabel', text: props.alsoPartOfLabel ? `Also part of: ${props.alsoPartOfLabel}` : null, hiddenLg: true },
   { key: 'playCount', text: props.playCount ? `${props.playCount.toLocaleString()} plays` : null },
 ].filter(item => item.text))
 </script>
@@ -31,7 +29,7 @@ const simpleItems = computed(() => [
   <div class="mt-0.5 flex items-center gap-1 text-xs text-stone-100/60">
     <template v-for="(item, i) in simpleItems" :key="item.key">
       <Bullet v-if="i > 0" class="hidden md:block" />
-      <span :class="[item.hiddenSm && 'hidden md:inline', item.hiddenLg && 'hidden truncate lg:inline']">{{ item.text }}</span>
+      <span :class="item.hiddenSm && 'hidden md:inline'">{{ item.text }}</span>
     </template>
 
     <template v-if="coArtists?.length">

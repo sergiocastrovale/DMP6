@@ -317,6 +317,17 @@ async function expandAndScrollTo(release: UnifiedRelease) {
     ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
+// An "also part of" link in the info dialog: the box's MusicBrainz release id, which is the card's own id
+// for a box that is a gap or a dissolved box, or its mbReleaseRowId for a box kept as one local release.
+async function goToReleaseById(releaseId: string) {
+  const release = props.releases.find(r => r.id === releaseId || r.localReleaseId === releaseId)
+    ?? props.releases.find(r => r.mbReleaseRowId === releaseId)
+  if (!release) {
+    return
+  }
+  await expandAndScrollTo(release)
+}
+
 async function handleReleaseDeepLink() {
   const targetSlug = route.query.release as string | undefined
   const targetId = route.query.releaseId as string | undefined
@@ -414,6 +425,8 @@ watch(() => props.releases, () => {
       :is-favorite="infoRelease ? favoriteReleases.has(favoriteTargetId(infoRelease) ?? '') : false"
       :is-acquiring="infoRelease ? acquiringIds.has(infoRelease.id) : false"
       removable
+      :artist-slug="slug"
+      @go-to-release="goToReleaseById"
       @toggle-favorite="infoRelease && toggleFavoriteRelease(infoRelease)"
       @refresh="infoRelease && refreshRelease(infoRelease)"
       @redownload="infoRelease && openRedownloadDialog(infoRelease)"
