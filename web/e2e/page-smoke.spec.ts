@@ -38,7 +38,7 @@ test.beforeAll(async () => {
         },
       },
     },
-    select: { slug: true, localReleases: { select: { localRelease: { select: { id: true, title: true, tracks: { select: { id: true } } } } } } },
+    select: { id: true, slug: true, localReleases: { select: { localRelease: { select: { id: true, title: true, tracks: { select: { id: true } } } } } } },
   })
   const trackId = artist.localReleases[0]!.localRelease.tracks[0]!.id
   artistSlug = artist.slug
@@ -56,6 +56,9 @@ test.beforeAll(async () => {
       tracks: { create: { trackId, position: 0 } },
     },
   })
+  const run = await prisma.auditRun.create({ data: {} })
+  await prisma.issueCorruptedTpe2.create({ data: { auditRunId: run.id, trackId, currentValue: 'Smoke 320kbps Garbage', proposedValue: 'Smoke Fixed Artist', confidence: 'high' } })
+  await prisma.issueOrphanArtist.create({ data: { auditRunId: run.id, artistId: artist.id, reason: 'smoke orphan reason' } })
   markReady()
 })
 
@@ -63,6 +66,8 @@ const routes = (): [string, string, RegExp][] => [
   ['playlist-detail', `/playlists/${playlistSlug}`, /Smoke Playlist/],
   ['artist-deep-link', `/artist/${artistSlug}?releaseId=${releaseId}`, new RegExp(releaseTitle)],
   ['artist-list-view', `/artist/${artistSlug}?view=list`, /Smoke Track One/],
+  ['issues-corrupted', '/issues/corrupted', /Smoke 320kbps Garbage/],
+  ['issues-orphans', '/issues/orphans', /smoke orphan reason/],
   ['timeline', '/timeline', /Timeline/],
   ['statistics', '/statistics', /Statistics/],
   ['labs-decades', '/labs/decades', /Decade/i],
@@ -71,7 +76,7 @@ const routes = (): [string, string, RegExp][] => [
   ['labs-mosaic', '/labs/mosaic', /Album Mosaic/],
 ]
 
-for (const name of ['playlist-detail', 'artist-deep-link', 'artist-list-view', 'timeline', 'statistics', 'labs-decades', 'labs-map', 'labs-network', 'labs-mosaic']) {
+for (const name of ['playlist-detail', 'artist-deep-link', 'artist-list-view', 'issues-corrupted', 'issues-orphans', 'timeline', 'statistics', 'labs-decades', 'labs-map', 'labs-network', 'labs-mosaic']) {
   test(`${name} loads without page errors`, async ({ page }) => {
     const [, path, heading] = routes().find(r => r[0] === name)!
     const problems: string[] = []
