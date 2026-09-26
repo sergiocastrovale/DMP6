@@ -79,7 +79,7 @@ invalidateCache(pattern: string): Promise<void>
 | `GET /api/releases/archive` | `releases:archive:pool` | 5 min | Pool the endpoint samples from |
 | `GET /api/app-stats` | `app-stats` | 2 min | Dashboard counters |
 | `GET /api/labs/map/countries` | `map:countries` | 24 h | Country aggregate, changes only after a sync |
-| `GET /api/timeline/decades` | `timeline:decades` | 5 min | Reads from `dmp_timeline` materialized view |
+| `GET /api/timeline/decades` | `timeline:decades` | 5 min | `GROUP BY` over `LocalRelease.year` |
 | `GET /api/timeline/[decade]` | `timeline:{decade}:y=…:p=…:l=…` | 5 min | Year filter + pagination encoded in key |
 
 Endpoints not cached (always hit the database):
@@ -105,14 +105,6 @@ When a track is played, three caches are invalidated immediately:
 | `releases:last-played:*` | `lastPlayedAt` changed on the release |
 | `stats` | `plays` counter incremented |
 | `artist:{slug}` | `totalPlayCount` incremented on the artist |
-
-### On timeline refresh - `POST /api/timeline/refresh`
-
-After `REFRESH MATERIALIZED VIEW CONCURRENTLY dmp_timeline`, all timeline keys are busted:
-
-| Pattern | Reason |
-|---------|--------|
-| `timeline:*` | Decade/year counts may have changed after index/sync |
 
 ### On artist add - `POST /api/artists/added/[mbid]`
 

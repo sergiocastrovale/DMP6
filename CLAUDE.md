@@ -164,7 +164,7 @@ NAS: `sudo docker exec dmp cat /app/data/logs/errors.log`
 
 **Subsonic** (see `docs/feature_subsonic.md`): `ALL /rest/*` — OpenSubsonic-compatible API for third-party clients (Symfonium, Amperfy, Feishin, ...), auth via per-user `apiKey` only (Settings → Subsonic, `GET/POST /api/me/api-keys`, `DELETE /api/me/api-keys/[id]`), never the session cookie or `u`/`p`/`t`. Exempted from `server/middleware/auth.ts`'s cookie check; the dispatcher (`server/routes/rest/[...path].ts`) authenticates itself and reuses `requirePermission`/`currentUserId` same as every other route.
 
-**Library**: `GET /releases/latest`, `/releases/last-played`, `/releases/archive`, `/search`, `/timeline/decades`, `/timeline/[decade]`, `POST /timeline/refresh`, `GET /genres`, `/stats`, `/stats/[type]`, `/app-stats`
+**Library**: `GET /releases/latest`, `/releases/last-played`, `/releases/archive`, `/search`, `/timeline/decades`, `/timeline/[decade]`, `/genres`, `/stats`, `/stats/[type]`, `/app-stats`
 
 **CRUD**: `/api/playlists/*`, `/api/playlist-generators/*` (admin — genre/region playlist settings, see docs/feature_generated_playlists.md), `/api/favorites/*`, `/api/auth/{login,logout,change-password,me}`, `/api/users/*` (admin), `/api/permissions/*`
 
@@ -226,7 +226,7 @@ Optional sidecar, falls through to DB silently if unavailable.
 | `/api/releases/archive` | 5 min |
 | `/api/labs/map/countries` | 24 h |
 
-Invalidated on track play (`last-played`, `stats`, `artist:{slug}`) and timeline refresh.
+Invalidated on track play (`last-played`) and on artist photo/monitor edits and `./add`.
 
 ## NAS / Deploy
 
