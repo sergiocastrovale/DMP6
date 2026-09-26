@@ -1,150 +1,21 @@
 <script setup lang="ts">
-import { playlistTrackToPlayerTrack } from '~/helpers/playerTrack'
-import { LucideListMusic, LucidePlay, LucideTrash2, LucideSparkles, LucideGlobe } from 'lucide-vue-next'
-import type { PlaylistDetail } from '~/types/playlist'
-import type { PlayerTrack } from '~/types/player'
-import { cx, layout, typography } from '~/helpers/ui'
-import { useToastStore } from '~/stores/toast'
-import { useGlobalStore } from '~/stores/global'
+import { LucideListMusic, LucideTrash2 } from 'lucide-vue-next'
+import { cx, layout } from '~/helpers/ui'
 
-const route = useRoute()
-const router = useRouter()
-const slug = route.params.slug as string
-const toast = useToastStore()
-const api = useApi()
-const global = useGlobalStore()
-
-const loading = ref(true)
-const playlist = ref<PlaylistDetail | null>(null)
-const showDeleteConfirm = ref(false)
-
-const playerStore = usePlayerStore()
-
-watch(() => playlist.value?.name, (name) => {
-  if (name) {
-    useTitle('Playlists', name)
-  }
-})
-
-const isGenrePlaylist = computed(() => playlist.value?.type === 'GENRE')
-const isRegionPlaylist = computed(() => playlist.value?.type === 'REGION')
-const isGenerated = computed(() => playlist.value?.type !== 'MANUAL')
-
-const coverImages = computed(() => {
-  if (!playlist.value) { return [] }
-  return playlist.value.tracks.slice(0, 4).map(pt => ({
-    image: pt.track.release?.image ?? null,
-    imageUrl: pt.track.release?.imageUrl ?? null,
-  }))
-})
-
-const loadPlaylist = async () => {
-  loading.value = true
-  try {
-    playlist.value = await $fetch<PlaylistDetail>(`/api/playlists/${slug}`)
-  }
-  catch (e) {
-    api.report(e, 'Could not load the playlist')
-  }
-  finally {
-    loading.value = false
-  }
-}
-
-const playAll = () => {
-  if (!playlist.value?.tracks.length) { return }
-  const tracks: PlayerTrack[] = playlist.value.tracks.map(pt => playlistTrackToPlayerTrack(pt.track))
-  playerStore.playTrack(tracks[0]!, tracks)
-}
-
-const removeTrack = async (trackId: string) => {
-  if (!playlist.value) { return }
-  if (await api.run(() => $fetch<unknown>(`/api/playlists/${slug}/tracks/${trackId}`, { method: 'DELETE' }), 'Could not remove the track')) {
-    await loadPlaylist()
-  }
-}
-
-const deletePlaylist = async () => {
-  if (!playlist.value) { return }
-  showDeleteConfirm.value = false
-  const name = playlist.value.name
-  if (await api.run(() => $fetch<unknown>(`/api/playlists/${slug}`, { method: 'DELETE' }), `Could not delete "${name}"`)) {
-    global.stats.playlists--
-    router.push('/playlists')
-  }
-}
-
-onMounted(() => loadPlaylist())
+const { loading, playlist, showDeleteConfirm, playAll, removeTrack, deletePlaylist } = usePlaylistPage(useRoute().params.slug as string)
 </script>
 
 <template>
   <div :class="cx(layout.page)">
     <UiLoadingBlock v-if="loading" />
 
-    <div v-else-if="playlist" class="flex flex-col gap-6">  
-      <div class="flex flex-col gap-6 sm:flex-row sm:items-start">
-        <div
-          class="size-48 shrink-0 overflow-hidden rounded-lg bg-stone-800"
-          :class="{ 'genre-border': isGenerated }"
-        >
-          <PlaylistBlockImageMosaic :images="coverImages" />
-        </div>
-
-        <div class="flex flex-1 flex-col gap-4">
-          <div>
-            <div class="flex items-center gap-2">
-              <p class="text-sm text-stone-100/55">Playlist</p>
-              <UiBadge v-if="isGenerated" tone="accent">
-                <LucideGlobe v-if="isRegionPlaylist" class="size-3" />
-                <LucideSparkles v-else class="size-3" />
-                Auto-generated
-              </UiBadge>
-            </div>
-            <h1 :class="typography.h1">{{ playlist.name }}</h1>
-            <p v-if="playlist.description" class="mt-2 text-base text-stone-100/60">{{ playlist.description }}</p>
-          </div>
-
-          <div class="text-sm text-stone-100/55">
-            {{ playlist.tracks.length }} {{ playlist.tracks.length === 1 ? 'track' : 'tracks' }}
-          </div>
-
-          <div class="flex items-center gap-2">
-            <UiButton v-if="playlist.tracks.length > 0" :icon="LucidePlay" @click="playAll">
-              Play All
-            </UiButton>
-            <UiButton v-if="!isGenerated" variant="secondary" :icon="LucideTrash2" @click="showDeleteConfirm = true">
-              Delete
-            </UiButton>
-            <template v-if="isGenerated">
-              <PlaylistButtonGeneratePlaylists regenerate />
-              <PlaylistGeneratedPopover
-                v-if="isGenrePlaylist"
-                title="How genre playlists work"
-                text="Each playlist groups related genres under a single theme. Tracks are pulled from your library based on MusicBrainz genre tags and update whenever you run Regenerate."
-              />
-              <PlaylistGeneratedPopover
-                v-if="isRegionPlaylist"
-                title="How region playlists work"
-                text="Each playlist groups artists by their country of origin as listed in MusicBrainz. Tracks update whenever you run Regenerate."
-              />
-            </template>
-          </div>
-        </div>
-      </div>
-
-      <ArtistsTrackTable :rows="playlist.tracks" empty-message="No tracks in this playlist yet">
-        <template v-if="!isGenerated" #action="{ row }">
-          <UiButton
-            variant="ghost"
-            size="md"
-            icon-only
-            :icon="LucideTrash2"
-            :aria-label="`Remove ${row.track.title} from playlist`"
-            @click.stop="removeTrack(row.track.id)"
-          />
-        </template>
-      </ArtistsTrackTable>
-    </div>
+    <PlaylistDetail
+      v-else-if="playlist"
+      :playlist="playlist"
+      @play="playAll"
+      @delete="showDeleteConfirm = true"
+      @remove-track="removeTrack"
+    />
 
     <UiEmptyState v-else :icon="LucideListMusic" message="Playlist not found">
       <template #action>
