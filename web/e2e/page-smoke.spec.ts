@@ -87,3 +87,30 @@ for (const name of ['playlist-detail', 'timeline', 'statistics', 'labs-decades',
     expect(problems).toEqual([])
   })
 }
+
+// The world map end to end with stubbed data: a country with cover art gets its mosaic as a fill, and clicking it
+// opens the artists list. (No image files exist in the test database, so the cover requests are answered by a stub.)
+const RED_PIXEL = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+
+test('the world map paints a country with its covers and opens its artists on click', async ({ page }) => {
+  await page.route('**/api/labs/map/countries', route => route.fulfill({
+    json: { PT: { name: 'Portugal', count: 2, images: [{ image: 'cover-a.png', imageUrl: null }, { image: 'cover-b.png', imageUrl: null }] } },
+  }))
+  await page.route('**/img/releases/cover-*.png', route => route.fulfill({ contentType: 'image/png', body: RED_PIXEL }))
+  await page.route('**/api/labs/map/artists**', route => route.fulfill({
+    json: { items: [{ id: 'a1', name: 'Map Artist One', slug: 'map-artist-one', image: null, imageUrl: null }], total: 1, page: 1, pageSize: 50, hasMore: false },
+  }))
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  // Navigate client-side: on a full page load useFetch would use the server-rendered payload and never ask the stub.
+  await page.goto('/labs')
+  await waitForHydration(page)
+  await page.evaluate(() => (window as unknown as { useNuxtApp: () => { $router: { push: (to: string) => void } } }).useNuxtApp().$router.push('/labs/map'))
+
+  const filled = page.locator('path[fill="url(#pat-PT)"]')
+  await expect(filled).toHaveCount(1, { timeout: 15_000 })
+  await expect(page.getByText('Showing 2 artists from 1 countries')).toBeVisible()
+
+  await filled.dispatchEvent('click')
+  await expect(page.getByRole('dialog')).toContainText('Portugal (2)')
+  await expect(page.getByRole('dialog')).toContainText('Map Artist One')
+})
