@@ -44,12 +44,13 @@ export const usePlayerActions = () => {
   async function loadPlaylists() {
     try {
       const [all, slugs] = await Promise.all([
-        $fetch<any[]>('/api/playlists'),
+        $fetch<any[]>('/api/playlists', { query: { type: 'manual' } }),
         player.currentTrack
           ? $fetch<string[]>(`/api/tracks/${player.currentTrack.id}/playlists`)
           : Promise.resolve([]),
       ])
-      playlists.value = all.filter((p: any) => p.type === 'MANUAL')
+      // Only the user's own playlists can take a track; the server skips the generated ones (and their cover joins).
+      playlists.value = all
       trackPlaylistSlugs.value = new Set(slugs)
     }
     catch (error) {

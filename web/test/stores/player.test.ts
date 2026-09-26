@@ -466,6 +466,19 @@ describe('usePlayerStore', () => {
     expect(store.isVisible).toBe(false)
   })
 
+  it('persists a replaced queue and explorer params without a deep watch', async () => {
+    vi.useFakeTimers()
+    const store = usePlayerStore()
+    const tracks = ['a', 'b', 'c'].map(id => track({ id }))
+    store.setQueue(tracks, tracks[0])
+    await vi.advanceTimersByTimeAsync(600)
+    expect(JSON.parse(localStorage.getItem('dmp-player')!).queue.map((t: { id: string }) => t.id)).toEqual(['a', 'b', 'c'])
+    await store.cycleShuffleMode()
+    await vi.advanceTimersByTimeAsync(600)
+    expect(JSON.parse(localStorage.getItem('dmp-player')!).shuffleMode).not.toBe('off')
+    vi.useRealTimers()
+  })
+
   it('persists volume/mute/shuffleMode/queue to localStorage on the next tick (debounced)', async () => {
     vi.useFakeTimers()
     const store = usePlayerStore()

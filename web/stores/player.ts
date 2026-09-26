@@ -504,7 +504,10 @@ export const usePlayerStore = defineStore('player', () => {
       localStorage.setItem('dmp-player', JSON.stringify(buildPersistedState()))
     }, 5000)
 
-    watch([currentTrack, volume, isMuted, shuffleMode, queue, explorerParams], saveState, { deep: true })
+    // Shallow on purpose: every field here is replaced, never mutated (the queue is reassigned by setQueue/
+    // playPlaylist/shuffle, explorerParams by the explorer actions). A deep watch would walk a 2000-track queue on
+    // every change.
+    watch([currentTrack, volume, isMuted, shuffleMode, queue, explorerParams], saveState)
     watch(currentTime, savePosition)
   }
 
