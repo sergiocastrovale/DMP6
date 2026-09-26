@@ -102,11 +102,11 @@ The TrueNAS Postgres app (`ix-postgres-postgres-1`, Postgres 18, data in `/mnt/S
 `shared_preload_libraries = 'pg_stat_statements'` and `log_min_duration_statement = 500` (ms), set with `ALTER SYSTEM`, so they live
 in `postgresql.auto.conf` in the data directory and survive the container being recreated. The extension was created in the `dmp`
 database with `CREATE EXTENSION pg_stat_statements` (a rebuilt or restored database needs the same one-liner; the preload only
-takes effect after a Postgres restart). A copy of the previous auto.conf sits beside it as `postgresql.auto.conf.bak-d7`.
+takes effect after a Postgres restart).
 
 - **What is slow:** `scripts/sql/top_queries.sql` (read-only) lists the 20 statements with the most total time and the 20 slowest on average.
 - **The log:** anything over 500 ms is in `sudo docker logs ix-postgres-postgres-1`; the web app additionally logs its own slow queries (`SLOW_QUERY_MS`, `web/server/utils/slowQuery.ts`).
-- **Undo:** `ALTER SYSTEM RESET shared_preload_libraries; ALTER SYSTEM RESET log_min_duration_statement;` then restart the container. If Postgres ever fails to start after a change here, restore the `.bak-d7` file over `postgresql.auto.conf`.
+- **Undo:** `ALTER SYSTEM RESET shared_preload_libraries; ALTER SYSTEM RESET log_min_duration_statement;` then restart the container. If Postgres ever fails to start after a change here, delete the two lines this section added from `postgresql.auto.conf` (it is in the data directory, `/mnt/SSD/postgres/18/docker/`) and start it again.
 
 For first-time NAS setup (storage, SSH key, NAS `.env`) see [docs/truenas.md](truenas.md).
 
