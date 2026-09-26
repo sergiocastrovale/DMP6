@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { playlistTrackToPlayerTrack } from '~/helpers/playerTrack'
 import { LucideListMusic, LucidePlay, LucideTrash2, LucideSparkles, LucideGlobe } from 'lucide-vue-next'
 import type { PlaylistDetail } from '~/types/playlist'
 import type { PlayerTrack } from '~/types/player'
@@ -52,17 +53,7 @@ const loadPlaylist = async () => {
 
 const playAll = () => {
   if (!playlist.value?.tracks.length) { return }
-  const tracks: PlayerTrack[] = playlist.value.tracks.map(pt => ({
-    id: pt.track.id,
-    title: pt.track.title,
-    artist: pt.track.release?.artist?.name ?? '',
-    album: pt.track.release?.title ?? '',
-    duration: pt.track.duration ?? 0,
-    artistSlug: pt.track.release?.artist?.slug ?? null,
-    releaseImage: pt.track.release?.image ?? null,
-    releaseImageUrl: pt.track.release?.imageUrl ?? null,
-    localReleaseId: pt.track.release?.id ?? null,
-  }))
+  const tracks: PlayerTrack[] = playlist.value.tracks.map(pt => playlistTrackToPlayerTrack(pt.track))
   playerStore.playTrack(tracks[0]!, tracks)
 }
 

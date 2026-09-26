@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { toPlayerTrack } from '~/helpers/playerTrack'
 import type { ReleaseTracksResponse, Track } from '~/types/track'
 import type { TrackListColumn } from '~/types/ui'
 import { usePlayerStore } from '~/stores/player'
@@ -29,17 +30,7 @@ const buildPlayerTracks = (allTracks: Track[], startTrack: Track) => {
 
   const playerTracks = allTracks
     .filter(t => !t.missing)
-    .map(t => ({
-      id: t.id,
-      title: t.title || 'Unknown',
-      artist: t.artist || 'Unknown',
-      album: t.album || 'Unknown',
-      duration: t.duration || 0,
-      artistSlug: release?.artistSlug || null,
-      releaseImage: release?.image || null,
-      releaseImageUrl: release?.imageUrl || null,
-      localReleaseId: t.localReleaseId,
-    }))
+    .map(t => toPlayerTrack(t, { artistSlug: release?.artistSlug, releaseImage: release?.image, releaseImageUrl: release?.imageUrl }))
   const start = playerTracks.find(pt => pt.id === startTrack.id)
   player.setQueue(playerTracks, start)
 }

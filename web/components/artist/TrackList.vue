@@ -6,6 +6,7 @@ import type { TrackListColumn } from '~/types/ui'
 import { usePlayerStore } from '~/stores/player'
 import { useGlobalStore } from '~/stores/global'
 import { formatDuration } from '~/helpers/functions'
+import { toPlayerTrack } from '~/helpers/playerTrack'
 import { cx, surface } from '~/helpers/ui'
 
 const props = withDefaults(defineProps<{
@@ -67,17 +68,7 @@ const playTrack = (track: Track) => {
   }
   const playerTracks = props.tracks.map((t) => {
     const release = props.releaseMap?.[t.localReleaseId || '']
-    return {
-      id: t.id,
-      title: t.title || 'Unknown',
-      artist: t.artist || 'Unknown',
-      album: t.album || 'Unknown',
-      duration: t.duration || 0,
-      artistSlug: null,
-      releaseImage: release?.image ?? null,
-      releaseImageUrl: release?.imageUrl ?? null,
-      localReleaseId: t.localReleaseId,
-    }
+    return toPlayerTrack(t, { releaseImage: release?.image, releaseImageUrl: release?.imageUrl })
   })
   const startTrack = playerTracks.find(t => t.id === track.id)
   player.setQueue(playerTracks, startTrack)

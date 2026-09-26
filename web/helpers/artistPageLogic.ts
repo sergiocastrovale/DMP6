@@ -4,6 +4,7 @@ import type { UnifiedRelease } from '~/types/release'
 import type { DownloadedReleaseStatus, DlStatusValue, DlInFlightItem } from '~/types/download'
 import type { PlayerTrack } from '~/types/player'
 import type { Track } from '~/types/track'
+import { toPlayerTrack } from '~/helpers/playerTrack'
 
 // Attach live download status onto the release it belongs to. The LocalRelease is checked first:
 // several cards can share one mbReleaseRowId (duplicate folder copies, or disc halves not yet
@@ -182,17 +183,7 @@ export const connectedArtistNames = (releases: UnifiedRelease[]): string[] =>
 export const tracksToPlayerTracks = (tracks: Track[], artistSlug: string): PlayerTrack[] =>
   tracks
     .filter(t => !t.missing)
-    .map(t => ({
-      id: t.id,
-      title: t.title || 'Unknown',
-      artist: t.artist || 'Unknown',
-      album: t.album || 'Unknown',
-      duration: t.duration || 0,
-      artistSlug,
-      releaseImage: null,
-      releaseImageUrl: null,
-      localReleaseId: t.localReleaseId,
-    }))
+    .map(t => toPlayerTrack(t, { artistSlug }))
 
 // Whether the URL's ?view already says `mode` - list mode is `view=list`, catalogue mode is no `view` at all.
 export const viewQueryMatches = (current: unknown, mode: 'catalogue' | 'list'): boolean =>

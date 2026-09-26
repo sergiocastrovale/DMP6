@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { useDebounceFn, useThrottleFn } from '@vueuse/core'
 import type { PlayerTrack, ShuffleMode, ExploreParams, PersistedPlayerState, MediaSessionTrackMeta, PlaySource } from '~/types/player'
+import { toPlayerTrack } from '~/helpers/playerTrack'
 import { apiErrorMessage } from '~/helpers/apiError'
 import { MAX_CONSECUTIVE_PLAYBACK_ERRORS } from '~/helpers/constants'
 import { EXPLORER_SESSION_HISTORY_CAP, nextIndexWrap, playbackErrorAction, pushCapped, QUEUE_PERSIST_CAP, shouldScrobble, shuffleArray, sliceForPersist, unshiftCapped } from '~/helpers/playerLogic'
@@ -348,17 +349,7 @@ export const usePlayerStore = defineStore('player', () => {
     const res = await $fetch<{ release: { image: string | null, imageUrl: string | null, artistSlug: string } | null, tracks: any[] }>(`/api/releases/${localReleaseId}/tracks`)
     return res.tracks
       .filter(t => !t.missing)
-      .map(t => ({
-        id: t.id,
-        title: t.title,
-        artist: t.artist ?? t.albumArtist ?? '',
-        album: t.album ?? '',
-        duration: t.duration ?? 0,
-        artistSlug: res.release?.artistSlug || null,
-        releaseImage: res.release?.image ?? null,
-        releaseImageUrl: res.release?.imageUrl ?? null,
-        localReleaseId: t.localReleaseId,
-      }))
+      .map(t => toPlayerTrack(t, { artistSlug: res.release?.artistSlug, releaseImage: res.release?.image, releaseImageUrl: res.release?.imageUrl }))
   }
 
   async function cycleShuffleMode() {

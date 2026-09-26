@@ -14,6 +14,7 @@
 </template>
 
 <script setup lang="ts">
+import { playlistTrackToPlayerTrack } from '~/helpers/playerTrack'
 import type { PlaylistSummary } from '~/types/playlist'
 import type { PlayerTrack } from '~/types/player'
 
@@ -30,17 +31,7 @@ const handleClick = () => isCurrent.value ? playerStore.togglePlay() : play()
 async function play() {
   try {
     const data = await $fetch<any>(`/api/playlists/${props.playlist.slug}`)
-    const tracks: PlayerTrack[] = (data.tracks || []).map((pt: any) => ({
-      id: pt.track.id,
-      title: pt.track.title || 'Unknown',
-      artist: pt.track.release?.artist?.name || 'Unknown',
-      album: pt.track.release?.title || 'Unknown',
-      duration: pt.track.duration || 0,
-      artistSlug: pt.track.release?.artist?.slug || null,
-      releaseImage: pt.track.release?.image || null,
-      releaseImageUrl: pt.track.release?.imageUrl || null,
-      localReleaseId: pt.track.release?.id || null,
-    }))
+    const tracks: PlayerTrack[] = (data.tracks || []).map((pt: any) => playlistTrackToPlayerTrack(pt.track))
     playerStore.playPlaylist(props.playlist.slug, tracks)
   }
   catch (e) {

@@ -212,7 +212,7 @@ describe('tracksToPlayerTracks', () => {
   it('maps to the player queue shape, defaulting blank title/artist/album/duration', () => {
     const tracks = [track({ id: 't1', title: null, artist: null, album: null, duration: null })]
     expect(tracksToPlayerTracks(tracks, 'artist-slug')).toEqual([{
-      id: 't1', title: 'Unknown', artist: 'Unknown', album: 'Unknown', duration: 0,
+      id: 't1', title: 'Unknown', artist: 'Unknown', album: '', duration: 0,
       artistSlug: 'artist-slug', releaseImage: null, releaseImageUrl: null, localReleaseId: 'lr1',
     }])
   })

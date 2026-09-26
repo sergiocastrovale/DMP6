@@ -1,5 +1,6 @@
 import { usePlayerStore } from '~/stores/player'
 import type { PlayerTrack } from '~/types/player'
+import { toPlayerTrack } from '~/helpers/playerTrack'
 
 export const usePlayRelease = () => {
   const player = usePlayerStore()
@@ -10,17 +11,8 @@ export const usePlayRelease = () => {
     if (!data) { return }
     const playable = data?.tracks?.filter((t: any) => !t.missing) ?? []
     if (!playable.length) { return }
-    const playerTracks: PlayerTrack[] = playable.map((t: any) => ({
-      id: t.id,
-      title: t.title || 'Unknown',
-      artist: t.artist || 'Unknown',
-      album: t.album || data.release?.title || '',
-      duration: t.duration || 0,
-      artistSlug: artistSlug ?? data.release?.artistSlug ?? null,
-      releaseImage: data.release?.image || null,
-      releaseImageUrl: data.release?.imageUrl || null,
-      localReleaseId: t.localReleaseId,
-    }))
+    const context = { artistSlug: artistSlug ?? data.release?.artistSlug, album: data.release?.title, releaseImage: data.release?.image, releaseImageUrl: data.release?.imageUrl }
+    const playerTracks: PlayerTrack[] = playable.map((t: any) => toPlayerTrack(t, context))
     player.setQueue(playerTracks, playerTracks[0])
   }
 

@@ -7,6 +7,7 @@ import { useTerminalStore } from '~/stores/terminal'
 import { useToastStore } from '~/stores/toast'
 import { useGlobalStore } from '~/stores/global'
 import { scanSessionName } from '~/helpers/functions'
+import { toPlayerTrack } from '~/helpers/playerTrack'
 import { acquireFailureMessage, actionReleaseIds, favoriteTargetId, findBundleParentRelease, viewQueryMatches } from '~/helpers/artistPageLogic'
 import type { useArtistCatalogue } from '~/composables/useArtistCatalogue'
 
@@ -270,17 +271,7 @@ async function loadAllTracks() {
 }
 
 function buildPlayerTracks(tracks: Track[], startTrack: Track) {
-  const playerTracks = tracks.map(t => ({
-    id: t.id,
-    title: t.title || 'Unknown',
-    artist: t.artist || 'Unknown',
-    album: t.album || 'Unknown',
-    duration: t.duration || 0,
-    artistSlug: props.slug,
-    releaseImage: null as string | null,
-    releaseImageUrl: null as string | null,
-    localReleaseId: t.localReleaseId,
-  }))
+  const playerTracks = tracks.map(t => toPlayerTrack(t, { artistSlug: props.slug }))
   const start = playerTracks.find(pt => pt.id === startTrack.id)
   player.setQueue(playerTracks, start)
 }
