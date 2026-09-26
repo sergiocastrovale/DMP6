@@ -12,10 +12,3 @@ export interface PlaylistGeneratorRow {
   trackCount: number | null
   generatedAt: string | null
 }
-
-export interface PlaylistGeneratorInput {
-  type: PlaylistGeneratorType
-  name: string
-  description?: string | null
-  terms: string[]
-}

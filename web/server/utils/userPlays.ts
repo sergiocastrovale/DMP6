@@ -45,7 +45,6 @@ export interface ReleasePlayStats {
   lastPlayedAt: Date | null
 }
 
-const EMPTY_RELEASE_PLAY: ReleasePlayStats = { totalPlayCount: 0, lastPlayedAt: null }
 
 export const releasePlayTotals = async (userId: number, releaseIds: string[]): Promise<Map<string, ReleasePlayStats>> => {
   if (releaseIds.length === 0) {return new Map()}
@@ -60,11 +59,6 @@ export const releasePlayTotals = async (userId: number, releaseIds: string[]): P
   `
   return new Map(rows.map(r => [r.localReleaseId, { totalPlayCount: Number(r.totalPlayCount), lastPlayedAt: r.lastPlayedAt }]))
 }
-
-export const withReleasePlay = <T extends { id: string }>(row: T, plays: Map<string, ReleasePlayStats>): T & ReleasePlayStats => ({
-  ...row,
-  ...(plays.get(row.id) ?? EMPTY_RELEASE_PLAY),
-})
 
 // Credits every owning artist (LocalReleaseArtist), same as the old per-owner increment on play.
 export const artistPlayTotals = async (userId: number, artistIds: string[]): Promise<Map<string, number>> => {

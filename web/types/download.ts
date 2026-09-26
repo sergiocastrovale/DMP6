@@ -48,8 +48,6 @@ export interface MergeProgressEntry {
   destPath?: string
 }
 
-export type MergeProgressMap = Record<string, { step: MergeStep, title: string }>
-
 export interface ResolvedDownloadSettings {
   slskdUrl: string
   slskdApiKey: string
@@ -61,13 +59,6 @@ export interface ResolvedDownloadSettings {
   autoMergeDownloads: boolean
   flacToMp3: boolean
   flacToMp3Bitrate: number
-}
-
-export interface MatchableRelease {
-  id: string
-  title: string
-  year: number | null
-  releaseGroupId: string | null
 }
 
 // The album target for a background/manual acquisition pick (autoDownload.ts, acquire.post.ts).

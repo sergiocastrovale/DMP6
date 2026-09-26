@@ -7,6 +7,7 @@ import { trackPlaysByIds } from '~/server/utils/userPlays'
 import { favoriteTrackDates } from '~/server/utils/favorites'
 import { SONG_SELECT } from '~/server/utils/subsonic/select'
 import { toSong } from '~/server/utils/subsonic/mappers'
+import { playlistCoverArt } from '~/server/utils/subsonic/ids'
 import { SubsonicApiError, SubsonicErrorCode } from '~/server/utils/subsonic/errors'
 import type { XmlObject } from '~/server/utils/subsonic/xml'
 import type { HandlerContext } from '~/server/utils/subsonic/types'
@@ -38,6 +39,8 @@ export const getPlaylists = async (_event: H3Event, ctx: HandlerContext): Promis
         name: p.name,
         comment: p.description ?? undefined,
         songCount: p._count.tracks,
+        // getCoverArt serves a playlist's first track's cover; an empty playlist has none to offer.
+        coverArt: p._count.tracks > 0 ? playlistCoverArt(p.id) : undefined,
         duration: durations.get(p.id) ?? 0,
         createdDate: p.createdAt.toISOString(),
         changed: p.updatedAt.toISOString(),
@@ -76,6 +79,7 @@ const loadPlaylistPayload = async (userId: number, id: string): Promise<XmlObjec
       name: playlist.name,
       comment: playlist.description ?? undefined,
       songCount: playlist._count.tracks,
+      coverArt: playlist._count.tracks > 0 ? playlistCoverArt(playlist.id) : undefined,
       duration,
       createdDate: playlist.createdAt.toISOString(),
       changed: playlist.updatedAt.toISOString(),

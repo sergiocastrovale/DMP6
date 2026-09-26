@@ -14,7 +14,6 @@ import {
   formatFileSize,
   formatNumber,
   formatPlaytime,
-  formatSpeed,
   isAbortError,
   musicBrainzUrl,
   pageCount,
@@ -340,20 +339,6 @@ describe('formatFileSize', () => {
 
   it('drops the decimal once the value reaches 10', () => {
     expect(formatFileSize(15 * 1024)).toBe('15 KB')
-  })
-})
-
-describe('formatSpeed', () => {
-  it('returns empty string for falsy input', () => {
-    expect(formatSpeed(0)).toBe('')
-  })
-
-  it('uses KB/s under 1 MiB/s', () => {
-    expect(formatSpeed(512 * 1024)).toBe('512 KB/s')
-  })
-
-  it('uses MB/s at or above 1 MiB/s', () => {
-    expect(formatSpeed(2 * 1_048_576)).toBe('2.0 MB/s')
   })
 })
 

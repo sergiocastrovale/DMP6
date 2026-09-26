@@ -62,6 +62,20 @@ describe('Subsonic playlist endpoints (real Postgres)', () => {
     expect(names).not.toContain('Bobs')
   })
 
+  it('advertises cover art for a playlist that has tracks, and none for an empty one', async () => {
+    const alice = await makeUser(prisma)
+    const track = await makeLocalTrack(prisma)
+    const full = await createPlaylist(NO_EVENT, ctxFor(alice, { name: 'Full', songId: [track.id] }))
+    const empty = await createPlaylist(NO_EVENT, ctxFor(alice, { name: 'Empty' }))
+
+    expect((full.playlist as any).coverArt).toBe(`pl-${(full.playlist as any).id}`)
+    expect((empty.playlist as any).coverArt).toBeUndefined()
+
+    const listed = (await getPlaylists(NO_EVENT, ctxFor(alice)).then(r => (r.playlists as any).playlist)) as any[]
+    expect(listed.find(p => p.name === 'Full').coverArt).toBe(`pl-${(full.playlist as any).id}`)
+    expect(listed.find(p => p.name === 'Empty').coverArt).toBeUndefined()
+  })
+
   it('getPlaylist 404s for another user\'s private playlist', async () => {
     const alice = await makeUser(prisma)
     const bob = await makeUser(prisma)

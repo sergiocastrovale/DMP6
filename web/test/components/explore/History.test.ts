@@ -2,7 +2,6 @@ import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { describe, expect, it } from 'vitest'
 import History from '../../../components/explore/History.vue'
 import { EXPLORE_HISTORY_PAGE_SIZE } from '../../../helpers/constants'
-import type { TestButtons } from '../../../types/common'
 
 const tracks = (count: number) => Array.from({ length: count }, (_, i) => ({
   id: `t${i}`, title: `Track ${i}`, artist: 'Artist', album: 'Album', duration: 200,

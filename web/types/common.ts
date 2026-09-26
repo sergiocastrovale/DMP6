@@ -54,13 +54,3 @@ export interface SseEvent {
   event: string
   data: string
 }
-
-// Fixture row shape for test/components/DataTable.test.ts.
-export interface DataTableTestArtist {
-  id: string
-  name: string
-  releases: number
-}
-
-// test/components/explore/History.test.ts helper alias.
-export type TestButtons = import('@vue/test-utils').DOMWrapper<HTMLButtonElement>[]

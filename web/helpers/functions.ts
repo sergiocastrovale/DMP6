@@ -186,12 +186,6 @@ export const formatFileSize = (bytes: number): string => {
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[i]}`
 }
 
-export const formatSpeed = (bytesPerSec: number): string => {
-  if (!bytesPerSec) { return '' }
-  if (bytesPerSec >= 1_048_576) { return `${(bytesPerSec / 1_048_576).toFixed(1)} MB/s` }
-  return `${(bytesPerSec / 1024).toFixed(0)} KB/s`
-}
-
 // Number of pages needed to show `total` items `size` at a time. Always at least 1, so an empty
 // list still has a valid page 0 to render.
 export const pageCount = (total: number, size: number): number =>

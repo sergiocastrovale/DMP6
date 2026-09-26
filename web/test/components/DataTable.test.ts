@@ -2,10 +2,16 @@ import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { describe, expect, it, vi } from 'vitest'
 import DataTable from '../../components/DataTable.vue'
 import type { DataTableColumn } from '../../types/ui'
-import type { DataTableTestArtist } from '../../types/common'
 
 const { navigateToMock } = vi.hoisted(() => ({ navigateToMock: vi.fn() }))
 mockNuxtImport('navigateTo', () => navigateToMock)
+
+// Fixture row shape for these tests.
+interface DataTableTestArtist {
+  id: string
+  name: string
+  releases: number
+}
 
 const ROWS: DataTableTestArtist[] = [
   { id: 'a', name: 'Radiohead', releases: 12 },
