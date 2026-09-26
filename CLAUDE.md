@@ -178,7 +178,7 @@ NAS: `sudo docker exec dmp cat /app/data/logs/errors.log`
 
 **Scrobble**: `/api/scrobble/connect`, `/callback`, `POST /now-playing`, `/scrobble`
 
-**Labs**: `GET /labs/map/countries` (24h cache), `/labs/map/artists`, `/labs/genome/artists`, `/genome/graph`, `/network/graph`, `/decades/stats`, `/api/labs/mosaic/*`
+**Labs**: `GET /labs/map/countries` (24h cache), `/labs/map/artists`, `/network/graph`, `/decades/stats`, `/api/labs/mosaic/*`
 
 **Ops**: `POST /api/terminal/run` (SSE, tmux), `/terminal/{stop,reconnect,unlock}`, `GET /terminal/sessions` (live reconnectable tmux sessions, backs auto-reconnect), `GET /scan/status`, `POST /scan/unlock`, `GET /api/health`
 
@@ -197,7 +197,7 @@ NAS: `sudo docker exec dmp cat /app/data/logs/errors.log`
 | `/timeline` | Browse by decade/year |
 | `/statistics` (+18 subpages) | Stats dashboard |
 | `/downloads` (+5 subpages) | Queue shell: monitoring, merge, queue (`?filter=`), history, events |
-| `/labs` (+5 subpages) | map, genome, mosaic, network, decades |
+| `/labs` (+4 subpages) | map, mosaic, network, decades |
 | `/issues`, `/issues/<type>` (7), `/issues/history` | Metadata issue review/fix/undo |
 | `/settings/*` (8) | api-keys, downloads, library, monitoring, permissions, scrobble, storage, users |
 | `/change-password`, `/login` | Auth |

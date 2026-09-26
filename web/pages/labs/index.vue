@@ -30,13 +30,6 @@ const labs = computed<Lab[]>(() => [
     tone: 'success',
   },
   {
-    to: '/labs/genome',
-    title: 'Genre Genome',
-    description: 'A force graph of the genres in the catalogue. Nodes scale with artist count, edges thicken with the number of artists two genres share.',
-    maturity: 'Beta',
-    tone: 'accent',
-  },
-  {
     to: '/labs/decades',
     title: 'Decade DNA',
     description: 'Radar profiles per decade across releases, tracks, artists, length and bitrate - normalised to the strongest decade on each axis.',

@@ -71,6 +71,11 @@ export default defineNuxtConfig({
 
   css: ['~/assets/css/main.css'],
 
+  // The Genre Genome lab was removed (its pairwise genre-overlap graph blocked the server); keep old links working.
+  routeRules: {
+    '/labs/genome': { redirect: '/labs' },
+  },
+
   runtimeConfig: {
     musicDir: process.env.MUSIC_DIR || '',
     imageDir: process.env.IMAGE_DIR || './public/img',

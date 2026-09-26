@@ -17,10 +17,10 @@ describe('ui/Card.vue', () => {
 
   it('renders an icon tile and subtitle when icon is set', async () => {
     const wrapper = await mountSuspended(Card, {
-      props: { title: 'Genre Genome', subtitle: 'Genre relationships via shared artists', icon: Dna },
+      props: { title: 'Library', subtitle: 'Totals across the catalogue', icon: Dna },
     })
     expect(wrapper.findComponent(Dna).exists()).toBe(true)
-    expect(wrapper.text()).toContain('Genre relationships via shared artists')
+    expect(wrapper.text()).toContain('Totals across the catalogue')
     expect(wrapper.get('h2').classes()).not.toContain('uppercase')
   })
 

@@ -23,30 +23,6 @@ export interface MosaicProgress {
   total: number
 }
 
-export interface GenomeNode {
-  id: string
-  name: string
-  artistCount: number
-}
-
-export interface GenomeLink {
-  source: string
-  target: string
-  weight: number
-}
-
-export interface GenomeGraph {
-  nodes: GenomeNode[]
-  links: GenomeLink[]
-}
-
-// d3-force simulation shapes for pages/labs/genome.vue - the API's GenomeNode/GenomeLink plus the
-// mutable x/y/vx/vy/index fields d3 attaches during simulation (SimulationNodeDatum/SimulationLinkDatum).
-export interface GenomeGraphNode extends GenomeNode, SimulationNodeDatum {}
-export interface GenomeGraphLink extends SimulationLinkDatum<GenomeGraphNode> {
-  weight: number
-}
-
 export interface NetworkNode {
   id: string
   name: string
@@ -67,7 +43,8 @@ export interface NetworkGraph {
   links: NetworkLink[]
 }
 
-// d3-force simulation shapes for pages/labs/network.vue - see GenomeGraphNode/GenomeGraphLink above.
+// d3-force simulation shapes for pages/labs/network.vue - the API's NetworkNode/NetworkLink plus the mutable
+// x/y/vx/vy/index fields d3 attaches during simulation (SimulationNodeDatum/SimulationLinkDatum).
 export interface NetworkGraphNode extends NetworkNode, SimulationNodeDatum {}
 export interface NetworkGraphLink extends SimulationLinkDatum<NetworkGraphNode> {
   sharedTracks: number

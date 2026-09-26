@@ -19,12 +19,12 @@ describe('pages/labs/index.vue', () => {
     expect(text).toContain('Experimental')
   })
 
-  it('lists the five experiments', async () => {
+  it('lists the four experiments', async () => {
     const { wrapper } = await mountLabs()
-    for (const title of ['Album Mosaic', 'World Map', 'Genre Genome', 'Decade DNA', 'Artist Network']) {
+    for (const title of ['Album Mosaic', 'World Map', 'Decade DNA', 'Artist Network']) {
       expect(wrapper.text()).toContain(title)
     }
-    expect(wrapper.findAll('a')).toHaveLength(5)
+    expect(wrapper.findAll('a')).toHaveLength(4)
   })
 
   it('quotes the live library size in the mosaic description', async () => {
