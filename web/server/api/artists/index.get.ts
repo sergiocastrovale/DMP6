@@ -1,7 +1,7 @@
 import { prisma } from '~/server/utils/prisma'
 import { cachedResponse } from '~/server/utils/cache'
 import { verifyImage, primeImageExistence } from '~/server/utils/images'
-import { parsePagination } from '~/server/utils/pagination'
+import { paged, parsePagination } from '~/server/utils/pagination'
 import { withReleaseCounts } from '~/server/utils/artistReleaseStats'
 import { artistListWhere, rankedArtistPage, releaseCountsByArtist, type ArtistListFilters } from '~/server/utils/artistList'
 import { resolveSortDirection } from '~/helpers/browseSort'
@@ -69,14 +69,7 @@ export default defineEventHandler(async (event) => {
       totalPlayCount: playTotals.get(a.id) ?? 0,
     }))
 
-    return {
-      items,
-      total: ranked.total,
-      mainCount: stats?.mainArtists ?? 0,
-      page,
-      pageSize,
-      hasMore: page * pageSize < ranked.total,
-    }
+    return paged(items, ranked.total, { page, pageSize, skip: (page - 1) * pageSize }, { mainCount: stats?.mainArtists ?? 0 })
   }
 
   // Sorted so two requests with the same genres in a different order share one cache entry.
@@ -127,14 +120,7 @@ export default defineEventHandler(async (event) => {
       ...verifyImage(a.image, a.imageUrl, 'artists'),
     }))
 
-    return {
-      items: verifiedItems,
-      total,
-      mainCount: stats?.mainArtists ?? 0,
-      page,
-      pageSize,
-      hasMore: page * pageSize < total,
-    }
+    return paged(verifiedItems, total, { page, pageSize, skip: (page - 1) * pageSize }, { mainCount: stats?.mainArtists ?? 0 })
   }, { shared: true })
 
   // Per-user, so attached after the shared cache rather than baked into it (its Redis entry is

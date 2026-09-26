@@ -1,5 +1,5 @@
 import { prisma } from '~/server/utils/prisma'
-import { parsePagination } from '~/server/utils/pagination'
+import { paged, parsePagination } from '~/server/utils/pagination'
 import { requirePermission } from '~/server/utils/permissions'
 
 const VALID_TYPES = ['corrupted', 'missing'] as const
@@ -33,7 +33,7 @@ export default defineEventHandler(async (event) => {
       prisma.fixHistory.count({ where }),
     ])
 
-    return { items, total, page: p, pageSize: ps, hasMore: skip + ps < total }
+    return paged(items, total, { page: p, pageSize: ps, skip })
   }
 
   const count = await prisma.fixHistory.count({ where: { revertedAt: null } })

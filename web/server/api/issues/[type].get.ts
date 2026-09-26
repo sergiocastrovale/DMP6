@@ -1,5 +1,5 @@
 import { prisma } from '~/server/utils/prisma'
-import { parsePagination } from '~/server/utils/pagination'
+import { paged, parsePagination } from '~/server/utils/pagination'
 import { requirePermission } from '~/server/utils/permissions'
 import type { PaginatedResponse } from '~/types/api'
 import type { IssueType } from '~/types/issues'
@@ -45,13 +45,7 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  return {
-    items,
-    total,
-    page: p,
-    pageSize: ps,
-    hasMore: skip + ps < total,
-  } satisfies PaginatedResponse<unknown>
+  return paged(items as unknown[], total, { page: p, pageSize: ps, skip }) satisfies PaginatedResponse<unknown>
 })
 
 async function fetchType(

@@ -1,5 +1,6 @@
 import { prisma } from '~/server/utils/prisma'
 import { cachedResponse } from '~/server/utils/cache'
+import { paged, parsePagination } from '~/server/utils/pagination'
 import { RELEASE_TILE_SELECT_NO_GENRE, toReleaseTile } from '~/server/utils/releaseTiles'
 
 export default defineEventHandler(async (event) => {
@@ -18,12 +19,10 @@ export default defineEventHandler(async (event) => {
   }
 
   const year = query.year ? parseInt(query.year as string, 10) : null
-  const page = Math.max(1, parseInt(query.page as string, 10) || 1)
-  const limit = Math.min(parseInt(query.limit as string, 10) || 50, 100)
-  const cacheKey = `timeline:${decade}:y=${year ?? ''}:p=${page}:l=${limit}`
+  const { page, pageSize, skip } = parsePagination(query, { defaultSize: 50, maxSize: 100 })
+  const cacheKey = `timeline:${decade}:y=${year ?? ''}:p=${page}:l=${pageSize}`
 
   return cachedResponse(cacheKey, 300, async () => {
-    const skip = (page - 1) * limit
     const yearStart = year ?? decade
     const yearEnd = year ? year + 1 : decade + 10
 
@@ -33,7 +32,7 @@ export default defineEventHandler(async (event) => {
       prisma.localRelease.findMany({
         where,
         skip,
-        take: limit,
+        take: pageSize,
         orderBy: [{ year: 'asc' }, { title: 'asc' }],
         select: RELEASE_TILE_SELECT_NO_GENRE,
       }),
@@ -50,15 +49,10 @@ export default defineEventHandler(async (event) => {
       .filter(y => y.year !== null)
       .map(y => ({ year: y.year!, count: y._count }))
 
-    return {
-      releases: releases.map((r) => {
-        const { genre: _genre, musicBrainzId: _mb, ...tile } = toReleaseTile(r)
-        return tile
-      }),
-      total,
-      page,
-      hasMore: skip + limit < total,
-      years,
-    }
+    const { items, ...rest } = paged(releases.map((r) => {
+      const { genre: _genre, musicBrainzId: _mb, ...tile } = toReleaseTile(r)
+      return tile
+    }), total, { page, pageSize, skip })
+    return { releases: items, ...rest, years }
   }, { shared: true })
 })

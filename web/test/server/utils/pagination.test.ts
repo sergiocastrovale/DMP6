@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parsePagination } from '../../../server/utils/pagination'
+import { paged, parsePagination } from '../../../server/utils/pagination'
 
 describe('parsePagination', () => {
   it('applies defaults when the query is empty', () => {
@@ -33,5 +33,26 @@ describe('parsePagination', () => {
 
   it('falls back to defaults for non-numeric input', () => {
     expect(parsePagination({ page: 'abc', pageSize: 'xyz' })).toEqual({ page: 1, pageSize: 20, skip: 0 })
+  })
+})
+
+describe('paged', () => {
+  const info = { page: 2, pageSize: 3, skip: 3 }
+
+  it('shapes a middle page and reports more', () => {
+    expect(paged(['a', 'b', 'c'], 10, info)).toEqual({ items: ['a', 'b', 'c'], total: 10, page: 2, pageSize: 3, hasMore: true })
+  })
+
+  it('has no more on the last (short or exactly full) page', () => {
+    expect(paged(['a'], 4, info).hasMore).toBe(false)
+    expect(paged(['a', 'b', 'c'], 6, info).hasMore).toBe(false)
+  })
+
+  it('a page past the end is empty with no more', () => {
+    expect(paged([], 2, { page: 9, pageSize: 3, skip: 24 })).toMatchObject({ items: [], hasMore: false })
+  })
+
+  it('merges an endpoint\'s own fields', () => {
+    expect(paged(['a'], 1, { page: 1, pageSize: 1, skip: 0 }, { mainCount: 42 })).toMatchObject({ mainCount: 42, total: 1 })
   })
 })

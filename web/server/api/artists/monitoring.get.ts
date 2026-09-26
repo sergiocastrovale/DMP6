@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
-import { parsePagination } from '~/server/utils/pagination'
+import { paged, parsePagination } from '~/server/utils/pagination'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'sync.view')
@@ -79,8 +79,7 @@ export default defineEventHandler(async (event) => {
 
   const total = rows.length ? Number(rows[0]!.fullCount) : 0
 
-  return {
-    items: rows.map(r => ({
+  return paged(rows.map(r => ({
       id: r.id,
       name: r.name,
       slug: r.slug,
@@ -88,10 +87,5 @@ export default defineEventHandler(async (event) => {
       totalReleases: Number(r.totalReleases),
       missingReleases: Number(r.missingReleases),
     })),
-    total,
-    monitoredCount,
-    page,
-    pageSize,
-    hasMore: page * pageSize < total,
-  }
+    total, { page, pageSize, skip: (page - 1) * pageSize }, { monitoredCount })
 })

@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client'
+import { paged } from '~/server/utils/pagination'
 import { db } from '~/server/utils/statementTimeout'
 import { escapeLike } from '~/server/utils/searchRank'
 import { releaseTypeBucketSql } from '~/server/utils/releaseTypeBuckets'
@@ -90,7 +91,7 @@ const whitelisted = (map: Record<string, string>, key: string, fallback: string)
 
 // `total` comes from `COUNT(*) OVER()` on the page's own rows. That reads 0 for a page past the end, so an
 // empty page re-counts - the only case where the window has nothing to report.
-const paged = async <T extends { total: bigint | number }>(
+const pageFromRows = async <T extends { total: bigint | number }>(
   rows: T[],
   skip: number,
   countAll: () => Promise<number>,
@@ -118,13 +119,7 @@ async function queryArtists(type: string, search: string, skip: number, pageSize
     db().artist.count({ where }),
   ])
 
-  return {
-    items: items.map(a => ({ id: a.id, name: a.name, slug: a.slug })),
-    total,
-    page,
-    pageSize,
-    hasMore: skip + pageSize < total,
-  }
+  return paged(items.map(a => ({ id: a.id, name: a.name, slug: a.slug })), total, { page, pageSize, skip })
 }
 
 async function queryReleases(type: string, search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
@@ -153,19 +148,13 @@ async function queryReleases(type: string, search: string, skip: number, pageSiz
     db().localRelease.count({ where }),
   ])
 
-  return {
-    items: items.map(r => ({
+  return paged(items.map(r => ({
       id: r.id,
       title: r.title,
       year: r.year,
       artistName: r.artists[0]?.artist.name ?? null,
       artistSlug: r.artists[0]?.artist.slug ?? null,
-    })),
-    total,
-    page,
-    pageSize,
-    hasMore: skip + pageSize < total,
-  }
+    })), total, { page, pageSize, skip })
 }
 
 async function queryTracks(search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
@@ -185,17 +174,11 @@ async function queryTracks(search: string, skip: number, pageSize: number, page:
     db().localReleaseTrack.count({ where }),
   ])
 
-  return {
-    items: items.map(t => ({
+  return paged(items.map(t => ({
       id: t.id,
       title: t.title,
       artistName: t.artist,
-    })),
-    total,
-    page,
-    pageSize,
-    hasMore: skip + pageSize < total,
-  }
+    })), total, { page, pageSize, skip })
 }
 
 async function queryGenres(search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
@@ -219,17 +202,11 @@ async function queryGenres(search: string, skip: number, pageSize: number, page:
     db().genre.count({ where }),
   ])
 
-  return {
-    items: items.map(g => ({
+  return paged(items.map(g => ({
       id: g.id,
       name: g.name,
       artistCount: g._count.artists,
-    })),
-    total,
-    page,
-    pageSize,
-    hasMore: skip + pageSize < total,
-  }
+    })), total, { page, pageSize, skip })
 }
 
 async function queryPlays(userId: number, search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
@@ -253,18 +230,12 @@ async function queryPlays(userId: number, search: string, skip: number, pageSize
     db().localReleaseTrackPlay.count({ where }),
   ])
 
-  return {
-    items: items.map(p => ({
+  return paged(items.map(p => ({
       id: p.track.id,
       title: p.track.title,
       artistName: p.track.artist,
       playCount: p.playCount,
-    })),
-    total,
-    page,
-    pageSize,
-    hasMore: skip + pageSize < total,
-  }
+    })), total, { page, pageSize, skip })
 }
 
 // Backs the Recent Plays panel's detail subpages (pages/statistics/recent-plays/[period].vue) - the
@@ -291,18 +262,12 @@ async function queryRecentPlays(userId: number, period: PlayPeriod, timeZone: st
     db().playEvent.count({ where }),
   ])
 
-  return {
-    items: items.map(p => ({
+  return paged(items.map(p => ({
       id: p.id,
       title: p.track.title,
       artistName: p.track.artist,
       playedAt: p.startedAt,
-    })),
-    total,
-    page,
-    pageSize,
-    hasMore: skip + pageSize < total,
-  }
+    })), total, { page, pageSize, skip })
 }
 
 async function querySize(search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
@@ -328,7 +293,7 @@ async function querySize(search: string, skip: number, pageSize: number, page: n
     ORDER BY ${orderColumn} ${dir}, a.id
     OFFSET ${skip} LIMIT ${pageSize}
   `
-  const { items, total } = await paged(rows, skip, async () => {
+  const { items, total } = await pageFromRows(rows, skip, async () => {
     const [r] = await db().$queryRaw<{ n: bigint }[]>`
       SELECT COUNT(DISTINCT COALESCE(src."primaryArtistId", src.id)) AS n
       FROM "LocalReleaseArtist" lra
@@ -339,13 +304,7 @@ async function querySize(search: string, skip: number, pageSize: number, page: n
     return Number(r?.n ?? 0)
   })
 
-  return {
-    items: items.map(r => ({ id: r.id, name: r.name, slug: r.slug, totalSize: Number(r.totalSize) })),
-    total,
-    page,
-    pageSize,
-    hasMore: skip + pageSize < total,
-  }
+  return paged(items.map(r => ({ id: r.id, name: r.name, slug: r.slug, totalSize: Number(r.totalSize) })), total, { page, pageSize, skip })
 }
 
 async function queryReleasesByStatus(statuses: string[], search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
@@ -372,20 +331,14 @@ async function queryReleasesByStatus(statuses: string[], search: string, skip: n
     db().localRelease.count({ where }),
   ])
 
-  return {
-    items: items.map(r => ({
+  return paged(items.map(r => ({
       id: r.id,
       title: r.title,
       year: r.year,
       matchStatus: r.matchStatus,
       artistName: r.artists[0]?.artist.name ?? null,
       artistSlug: r.artists[0]?.artist.slug ?? null,
-    })),
-    total,
-    page,
-    pageSize,
-    hasMore: skip + pageSize < total,
-  }
+    })), total, { page, pageSize, skip })
 }
 
 async function queryLowBitrate(search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
@@ -406,18 +359,12 @@ async function queryLowBitrate(search: string, skip: number, pageSize: number, p
     db().localReleaseTrack.count({ where }),
   ])
 
-  return {
-    items: items.map(t => ({
+  return paged(items.map(t => ({
       id: t.id,
       title: t.title,
       artistName: t.artist,
       bitrate: t.bitrate,
-    })),
-    total,
-    page,
-    pageSize,
-    hasMore: skip + pageSize < total,
-  }
+    })), total, { page, pageSize, skip })
 }
 
 async function querySingleRelease(search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
@@ -443,7 +390,7 @@ async function querySingleRelease(search: string, skip: number, pageSize: number
     ORDER BY ${orderColumn} ${dir}, x.id
     OFFSET ${skip} LIMIT ${pageSize}
   `
-  const { items, total } = await paged(rows, skip, async () => {
+  const { items, total } = await pageFromRows(rows, skip, async () => {
     const [r] = await db().$queryRaw<{ n: bigint }[]>`
       SELECT COUNT(*) AS n FROM (
         SELECT lra."artistId" FROM "LocalReleaseArtist" lra GROUP BY lra."artistId" HAVING COUNT(DISTINCT lra."localReleaseId") = 1
@@ -453,20 +400,14 @@ async function querySingleRelease(search: string, skip: number, pageSize: number
     return Number(r?.n ?? 0)
   })
 
-  return {
-    items: items.map(r => ({
+  return paged(items.map(r => ({
       id: r.id,
       name: r.name,
       slug: r.slug,
       releaseTitle: r.releaseTitle,
       trackCount: Number(r.trackCount),
       totalSize: Number(r.totalSize),
-    })),
-    total,
-    page,
-    pageSize,
-    hasMore: skip + pageSize < total,
-  }
+    })), total, { page, pageSize, skip })
 }
 
 async function queryShortest(search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
@@ -493,20 +434,14 @@ async function queryShortest(search: string, skip: number, pageSize: number, pag
     db().localRelease.count({ where }),
   ])
 
-  return {
-    items: items.map(r => ({
+  return paged(items.map(r => ({
       id: r.id,
       title: r.title,
       totalDuration: r.totalDuration,
       trackCount: r._count.tracks,
       artistName: r.artists[0]?.artist.name ?? null,
       artistSlug: r.artists[0]?.artist.slug ?? null,
-    })),
-    total,
-    page,
-    pageSize,
-    hasMore: skip + pageSize < total,
-  }
+    })), total, { page, pageSize, skip })
 }
 
 async function queryMissingArt(search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
@@ -531,19 +466,13 @@ async function queryMissingArt(search: string, skip: number, pageSize: number, p
     db().localRelease.count({ where }),
   ])
 
-  return {
-    items: items.map(r => ({
+  return paged(items.map(r => ({
       id: r.id,
       title: r.title,
       year: r.year,
       artistName: r.artists[0]?.artist.name ?? null,
       artistSlug: r.artists[0]?.artist.slug ?? null,
-    })),
-    total,
-    page,
-    pageSize,
-    hasMore: skip + pageSize < total,
-  }
+    })), total, { page, pageSize, skip })
 }
 
 async function queryReleasesSynced(search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
@@ -568,19 +497,13 @@ async function queryReleasesSynced(search: string, skip: number, pageSize: numbe
     db().musicBrainzRelease.count({ where }),
   ])
 
-  return {
-    items: items.map(r => ({
+  return paged(items.map(r => ({
       id: r.id,
       title: r.title,
       year: r.year,
       artistName: r.artists[0]?.artist.name ?? 'Unknown',
       artistSlug: r.artists[0]?.artist.slug ?? '',
-    })),
-    total,
-    page,
-    pageSize,
-    hasMore: skip + pageSize < total,
-  }
+    })), total, { page, pageSize, skip })
 }
 
 // Release Types (pages/statistics/types.vue): one row per artist, one column per bucket - a single
@@ -623,7 +546,7 @@ async function queryReleaseTypesPivot(search: string, skip: number, pageSize: nu
     ORDER BY ${orderColumn} ${dir}, p.id
     OFFSET ${skip} LIMIT ${pageSize}
   `
-  const { items, total } = await paged(rows as (Record<string, any> & { total: bigint })[], skip, async () => {
+  const { items, total } = await pageFromRows(rows as (Record<string, any> & { total: bigint })[], skip, async () => {
     const [r] = await db().$queryRaw<{ n: bigint }[]>`
       SELECT COUNT(DISTINCT a2.id) AS n
       FROM "LocalReleaseArtist" lra
@@ -633,18 +556,12 @@ async function queryReleaseTypesPivot(search: string, skip: number, pageSize: nu
     return Number(r?.n ?? 0)
   })
 
-  return {
-    items: items.map(r => ({
+  return paged(items.map(r => ({
       id: r.id,
       name: r.name,
       slug: r.slug,
       ...Object.fromEntries(RELEASE_TYPE_BUCKET_IDS.map(id => [id, r[id]])),
-    })),
-    total,
-    page,
-    pageSize,
-    hasMore: skip + pageSize < total,
-  }
+    })), total, { page, pageSize, skip })
 }
 
 // Release Types drill-down (pages/statistics/types/[bucket].vue): one artist's releases within one
@@ -676,11 +593,5 @@ async function queryReleaseTypeDetail(bucket: string, artistSlug: string, search
   ])
   const total = Number(countResult[0].count)
 
-  return {
-    items: rows.map(r => ({ id: r.id, title: r.title, year: r.year, updatedAt: r.updatedAt ? new Date(r.updatedAt).toISOString() : null })),
-    total,
-    page,
-    pageSize,
-    hasMore: skip + pageSize < total,
-  }
+  return paged(rows.map(r => ({ id: r.id, title: r.title, year: r.year, updatedAt: r.updatedAt ? new Date(r.updatedAt).toISOString() : null })), total, { page, pageSize, skip })
 }

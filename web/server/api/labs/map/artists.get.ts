@@ -1,6 +1,6 @@
 import { prisma } from '~/server/utils/prisma'
 import { verifyImage, primeImageExistence } from '~/server/utils/images'
-import { parsePagination } from '~/server/utils/pagination'
+import { paged, parsePagination } from '~/server/utils/pagination'
 
 export default defineEventHandler(async (event) => {
   if (!event.context.user) {
@@ -40,14 +40,8 @@ export default defineEventHandler(async (event) => {
   ])
 
   await primeImageExistence('artists', items.map(a => a.image))
-  return {
-    items: items.map((a) => ({
-      ...a,
-      ...verifyImage(a.image, a.imageUrl, 'artists'),
-    })),
-    total,
-    page,
-    pageSize,
-    hasMore: page * pageSize < total,
-  }
+  return paged(items.map(a => ({
+    ...a,
+    ...verifyImage(a.image, a.imageUrl, 'artists'),
+  })), total, { page, pageSize, skip: (page - 1) * pageSize })
 })
