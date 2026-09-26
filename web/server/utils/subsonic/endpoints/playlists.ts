@@ -1,6 +1,6 @@
 import type { H3Event } from 'h3'
 import { prisma } from '~/server/utils/prisma'
-import { generateSlug } from '~/server/utils/slug'
+import { playlistSlug } from '~/server/utils/slug'
 import { createManualPlaylist } from '~/server/utils/playlistWrites'
 import { visiblePlaylistsWhere } from '~/server/utils/libraryOwnership'
 import { trackPlaysByIds } from '~/server/utils/userPlays'
@@ -99,11 +99,7 @@ export const createPlaylist = async (_event: H3Event, ctx: HandlerContext): Prom
   const name = ctx.params.strRequired('name')
   const songIds = ctx.params.list('songId')
 
-  const slug = generateSlug(name)
-  if (!slug) {
-    throw new SubsonicApiError(SubsonicErrorCode.GENERIC, 'Playlist name must contain at least one letter or number')
-  }
-
+  const slug = playlistSlug(name)
   const playlist = await createManualPlaylist(ctx.user.id, { name, slug })
   if (songIds.length) {
     await prisma.playlistTrack.createMany({
