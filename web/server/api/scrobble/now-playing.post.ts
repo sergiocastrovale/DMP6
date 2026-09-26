@@ -11,7 +11,7 @@ export default defineEventHandler(async (event) => {
 
   const { trackId } = await readBodyOf(event, nowPlayingBodySchema)
 
-  const settings = await getCachedSettings()
+  const settings = getCachedSettings()
   if (!settings || !isLastfmConfigured(settings)) {
     return { ok: true, skipped: true }
   }

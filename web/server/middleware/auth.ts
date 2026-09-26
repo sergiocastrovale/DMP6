@@ -39,7 +39,7 @@ export default defineEventHandler(async (event) => {
   }
 
   if (!session) {
-    if (path.startsWith('/api/') || path === '/_ws' || path.startsWith('/api/audio/')) {
+    if (path.startsWith('/api/') || path === '/_ws') {
       throw createError({ statusCode: 401, message: 'Unauthorized' })
     }
     return sendRedirect(event, '/login')
