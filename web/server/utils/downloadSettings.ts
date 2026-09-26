@@ -1,5 +1,6 @@
 import type { ResolvedDownloadSettings } from '~/types/download'
 import { envInt } from '~/helpers/functions'
+import { sanitizePathSegment } from '~/server/utils/paths'
 import { getSettingsRow } from '~/server/utils/settings'
 
 /**
@@ -46,11 +47,7 @@ export function resolveDownloadDir(
   album: string,
   year: number | null | undefined,
 ): string {
-  const sanitize = (s: string) => s
-    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 200)
+  const sanitize = sanitizePathSegment
 
   // Replace placeholders. If {year} is missing, collapse surrounding separators.
   let rendered = template

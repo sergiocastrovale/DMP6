@@ -1,5 +1,5 @@
 import { cachedResponse } from '~/server/utils/cache'
-import { COUNTRY_NAMES } from '~/server/utils/countries'
+import { countryName } from '~/server/utils/countries'
 import { fetchCountryRows } from '~/server/utils/countryCovers'
 import { verifyImage, primeImageExistence } from '~/server/utils/images'
 import { withStatementTimeout } from '~/server/utils/statementTimeout'
@@ -23,7 +23,7 @@ export default defineEventHandler(async (event) => {
         continue
       }
       result[row.country] = {
-        name: COUNTRY_NAMES[row.country] ?? row.country,
+        name: countryName(row.country),
         count: parseInt(row.artist_count, 10),
         images: verified,
       }

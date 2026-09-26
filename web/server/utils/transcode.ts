@@ -4,6 +4,7 @@ import { access, readdir, rename, unlink } from 'node:fs/promises'
 import { join, dirname, extname, basename } from 'node:path'
 import type { AudioTags } from '~/types/track'
 import { monitorLog } from '~/server/utils/monitorLog'
+import { sanitizePathSegment } from '~/server/utils/paths'
 
 const execFileAsync = promisify(execFile)
 
@@ -19,12 +20,7 @@ export function ext(name: string): string {
   return extname(name).slice(1).toLowerCase()
 }
 
-// Strip characters illegal in filenames; collapse whitespace (mirrors resolveDownloadDir).
-export const sanitize = (s: string) => s
-  .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
-  .replace(/\s+/g, ' ')
-  .trim()
-  .slice(0, 200)
+export const sanitize = sanitizePathSegment
 
 /**
  * Normalize every audio file in `dir` (recursively) to MP3 CBR `bitrate` (default 320,
