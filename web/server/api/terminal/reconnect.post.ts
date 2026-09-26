@@ -1,5 +1,7 @@
 import { spawn } from 'child_process'
-import { isValidSessionName, parseExitLine, stripAnsi } from '~/server/utils/terminalCommand'
+import { parseExitLine, stripAnsi } from '~/server/utils/terminalCommand'
+import { readBodyOf } from '~/server/utils/requestValidation'
+import { terminalSessionBodySchema } from '~/server/schemas/terminal'
 import { requireTerminalAccess } from '~/server/utils/terminalGuard'
 import { readLogTail, tmuxSessionAlive } from '~/server/utils/tmuxSessions'
 import { terminalLogPath } from '~/server/utils/terminalPaths'
@@ -8,10 +10,7 @@ import { TERMINAL_LINES_CAP } from '~/helpers/constants'
 export default defineEventHandler(async (event) => {
   await requireTerminalAccess(event, 'view')
 
-  const session = (await readBody<{ session?: string }>(event))?.session
-  if (!isValidSessionName(session)) {
-    throw createError({ statusCode: 400, message: 'Invalid session' })
-  }
+  const { session } = await readBodyOf(event, terminalSessionBodySchema)
 
   // Verify the tmux session still exists
   if (!(await tmuxSessionAlive(session))) {

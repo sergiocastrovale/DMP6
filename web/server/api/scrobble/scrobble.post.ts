@@ -3,14 +3,13 @@ import { requirePermission } from '~/server/utils/permissions'
 import { getCachedSettings } from '~/server/utils/settingsCache'
 import { callLastFm, describeLastfmProblem, isLastfmConfigured } from '~/server/utils/lastfm'
 import { monitorLog } from '~/server/utils/monitorLog'
+import { readBodyOf } from '~/server/utils/requestValidation'
+import { scrobbleBodySchema } from '~/server/schemas/scrobble'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'play.view')
 
-  const { trackId, timestamp } = (await readBody(event)) ?? {}
-  if (!trackId || !timestamp) {
-    throw createError({ statusCode: 400, message: 'Missing trackId or timestamp' })
-  }
+  const { trackId, timestamp } = await readBodyOf(event, scrobbleBodySchema)
 
   const settings = await getCachedSettings()
   if (!settings || !isLastfmConfigured(settings)) {
@@ -28,7 +27,7 @@ export default defineEventHandler(async (event) => {
   const params: Record<string, string> = {
     'artist[0]': track.artist,
     'track[0]': track.title,
-    'timestamp[0]': String(Math.floor(Number(timestamp) / 1000)),
+    'timestamp[0]': String(Math.floor(timestamp / 1000)),
   }
   if (track.album) {params['album[0]'] = track.album}
   if (track.duration) {params['duration[0]'] = String(track.duration)}

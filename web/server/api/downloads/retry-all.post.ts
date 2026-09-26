@@ -1,4 +1,6 @@
 import { requirePermission } from '~/server/utils/permissions'
+import { readBodyOf } from '~/server/utils/requestValidation'
+import { optionalIdsBodySchema } from '~/server/schemas/common'
 import { forceRetryDownloads } from '~/server/utils/autoDownload'
 import { assertCanAcquire } from '~/server/utils/downloadEnvironment'
 
@@ -7,8 +9,8 @@ export default defineEventHandler(async (event) => {
   await requirePermission(event, 'downloads.crud')
   await assertCanAcquire()
 
-  const body = await readBody(event).catch(() => ({})) as { ids?: string[] }
-  const ids = Array.isArray(body.ids) ? body.ids : []
+  const { ids: bodyIds } = await readBodyOf(event, optionalIdsBodySchema)
+  const ids = bodyIds ?? []
   if (!ids.length) {
     return { retried: 0, failed: 0 }
   }

@@ -2,13 +2,11 @@ import { execSync } from 'child_process'
 import { prisma } from '~/server/utils/prisma'
 import { isOwnScanProcess } from '~/server/utils/scanLock'
 import { requireTerminalAccess } from '~/server/utils/terminalGuard'
-import { isValidSessionName } from '~/server/utils/terminalCommand'
+import { readBodyOf } from '~/server/utils/requestValidation'
+import { terminalSessionBodySchema } from '~/server/schemas/terminal'
 
 export default defineEventHandler(async (event) => {
-  const session = (await readBody<{ session?: string }>(event))?.session
-  if (!isValidSessionName(session)) {
-    throw createError({ statusCode: 400, message: 'Invalid session' })
-  }
+  const { session } = await readBodyOf(event, terminalSessionBodySchema)
   await requireTerminalAccess(event, 'stop', session)
 
   // For lock-holding commands (index/sync/refresh): SIGTERM lets the Rust signal handler run,

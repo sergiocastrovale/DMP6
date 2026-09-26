@@ -3,6 +3,8 @@ import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { setDownloadsPaused, freeGb } from '~/server/utils/pauseState'
 import { assertDownloadEnvironmentOk } from '~/server/utils/downloadEnvironment'
+import { readBodyOf } from '~/server/utils/requestValidation'
+import { pauseBodySchema } from '~/server/schemas/downloads'
 
 // Toggle the global downloads pause. Neither direction is allowed when this instance can't
 // physically reach the downloads volume, the library folder, ffmpeg, or slskd (see
@@ -13,10 +15,7 @@ export default defineEventHandler(async (event) => {
   await requirePermission(event, 'downloads.crud')
   await assertDownloadEnvironmentOk()
 
-  const body = await readBody(event)
-  if (typeof body?.paused !== 'boolean') {
-    throw createError({ statusCode: 400, message: 'paused (boolean) required' })
-  }
+  const body = await readBodyOf(event, pauseBodySchema)
 
   if (body.paused) {
     await setDownloadsPaused(true, 'manual')

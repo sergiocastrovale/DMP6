@@ -1,16 +1,12 @@
 import { cancelDownloadBySource } from '~/server/utils/downloads'
 import { requirePermission } from '~/server/utils/permissions'
+import { readBodyOf } from '~/server/utils/requestValidation'
+import { cancelDownloadBodySchema } from '~/server/schemas/downloads'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'downloads.crud')
-  const body = await readBody(event)
-  const { username, id } = body as {
-    username: string
-    id: string
-  }
+  const { username, id } = await readBodyOf(event, cancelDownloadBodySchema)
 
-  if (!id) { throw createError({ statusCode: 400, message: 'id is required' }) }
-
-  await cancelDownloadBySource(username || '', id)
+  await cancelDownloadBySource(username, id)
   return { success: true }
 })

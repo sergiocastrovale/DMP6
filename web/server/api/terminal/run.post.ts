@@ -6,34 +6,23 @@ import {
   buildScript,
   hasDestructiveFlag,
   isAllowedCommand,
-  isValidSessionName,
   parseExitLine,
   permissionForCommand,
   permissionsForFlags,
   stripAnsi,
   withWebFlag,
 } from '~/server/utils/terminalCommand'
+import { readBodyOf } from '~/server/utils/requestValidation'
+import { terminalRunBodySchema } from '~/server/schemas/terminal'
 import { hasUnfinishedLog, killTmuxSession, startTmuxSession, tmuxAvailable, tmuxSessionAlive } from '~/server/utils/tmuxSessions'
 import { ensureTerminalDir, pruneTerminalFiles, terminalLogPath, terminalMetaPath, terminalScriptPath } from '~/server/utils/terminalPaths'
 
 export default defineEventHandler(async (event) => {
-  const body = await readBody<{
-    command: string
-    args: string[]
-    session: string
-  }>(event)
+  const body = await readBodyOf(event, terminalRunBodySchema)
   const { command, session } = body
 
   if (!isAllowedCommand(command)) {
     throw createError({ statusCode: 400, message: `Command not allowed: ${command}` })
-  }
-
-  if (!isValidSessionName(session)) {
-    throw createError({ statusCode: 400, message: 'Session name required' })
-  }
-
-  if (body.args !== undefined && !Array.isArray(body.args)) {
-    throw createError({ statusCode: 400, message: 'args must be an array' })
   }
 
   const perm = permissionForCommand(command)

@@ -6,20 +6,19 @@ import { isDownloadsEnabled } from '~/server/utils/acquisitionStatus'
 import { assertCanAcquire } from '~/server/utils/downloadEnvironment'
 import { resolveReplaceTarget } from '~/server/utils/acquireDedup'
 import { routeAcquire } from '~/server/utils/autoDownload'
+import { readBodyOf } from '~/server/utils/requestValidation'
+import { acquireBodySchema } from '~/server/schemas/downloads'
 
 // One-click manual grab for a single MISSING release.
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'downloads.crud')
   await assertCanAcquire()
 
-  const body = await readBody(event)
-  const mbReleaseRowId = body?.mbReleaseRowId as string | undefined
-  if (!mbReleaseRowId) {throw createError({ statusCode: 400, message: 'mbReleaseRowId required' })}
+  const { mbReleaseRowId, replacesLocalReleaseId } = await readBodyOf(event, acquireBodySchema)
 
   // Re-download of an incomplete copy: the caller names the LocalRelease this download replaces.
   // Validate it here so a bad id can never reach merge, where it would silently no-op and leave two
   // copies fighting over the same library folder.
-  const replacesLocalReleaseId = body?.replacesLocalReleaseId as string | undefined
   if (replacesLocalReleaseId) {
     const target = await prisma.localRelease.findUnique({ where: { id: replacesLocalReleaseId }, select: { id: true } })
     if (!target) {throw createError({ statusCode: 404, message: 'local release to replace not found' })}

@@ -1,7 +1,7 @@
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
 import { readBodyOf } from '~/server/utils/requestValidation'
-import { idsBodySchema } from '~/server/schemas/issues'
+import { idsBodySchema } from '~/server/schemas/common'
 import type { HistoryIssueType as HistoryType } from '~/types/issues'
 
 const MODELS = {

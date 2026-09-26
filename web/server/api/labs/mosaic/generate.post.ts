@@ -5,8 +5,8 @@ import { tmpdir } from 'os'
 import { getMosaicProcess, setMosaicProcess } from '~/server/utils/mosaic'
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
-
-const VALID_MODES = ['chronological', 'gradient', 'random']
+import { readBodyOf } from '~/server/utils/requestValidation'
+import { mosaicBodySchema } from '~/server/schemas/labs'
 
 export default defineEventHandler(async (event) => {
   // Mosaic generation is a heavyweight, single-global-slot child process (409 if one's already
@@ -21,8 +21,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 409, message: 'Mosaic generation already in progress' })
   }
 
-  const body = await readBody<{ mode?: string }>(event).catch((): { mode?: string } => ({}))
-  const mode = VALID_MODES.includes(body.mode || '') ? body.mode! : 'chronological'
+  const { mode } = await readBodyOf(event, mosaicBodySchema)
 
   const { remoteServerUrl } = useRuntimeConfig()
 

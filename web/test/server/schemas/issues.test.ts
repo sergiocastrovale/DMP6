@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { idsBodySchema, revertBodySchema, optionalIdsBodySchema, issuePatchBodySchema } from '../../../server/schemas/issues'
+import { revertBodySchema, issuePatchBodySchema } from '../../../server/schemas/issues'
+import { idsBodySchema, optionalIdsBodySchema } from '../../../server/schemas/common'
 
 describe('idsBodySchema', () => {
   it('needs a non-empty array of strings', () => {

@@ -1,4 +1,6 @@
 import { requirePermission } from '~/server/utils/permissions'
+import { readBodyOf } from '~/server/utils/requestValidation'
+import { optionalIdsBodySchema } from '~/server/schemas/common'
 import { forceRejectDownloadedReleases } from '~/server/utils/promote'
 
 // Bulk reject: always terminal (REJECTED), bypassing the attempts cap that the single-row reject
@@ -6,8 +8,8 @@ import { forceRejectDownloadedReleases } from '~/server/utils/promote'
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'downloads.crud')
 
-  const body = await readBody(event).catch(() => ({})) as { ids?: string[] }
-  const ids = Array.isArray(body.ids) ? body.ids : []
+  const { ids: bodyIds } = await readBodyOf(event, optionalIdsBodySchema)
+  const ids = bodyIds ?? []
   if (!ids.length) {
     return { rejected: 0 }
   }

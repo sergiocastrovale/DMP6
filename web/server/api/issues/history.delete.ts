@@ -1,7 +1,7 @@
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
 import { readBodyOf } from '~/server/utils/requestValidation'
-import { optionalIdsBodySchema } from '~/server/schemas/issues'
+import { optionalIdsBodySchema } from '~/server/schemas/common'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'issues.admin')

@@ -1,4 +1,6 @@
 import { requirePermission } from '~/server/utils/permissions'
+import { readBodyOf } from '~/server/utils/requestValidation'
+import { idsBodySchema } from '~/server/schemas/common'
 import { archiveMonitorEvents } from '~/server/utils/monitorEvents'
 
 // Dismiss monitor issues from the flagged list. Reversible via restore.post.ts, which is why the UI
@@ -6,10 +8,7 @@ import { archiveMonitorEvents } from '~/server/utils/monitorEvents'
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'downloads.crud')
 
-  const { ids } = await readBody<{ ids?: string[] }>(event) ?? {}
-  if (!Array.isArray(ids) || ids.length === 0) {
-    throw createError({ statusCode: 400, message: 'ids required' })
-  }
+  const { ids } = await readBodyOf(event, idsBodySchema)
 
   return { archived: await archiveMonitorEvents(ids) }
 })

@@ -3,14 +3,13 @@ import { requirePermission } from '~/server/utils/permissions'
 import { getCachedSettings } from '~/server/utils/settingsCache'
 import { callLastFm, describeLastfmProblem, isLastfmConfigured } from '~/server/utils/lastfm'
 import { monitorLog } from '~/server/utils/monitorLog'
+import { readBodyOf } from '~/server/utils/requestValidation'
+import { nowPlayingBodySchema } from '~/server/schemas/scrobble'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'play.view')
 
-  const { trackId } = (await readBody(event)) ?? {}
-  if (!trackId) {
-    throw createError({ statusCode: 400, message: 'Missing trackId' })
-  }
+  const { trackId } = await readBodyOf(event, nowPlayingBodySchema)
 
   const settings = await getCachedSettings()
   if (!settings || !isLastfmConfigured(settings)) {
