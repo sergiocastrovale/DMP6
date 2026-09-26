@@ -8,6 +8,8 @@ const props = defineProps<{ type: IssueType }>()
 
 const issuesStore = useIssuesStore()
 const terminal = useTerminalStore()
+const { hasPerm } = useAuth()
+const canFix = hasPerm('issues.fix')
 
 const selected = ref<Set<string>>(new Set())
 const selectedResolved = ref<Set<string>>(new Set())
@@ -77,7 +79,7 @@ const columns = computed<IssueColumn[]>(() => {
     case 'corrupted': return [
       { key: 'artist.name', label: 'Artist', sortable: false },
       { key: 'currentValue', label: 'Current Value', sortable: true },
-      { key: 'proposedValue', label: 'Proposed Fix', sortable: false, editable: true, editKey: 'proposedValue' },
+      { key: 'proposedValue', label: 'Proposed Fix', sortable: false, editable: canFix.value, editKey: 'proposedValue' },
       { key: 'confidence', label: 'Confidence', sortable: true },
       { key: 'folder', label: 'Folder', sortable: false },
     ]
@@ -257,7 +259,7 @@ function getHistoryDate(item: any): string {
     <Subtabs v-if="REVERTABLE_TYPES.includes(type)" v-model="activeSubtab" :tabs="subtabs" />
 
     <IssuesSelectionBar
-      v-if="type !== 'enrichment' && type !== 'duplicate-release' && type !== 'mismatched-release-id' && activeSubtab === 'detected'"
+      v-if="canFix && type !== 'enrichment' && type !== 'duplicate-release' && type !== 'mismatched-release-id' && activeSubtab === 'detected'"
       :count="selected.size"
       :type="type"
       :loading="terminal.isRunning"
@@ -266,7 +268,7 @@ function getHistoryDate(item: any): string {
     />
 
     <IssuesRevertSelectionBar
-      v-if="REVERTABLE_TYPES.includes(type) && activeSubtab === 'fixed'"
+      v-if="canFix && REVERTABLE_TYPES.includes(type) && activeSubtab === 'fixed'"
       :count="selectedResolved.size"
       :loading="terminal.isRunning"
       @revert="revertSelected"
@@ -285,6 +287,7 @@ function getHistoryDate(item: any): string {
         :sort="issuesStore.sort[type]"
         :order="issuesStore.order[type]"
         :selected="selected"
+        :selectable="canFix"
         @update:selected="selected = $event"
         @sort="issuesStore.setSort(type, $event)"
         @page="issuesStore.setPage(type, $event)"
@@ -440,6 +443,7 @@ function getHistoryDate(item: any): string {
         :page-size="PAGE_SIZE"
         :loading="issuesStore.resolvedLoading[type] ?? false"
         :selected="selectedResolved"
+        :selectable="canFix"
         @update:selected="selectedResolved = $event"
         @page="issuesStore.setResolvedPage(type, $event)"
       >

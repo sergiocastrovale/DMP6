@@ -14,6 +14,10 @@ export const ALL_PERMISSIONS = [
   'sync.run',
   'downloads.crud',
   'issues.view',
+  // Writes: queue/edit/undo issue fixes and run ./fix (which rewrites audio tags). issues.view only reads.
+  'issues.fix',
+  // Deleting the fix-history audit trail.
+  'issues.admin',
   'variables.edit',
 ] as const
 

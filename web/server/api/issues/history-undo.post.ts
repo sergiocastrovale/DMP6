@@ -8,7 +8,7 @@ const MODELS = {
 } as const satisfies Record<HistoryType, string>
 
 export default defineEventHandler(async (event) => {
-  await requirePermission(event, 'issues.view')
+  await requirePermission(event, 'issues.fix')
 
   const { ids } = await readBody<{ ids: string[] }>(event)
   if (!Array.isArray(ids) || ids.length === 0) {

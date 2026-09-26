@@ -3,7 +3,7 @@ import type { IssueColumn, IssueType } from '~/types/issues'
 import { cx, data } from '~/helpers/ui'
 import { toggleRowSelection } from '~/helpers/functions'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   type: IssueType
   columns: IssueColumn[]
   items: any[]
@@ -14,7 +14,13 @@ const props = defineProps<{
   sort?: string
   order?: 'asc' | 'desc'
   selected: Set<string>
-}>()
+  // false hides the selection column: the fix/queue actions it feeds need issues.fix.
+  selectable?: boolean
+}>(), {
+  sort: undefined,
+  order: undefined,
+  selectable: true,
+})
 
 const emit = defineEmits<{
   'update:selected': [Set<string>]
@@ -24,6 +30,9 @@ const emit = defineEmits<{
 }>()
 
 const slots = defineSlots<{ [key: `cell-${string}`]: (props: { item: any, value: unknown }) => any }>()
+
+// Enrichment rows are informational (no per-row fix), so they never get a selection column either.
+const showSelect = computed(() => props.selectable && props.type !== 'enrichment')
 
 const sanitizeKey = (key: string) => key.replace(/[^a-zA-Z0-9]/g, '_')
 const cellSlotName = (key: string) => `cell-${sanitizeKey(key)}` as const
@@ -95,7 +104,7 @@ function commitEdit(item: any, col: IssueColumn) {
   <div class="flex flex-col gap-0">
     <SlimTable>
       <SlimTableHeader>
-        <th v-if="type !== 'enrichment'" :class="cx(data.th, 'w-10')">
+        <th v-if="showSelect" :class="cx(data.th, 'w-10')">
           <UiCheckbox :model-value="allChecked" aria-label="Select all rows" @update:model-value="toggleAll" />
         </th>
         <template v-for="col in columns" :key="col.key">
@@ -116,7 +125,7 @@ function commitEdit(item: any, col: IssueColumn) {
       <SlimTableBody>
         <template v-if="loading && items.length === 0">
           <tr v-for="n in 5" :key="n" class="border-b border-stone-100/10 last:border-b-0">
-            <td v-if="type !== 'enrichment'" :class="data.td">
+            <td v-if="showSelect" :class="data.td">
               <UiSkeleton w="size-4" h="" />
             </td>
             <td v-for="col in columns" :key="col.key" :class="data.td">
@@ -126,7 +135,7 @@ function commitEdit(item: any, col: IssueColumn) {
         </template>
 
         <tr v-else-if="!loading && items.length === 0">
-          <td :colspan="type !== 'enrichment' ? columns.length + 1 : columns.length">
+          <td :colspan="showSelect ? columns.length + 1 : columns.length">
             <UiEmptyState message="No issues found" />
           </td>
         </tr>
@@ -134,9 +143,9 @@ function commitEdit(item: any, col: IssueColumn) {
         <SlimTableRow
           v-for="item in items"
           :key="item.id"
-          :active="type !== 'enrichment' && selected.has(item.id)"
+          :active="showSelect && selected.has(item.id)"
         >
-          <td v-if="type !== 'enrichment'" :class="data.td" @click.stop="captureRowClick">
+          <td v-if="showSelect" :class="data.td" @click.stop="captureRowClick">
             <UiCheckbox
               :model-value="selected.has(item.id)"
               :aria-label="`Select row ${item.id}`"

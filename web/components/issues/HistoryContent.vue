@@ -8,6 +8,9 @@ import { toggleRowSelection } from '~/helpers/functions'
 
 const issuesStore = useIssuesStore()
 const terminal = useTerminalStore()
+const { hasPerm } = useAuth()
+const canFix = hasPerm('issues.fix')
+const canAdmin = hasPerm('issues.admin')
 
 const TABS: { key: HistoryIssueType; label: string }[] = [
   { key: 'corrupted', label: 'Corrupted TPE2' },
@@ -201,7 +204,10 @@ async function undoSelected() {
     <Subtabs v-model="activeTab" :tabs="subtabs" />
 
     <IssuesHistorySelectionBar
+      v-if="canFix || canAdmin"
       :count="selected.size"
+      :can-undo="canFix"
+      :can-clear="canAdmin"
       :loading="terminal.isRunning"
       @clear="clearSelected"
       @undo="undoSelected"

@@ -20,7 +20,8 @@ export const COMMAND_PERM: Record<string, PermissionKey | 'ADMIN'> = {
   './analysis': 'sync.run',
   './playlists': 'sync.run',
   './audit': 'issues.view',
-  './fix': 'issues.view',
+  // ./fix rewrites audio tags on disk, so it needs the write permission, not just the view one.
+  './fix': 'issues.fix',
   './nuke': 'ADMIN',
   // Wipes an artist's whole catalogue (and with `--files`, their audio files) - ADMIN like ./nuke,
   // never a 'sync.run' MANAGER action.

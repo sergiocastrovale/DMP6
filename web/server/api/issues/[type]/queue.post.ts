@@ -10,7 +10,7 @@ const MODEL_MAP = {
 } as const satisfies Record<IssueType, string>
 
 export default defineEventHandler(async (event) => {
-  await requirePermission(event, 'issues.view')
+  await requirePermission(event, 'issues.fix')
 
   const type = getRouterParam(event, 'type') as IssueType
   if (!(type in MODEL_MAP)) {

@@ -17,7 +17,7 @@ const ALLOWED_FIELDS: Record<IssueType, string[]> = {
 }
 
 export default defineEventHandler(async (event) => {
-  await requirePermission(event, 'issues.view')
+  await requirePermission(event, 'issues.fix')
 
   const type = getRouterParam(event, 'type') as IssueType
   const id = getRouterParam(event, 'id')!

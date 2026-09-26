@@ -68,9 +68,9 @@ describe('permissionForCommand', () => {
     expect(permissionForCommand('./delete')).toBe('ADMIN')
   })
 
-  it('maps audit/fix to issues.view', () => {
+  it('maps audit to issues.view and fix (which rewrites tags) to issues.fix', () => {
     expect(permissionForCommand('./audit')).toBe('issues.view')
-    expect(permissionForCommand('./fix')).toBe('issues.view')
+    expect(permissionForCommand('./fix')).toBe('issues.fix')
   })
 
   it('returns undefined for an unknown command', () => {

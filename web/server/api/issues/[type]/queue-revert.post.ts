@@ -8,7 +8,7 @@ const REVERTABLE_MODELS = {
 } as const satisfies Record<RevertableType, string>
 
 export default defineEventHandler(async (event) => {
-  await requirePermission(event, 'issues.view')
+  await requirePermission(event, 'issues.fix')
 
   const type = getRouterParam(event, 'type') as RevertableType
   if (!(type in REVERTABLE_MODELS)) {

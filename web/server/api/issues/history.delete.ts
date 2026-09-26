@@ -2,7 +2,7 @@ import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
 
 export default defineEventHandler(async (event) => {
-  await requirePermission(event, 'issues.view')
+  await requirePermission(event, 'issues.admin')
 
   const body = await readBody<{ ids?: string[] }>(event).catch((): { ids?: string[] } => ({}))
   const ids = body?.ids
