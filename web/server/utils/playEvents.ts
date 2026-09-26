@@ -33,47 +33,53 @@ export interface PlayEventPatchBody {
 
 // Shared by the PATCH route and the sendBeacon-only finish route (beacon can only POST). Scoped to
 // the caller's own event - anything else, or an unknown id, 404s rather than leaking which ids exist.
-// The counted false->true transition is guarded by an `updateMany` on `counted: false`, so under two
-// concurrent calls for the same event only the one that actually flips it runs recordPlay - the
-// LocalReleaseTrackPlay increment this event feeds, and the last-played cache it invalidates.
+//
+// The whole read-modify-write runs in one transaction that holds a row lock on the event (`FOR UPDATE`), so
+// concurrent patches for the same event queue up and each sees the previous one's committed state. That
+// makes three things hold that the old read-then-write did not guarantee:
+//   - listenedSeconds only ever grows: a slower patch carrying a smaller value can no longer overwrite a
+//     larger one that landed first (the previous code raced exactly there);
+//   - the counted false->true flip happens once, so LocalReleaseTrackPlay is incremented exactly once;
+//   - the flip and the increment commit together - a crash between them can no longer leave a counted event
+//     with no counter bump, which a replay could never repair (counted is already true).
 export async function applyPlayEventPatch(userId: number, id: string, patch: PlayEventPatchBody) {
-  const existing = await prisma.playEvent.findFirst({
-    where: { id, userId },
-    select: { trackId: true, listenedSeconds: true, counted: true },
-  })
-  if (!existing) {
-    throw createError({ statusCode: 404, statusMessage: 'Play event not found' })
-  }
-
-  const next = applyProgress(existing, patch)
-  const data: Record<string, unknown> = { listenedSeconds: next.listenedSeconds }
-  if (patch.ended) {
-    data.endedAt = new Date()
-    data.skipped = !!patch.skipped
-  }
-
-  if (next.counted && !existing.counted) {
-    const flipped = await prisma.playEvent.updateMany({
-      where: { id, userId, counted: false },
-      data: { ...data, counted: true },
-    })
-    if (flipped.count > 0) {
-      await recordPlay(userId, existing.trackId, new Date())
-      await invalidateCache(`releases:last-played:${userId}:*`)
-      return { ok: true }
+  const flipped = await prisma.$transaction(async (tx) => {
+    const [existing] = await tx.$queryRaw<{ trackId: string, listenedSeconds: number, counted: boolean }[]>`
+      SELECT "trackId", "listenedSeconds", counted FROM "PlayEvent"
+      WHERE id = ${id} AND "userId" = ${userId}
+      FOR UPDATE`
+    if (!existing) {
+      throw createError({ statusCode: 404, statusMessage: 'Play event not found' })
     }
-    // Lost the race to another concurrent PATCH for the same event - it already flipped counted and
-    // ran recordPlay, so just fall through to the ordinary update below for listenedSeconds/ended.
-  }
 
-  await prisma.playEvent.update({ where: { id }, data })
+    const next = applyProgress(existing, patch)
+    await tx.playEvent.update({
+      where: { id },
+      data: {
+        listenedSeconds: next.listenedSeconds,
+        counted: next.counted,
+        ...(patch.ended ? { endedAt: new Date(), skipped: !!patch.skipped } : {}),
+      },
+    })
+
+    const justCounted = next.counted && !existing.counted
+    if (justCounted) {
+      await recordPlay(userId, existing.trackId, new Date(), tx)
+    }
+    return justCounted
+  })
+
+  if (flipped) {
+    await invalidateCache(`releases:last-played:${userId}:*`)
+  }
   return { ok: true }
 }
 
 // A scrobble from an external player (Subsonic clients - server/utils/subsonic/endpoints/
 // annotation.ts) never opened a PlayEvent of its own via /api/play-events first, so this
 // synthesizes one already-finished/counted event so it lands in stats/recap the same as a normal
-// play, then folds it into the LocalReleaseTrackPlay counter the same way applyPlayEventPatch does.
+// play, then folds it into the LocalReleaseTrackPlay counter the same way applyPlayEventPatch does -
+// in one transaction, so the log and the counter can't disagree.
 export async function recordExternalPlay(userId: number, trackId: string, source: PlaySource = 'SUBSONIC') {
   const track = await prisma.localReleaseTrack.findUnique({ where: { id: trackId }, select: { duration: true } })
   if (!track) {
@@ -81,18 +87,20 @@ export async function recordExternalPlay(userId: number, trackId: string, source
   }
 
   const now = new Date()
-  await prisma.playEvent.create({
-    data: {
-      userId,
-      trackId,
-      source,
-      startedAt: now,
-      endedAt: now,
-      listenedSeconds: track.duration ?? 0,
-      trackDuration: track.duration,
-      counted: true,
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.playEvent.create({
+      data: {
+        userId,
+        trackId,
+        source,
+        startedAt: now,
+        endedAt: now,
+        listenedSeconds: track.duration ?? 0,
+        trackDuration: track.duration,
+        counted: true,
+      },
+    })
+    await recordPlay(userId, trackId, now, tx)
   })
-  await recordPlay(userId, trackId, now)
   await invalidateCache(`releases:last-played:${userId}:*`)
 }

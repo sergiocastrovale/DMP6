@@ -39,6 +39,42 @@ describe('play events (real Postgres)', () => {
     expect(updated.listenedSeconds).toBe(121)
   })
 
+  it('listenedSeconds never shrinks and the counter increments once, however concurrent patches interleave', async () => {
+    const alice = await makeUser(prisma)
+    for (let round = 0; round < 8; round++) {
+      const track = await makeLocalTrack(prisma)
+      const event = await prisma.playEvent.create({
+        data: { userId: alice.id, trackId: track.id, source: 'QUEUE' },
+      })
+
+      // Smaller values arrive after larger ones in some orders - the row lock makes each see the last commit.
+      await Promise.all([30, 120, 60, 121].map(seconds =>
+        applyPlayEventPatch(alice.id, event.id, { listenedSeconds: seconds, counted: seconds >= 60 }),
+      ))
+
+      const updated = await prisma.playEvent.findUniqueOrThrow({ where: { id: event.id } })
+      expect(updated.listenedSeconds).toBe(121)
+      expect(updated.counted).toBe(true)
+      const play = await prisma.localReleaseTrackPlay.findUniqueOrThrow({
+        where: { userId_trackId: { userId: alice.id, trackId: track.id } },
+      })
+      expect(play.playCount).toBe(1)
+    }
+  })
+
+  it('404s (and writes nothing) for an unknown event or another user\'s event', async () => {
+    const alice = await makeUser(prisma)
+    const bob = await makeUser(prisma)
+    const track = await makeLocalTrack(prisma)
+    const event = await prisma.playEvent.create({ data: { userId: alice.id, trackId: track.id, source: 'QUEUE' } })
+
+    await expect(applyPlayEventPatch(bob.id, event.id, { counted: true })).rejects.toMatchObject({ statusCode: 404 })
+    await expect(applyPlayEventPatch(alice.id, 'nope', { counted: true })).rejects.toMatchObject({ statusCode: 404 })
+
+    expect((await prisma.playEvent.findUniqueOrThrow({ where: { id: event.id } })).counted).toBe(false)
+    expect(await prisma.localReleaseTrackPlay.count()).toBe(0)
+  })
+
   it('a second counted patch after the first is a no-op - no double increment', async () => {
     const alice = await makeUser(prisma)
     const track = await makeLocalTrack(prisma)

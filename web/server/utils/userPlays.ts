@@ -2,11 +2,14 @@
 // per (user, track), same pattern as FavoriteTrack. Release/artist totals and "last played" are
 // never stored denormalized; they're computed from this table at read time, here.
 
+import type { Prisma } from '@prisma/client'
 import { prisma } from './prisma'
 import type { PlayPeriod } from '~/types/stats'
 
-export const recordPlay = async (userId: number, trackId: string, playedAt: Date) => {
-  await prisma.localReleaseTrackPlay.upsert({
+// `db` is the transaction client when the caller needs the increment to commit with other writes
+// (server/utils/playEvents.ts flips PlayEvent.counted and increments in one transaction).
+export const recordPlay = async (userId: number, trackId: string, playedAt: Date, db: Prisma.TransactionClient = prisma) => {
+  await db.localReleaseTrackPlay.upsert({
     where: { userId_trackId: { userId, trackId } },
     create: { userId, trackId, playCount: 1, lastPlayedAt: playedAt },
     update: { playCount: { increment: 1 }, lastPlayedAt: playedAt },
