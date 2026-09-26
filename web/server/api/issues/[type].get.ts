@@ -1,10 +1,10 @@
 import { prisma } from '~/server/utils/prisma'
 import { paged, parsePagination } from '~/server/utils/pagination'
 import { requirePermission } from '~/server/utils/permissions'
+import { firstArtist } from '~/server/utils/releaseTiles'
+import { requireIssueType } from '~/server/utils/issueTypes'
 import type { PaginatedResponse } from '~/types/api'
 import type { IssueType } from '~/types/issues'
-
-const VALID_TYPES: readonly IssueType[] = ['corrupted', 'orphans', 'duplicates', 'missing', 'enrichment', 'duplicate-release', 'mismatched-release-id']
 
 const VALID_STATUSES = ['DETECTED', 'PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED'] as const
 
@@ -12,9 +12,7 @@ export default defineEventHandler(async (event) => {
   await requirePermission(event, 'issues.view')
 
   const type = getRouterParam(event, 'type') as IssueType
-  if (!VALID_TYPES.includes(type)) {
-    throw createError({ statusCode: 404, message: `Unknown issue type: ${type}` })
-  }
+  requireIssueType(type)
 
   const rawQuery = getQuery(event)
   const { sort, order = 'asc', q } = rawQuery
@@ -86,7 +84,7 @@ async function fetchType(
       ])
       const items = raw.map(item => ({
         ...item,
-        artist: item.track?.localRelease?.artists?.[0]?.artist ?? null,
+        artist: item.track?.localRelease ? firstArtist(item.track.localRelease) : null,
       }))
       return [items, total]
     }
@@ -179,7 +177,7 @@ async function fetchType(
       ])
       const mapped = items.map(item => ({
         ...item,
-        artist: item.localRelease?.artists?.[0]?.artist ?? null,
+        artist: item.localRelease ? firstArtist(item.localRelease) : null,
         folderPath: item.localRelease?.tracks?.[0]?.filePath ?? null,
       }))
       return [mapped, total]
@@ -214,7 +212,7 @@ async function fetchType(
       const flattenRelease = (r: any) => r && {
         ...r,
         trackCount: r._count?.tracks ?? 0,
-        artist: r.artists?.[0]?.artist ?? null,
+        artist: r.artists ? firstArtist(r) : null,
       }
       const items = (raw as any[]).map(item => ({
         ...item,

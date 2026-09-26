@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client'
 import { paged } from '~/server/utils/pagination'
+import { firstArtist } from '~/server/utils/releaseTiles'
 import { db } from '~/server/utils/statementTimeout'
 import { escapeLike } from '~/server/utils/searchRank'
 import { releaseTypeBucketSql } from '~/server/utils/releaseTypeBuckets'
@@ -152,8 +153,8 @@ async function queryReleases(type: string, search: string, skip: number, pageSiz
       id: r.id,
       title: r.title,
       year: r.year,
-      artistName: r.artists[0]?.artist.name ?? null,
-      artistSlug: r.artists[0]?.artist.slug ?? null,
+      artistName: firstArtist(r)?.name ?? null,
+      artistSlug: firstArtist(r)?.slug ?? null,
     })), total, { page, pageSize, skip })
 }
 
@@ -336,8 +337,8 @@ async function queryReleasesByStatus(statuses: string[], search: string, skip: n
       title: r.title,
       year: r.year,
       matchStatus: r.matchStatus,
-      artistName: r.artists[0]?.artist.name ?? null,
-      artistSlug: r.artists[0]?.artist.slug ?? null,
+      artistName: firstArtist(r)?.name ?? null,
+      artistSlug: firstArtist(r)?.slug ?? null,
     })), total, { page, pageSize, skip })
 }
 
@@ -439,8 +440,8 @@ async function queryShortest(search: string, skip: number, pageSize: number, pag
       title: r.title,
       totalDuration: r.totalDuration,
       trackCount: r._count.tracks,
-      artistName: r.artists[0]?.artist.name ?? null,
-      artistSlug: r.artists[0]?.artist.slug ?? null,
+      artistName: firstArtist(r)?.name ?? null,
+      artistSlug: firstArtist(r)?.slug ?? null,
     })), total, { page, pageSize, skip })
 }
 
@@ -470,8 +471,8 @@ async function queryMissingArt(search: string, skip: number, pageSize: number, p
       id: r.id,
       title: r.title,
       year: r.year,
-      artistName: r.artists[0]?.artist.name ?? null,
-      artistSlug: r.artists[0]?.artist.slug ?? null,
+      artistName: firstArtist(r)?.name ?? null,
+      artistSlug: firstArtist(r)?.slug ?? null,
     })), total, { page, pageSize, skip })
 }
 
@@ -501,8 +502,8 @@ async function queryReleasesSynced(search: string, skip: number, pageSize: numbe
       id: r.id,
       title: r.title,
       year: r.year,
-      artistName: r.artists[0]?.artist.name ?? 'Unknown',
-      artistSlug: r.artists[0]?.artist.slug ?? '',
+      artistName: firstArtist(r)?.name ?? 'Unknown',
+      artistSlug: firstArtist(r)?.slug ?? '',
     })), total, { page, pageSize, skip })
 }
 

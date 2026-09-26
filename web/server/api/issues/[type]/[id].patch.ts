@@ -1,38 +1,17 @@
-import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
 import { readBodyOf } from '~/server/utils/requestValidation'
 import { issuePatchBodySchema } from '~/server/schemas/issues'
-import type { FixableIssueType as IssueType } from '~/types/issues'
-
-const MODEL_MAP = {
-  corrupted: 'issueCorruptedTpe2',
-  orphans: 'issueOrphanArtist',
-  duplicates: 'issueDuplicateArtist',
-  missing: 'issueMissingMetadata',
-} as const satisfies Record<IssueType, string>
-
-const ALLOWED_FIELDS: Record<IssueType, string[]> = {
-  corrupted: ['proposedValue'],
-  orphans: [],
-  duplicates: [],
-  missing: ['proposedValues'],
-}
+import { requireIssueType } from '~/server/utils/issueTypes'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'issues.fix')
 
-  const type = getRouterParam(event, 'type') as IssueType
+  const def = requireIssueType(getRouterParam(event, 'type'), { fixable: true })
   const id = getRouterParam(event, 'id')!
 
-  if (!(type in MODEL_MAP)) {
-    throw createError({ statusCode: 404, message: `Unknown issue type: ${type}` })
-  }
-
   const body = await readBodyOf(event, issuePatchBodySchema)
-  const allowed = ALLOWED_FIELDS[type]
-
   const data: Record<string, unknown> = { updatedAt: new Date() }
-  for (const field of allowed) {
+  for (const field of def.patchableFields) {
     if (field in body) {
       data[field] = body[field]
     }
@@ -42,8 +21,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: 'No valid fields to update' })
   }
 
-  const model = MODEL_MAP[type]
-  const updated = await (prisma[model] as any).update({
+  const updated = await def.delegate.update({
     where: { id },
     data,
   })

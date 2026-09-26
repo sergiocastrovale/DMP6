@@ -2,12 +2,7 @@ import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
 import { readBodyOf } from '~/server/utils/requestValidation'
 import { idsBodySchema } from '~/server/schemas/common'
-import type { HistoryIssueType as HistoryType } from '~/types/issues'
-
-const MODELS = {
-  corrupted: 'issueCorruptedTpe2',
-  missing: 'issueMissingMetadata',
-} as const satisfies Record<HistoryType, string>
+import { findIssueType } from '~/server/utils/issueTypes'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'issues.fix')
@@ -29,11 +24,11 @@ export default defineEventHandler(async (event) => {
   const queued: Record<string, number> = {}
 
   for (const [type, issueIds] of byType) {
-    if (!(type in MODELS)) {
+    const def = findIssueType(type)
+    if (!def?.revertable) {
       continue
     }
-    const model = MODELS[type as HistoryType]
-    const result = await (prisma[model] as any).updateMany({
+    const result = await def.delegate.updateMany({
       where: { id: { in: [...issueIds] }, status: 'RESOLVED' },
       data: { status: 'PENDING_REVERT', updatedAt: new Date() },
     })

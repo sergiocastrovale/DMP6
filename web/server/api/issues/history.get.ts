@@ -1,8 +1,8 @@
 import { prisma } from '~/server/utils/prisma'
 import { paged, parsePagination } from '~/server/utils/pagination'
+import { findIssueType } from '~/server/utils/issueTypes'
 import { requirePermission } from '~/server/utils/permissions'
 
-const VALID_TYPES = ['corrupted', 'missing'] as const
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'issues.view')
@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
     return { counts: { corrupted, missing }, total: corrupted + missing }
   }
 
-  if (type && VALID_TYPES.includes(type as any)) {
+  if (findIssueType(type)?.revertable) {
     const { page: p, pageSize: ps, skip } = parsePagination(query, { defaultSize: 50, maxSize: 100 })
     const where = { issueType: type, revertedAt: null }
 
