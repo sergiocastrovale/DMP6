@@ -79,3 +79,35 @@ describe('TrackList.vue - disc subheaders (single-release track lists only)', ()
     expect(wrapper.text()).not.toContain('Disc 2')
   })
 })
+
+describe('TrackList.vue - favorite hearts come with the tracks', () => {
+  const heart = (wrapper: Awaited<ReturnType<typeof mountSuspended>>, trackId: string) => {
+    const idx = (wrapper.props('tracks') as Track[]).findIndex(t => t.id === trackId)
+    return wrapper.findAll('button[aria-label="Toggle favorite"]')[idx]!
+  }
+  // ToggleFavorite paints an active heart amber.
+  const isActive = (button: ReturnType<typeof heart>) => button.classes().includes('text-amber-400')
+
+  it('renders a heart as active exactly for tracks flagged isFavorite, and never fetches /api/favorites', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(null)
+    vi.stubGlobal('$fetch', fetchMock)
+    const tracks = [
+      track({ id: 'fav', isFavorite: true }),
+      track({ id: 'plain', isFavorite: false }),
+    ]
+    const wrapper = await mountSuspended(ArtistTrackList, { props: { tracks } })
+
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/favorites')
+    expect(isActive(heart(wrapper, 'fav'))).toBe(true)
+    expect(isActive(heart(wrapper, 'plain'))).toBe(false)
+  })
+
+  it('reseeds when the list is replaced with fresh favorite state', async () => {
+    const wrapper = await mountSuspended(ArtistTrackList, { props: { tracks: [track({ id: 'a', isFavorite: false })] } })
+    expect(isActive(heart(wrapper, 'a'))).toBe(false)
+
+    await wrapper.setProps({ tracks: [track({ id: 'a', isFavorite: true })] })
+
+    expect(isActive(heart(wrapper, 'a'))).toBe(true)
+  })
+})

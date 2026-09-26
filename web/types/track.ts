@@ -66,6 +66,8 @@ export interface Track {
   playCount: number
   filePath: string
   localReleaseId: string | null
+  // Set by the tracks endpoints for the requesting user; absent on rows built elsewhere.
+  isFavorite?: boolean
   artists?: { name: string; slug: string }[]
   missing?: boolean
   mbTitle?: string | null

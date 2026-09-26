@@ -1,5 +1,5 @@
-import { ref } from 'vue'
-import { describe, expect, it } from 'vitest'
+import { nextTick, ref } from 'vue'
+import { describe, expect, it, vi } from 'vitest'
 import { useArtistCatalogue } from '../../composables/useArtistCatalogue'
 import type { UnifiedRelease } from '../../types/release'
 
@@ -212,5 +212,27 @@ describe('useArtistCatalogue', () => {
     expect(cat.favoritesOnly.value).toBe(false)
     expect(cat.searchQuery.value).toBe('foo')
     expect(cat.sortKey.value).toBe('title')
+  })
+})
+
+describe('useArtistCatalogue favorites seeding', () => {
+  it('seeds favoriteReleases from the ids the releases endpoint returned, and follows later changes', async () => {
+    const releases = ref([release({ id: '1' })])
+    const ids = ref(['l1'])
+    const cat = useArtistCatalogue(releases, ids)
+    expect([...cat.favoriteReleases.value]).toEqual(['l1'])
+
+    ids.value = ['l2', 'l3']
+    await nextTick()
+
+    expect([...cat.favoriteReleases.value]).toEqual(['l2', 'l3'])
+  })
+
+  it('starts empty and makes no request when no ids are supplied', () => {
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('$fetch', fetchSpy)
+    const cat = useArtistCatalogue(ref([release({ id: '1' })]))
+    expect(cat.favoriteReleases.value.size).toBe(0)
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 })

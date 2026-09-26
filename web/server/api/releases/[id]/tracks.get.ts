@@ -4,6 +4,7 @@ import { linkBoxDiscTracks, mapBundleMbTracks } from '~/server/utils/bundleTrack
 import { currentUserId } from '~/server/utils/libraryOwnership'
 import { trackPlaysByIds, withTrackPlay } from '~/server/utils/userPlays'
 import { buildDiscTitles } from '~/server/utils/discTitles'
+import { attachTrackFavorites } from '~/server/utils/favorites'
 
 const normalizeTitle = (title: string): string => {
   return title
@@ -36,6 +37,11 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
   if (!id) {throw createError({ statusCode: 400, statusMessage: 'Missing id' })}
 
+  const result = await loadReleaseTracks(userId, id)
+  return { ...result, tracks: await attachTrackFavorites(userId, result.tracks) }
+})
+
+const loadReleaseTracks = async (userId: number, id: string) => {
   // Try as MusicBrainzRelease first
   const mbRelease = await prisma.musicBrainzRelease.findUnique({
     where: { id },
@@ -161,7 +167,7 @@ export default defineEventHandler(async (event) => {
   })
 
   return getLocalReleaseTracks(userId, id, localRelease?.release?.tracks)
-})
+}
 
 const getLocalReleaseTracks = async (
   userId: number,

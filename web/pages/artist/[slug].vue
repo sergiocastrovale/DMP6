@@ -10,12 +10,12 @@ const route = useRoute()
 const slug = computed(() => route.params.slug as string)
 
 const {
-  artist, error, pending, releases, dlInFlight, refreshDownloadStatus,
+  artist, error, pending, releases, favoriteReleaseIds, dlInFlight, refreshDownloadStatus,
   monitorBusy, toggleMonitor, artistFolders, playingAll, playAll, shufflingAll, shuffleAll,
   photoBusy, fetchPhoto,
 } = useArtistPage(slug)
 
-const catalogue = useArtistCatalogue(releases)
+const catalogue = useArtistCatalogue(releases, favoriteReleaseIds)
 provide('catalogue', catalogue)
 provide('refreshDownloadStatus', refreshDownloadStatus)
 

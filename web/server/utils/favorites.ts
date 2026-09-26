@@ -22,6 +22,29 @@ export const favoriteReleaseDates = async (userId: number, releaseIds: string[])
   return new Map(rows.flatMap(r => r.releaseId ? [[r.releaseId, r.createdAt] as const] : []))
 }
 
+// Stamps `isFavorite` on each real (non-missing) track of a payload, using one query scoped to those ids.
+// Lets a track list render its hearts from the same response instead of every list component fetching the
+// user's first 50 favorites and hoping the track is among them.
+export const attachTrackFavorites = async <T extends { id: string, missing?: boolean }>(
+  userId: number,
+  tracks: T[],
+): Promise<(T & { isFavorite: boolean })[]> => {
+  const dates = await favoriteTrackDates(userId, tracks.filter(t => !t.missing).map(t => t.id))
+  return tracks.map(t => ({ ...t, isFavorite: dates.has(t.id) }))
+}
+
+// Ids of every release-shaped thing this user has favorited: a LocalRelease id, or a dissolved box's
+// MusicBrainzRelease id (FavoriteRelease.boxReleaseId) - the same "target id" the artist page favorites by
+// (helpers/artistPageLogic.ts favoriteTargetId). One row per favorite, so bounded by what the user has
+// actually starred; the caller intersects it with the ids on screen.
+export const favoriteReleaseTargetIds = async (userId: number): Promise<Set<string>> => {
+  const rows = await prisma.favoriteRelease.findMany({
+    where: { userId },
+    select: { releaseId: true, boxReleaseId: true },
+  })
+  return new Set(rows.flatMap(r => r.releaseId ?? r.boxReleaseId ?? []))
+}
+
 export const starTrack = (userId: number, trackId: string) =>
   prisma.favoriteTrack.upsert({
     where: { userId_trackId: { userId, trackId } },

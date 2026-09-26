@@ -113,6 +113,8 @@ export const useArtistPage = (slug: Ref<string>) => {
     mergeDownloadStatus((releasesData.value?.releases ?? []) as UnifiedRelease[], dlStatusMap.value),
   )
 
+  const favoriteReleaseIds = computed<string[]>(() => (releasesData.value as { favoriteReleaseIds?: string[] } | null)?.favoriteReleaseIds ?? [])
+
   // In-flight acquisitions (download/enrich phase) for the header aggregate bar.
   const dlInFlight = computed(() => filterInFlight(dlStatusMap.value))
 
@@ -232,6 +234,7 @@ export const useArtistPage = (slug: Ref<string>) => {
     error,
     pending,
     releases,
+    favoriteReleaseIds,
     dlInFlight,
     refreshDownloadStatus: fetchDownloadStatus,
     monitorBusy,

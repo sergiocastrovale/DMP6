@@ -4,6 +4,8 @@ import { parsePagination } from '~/server/utils/pagination'
 import { hasPermission } from '~/server/utils/permissions'
 import { currentUserId } from '~/server/utils/libraryOwnership'
 import { releasePlayTotals } from '~/server/utils/userPlays'
+import { favoriteReleaseTargetIds } from '~/server/utils/favorites'
+import { favoriteTargetId } from '~/helpers/artistPageLogic'
 import { applyPlays, buildArtistCatalogue, pageCatalogue, playReleaseIds } from '~/server/utils/artistCatalogue'
 
 export default defineEventHandler(async (event) => {
@@ -21,7 +23,14 @@ export default defineEventHandler(async (event) => {
   const catalogue = await cachedResponse(`artist-releases:${slug}`, 600, () => buildArtistCatalogue(slug), { shared: true })
 
   const localIds = catalogue.flatMap(playReleaseIds)
-  const releases = applyPlays(catalogue, await releasePlayTotals(userId, localIds))
+  const [plays, favoriteTargets] = await Promise.all([
+    releasePlayTotals(userId, localIds),
+    favoriteReleaseTargetIds(userId),
+  ])
+  const releases = applyPlays(catalogue, plays)
+  // Which of this page's favorite targets the user has starred - the artist page seeds its hearts from this
+  // rather than fetching /api/favorites (which returns one page of favorites, not "is this one starred").
+  const favoriteReleaseIds = [...new Set(releases.map(favoriteTargetId).filter((id): id is string => !!id && favoriteTargets.has(id)))]
 
   const result = pageCatalogue(releases, { page, pageSize, all })
   const paged = result.releases
@@ -53,5 +62,5 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  return result
+  return { ...result, favoriteReleaseIds }
 })

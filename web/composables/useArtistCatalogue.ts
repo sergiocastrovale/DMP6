@@ -38,7 +38,10 @@ const buildGroups = (releases: UnifiedRelease[]): ReleaseGroup[] => {
   return out
 }
 
-export const useArtistCatalogue = (releases: Ref<UnifiedRelease[]>) => {
+// `favoriteIds` are the favorite target ids the releases endpoint says this user has starred among the page's
+// releases (helpers/artistPageLogic.ts favoriteTargetId) - the hearts are seeded from the same response as the
+// cards rather than a separate /api/favorites request that only ever returned one page of favorites.
+export const useArtistCatalogue = (releases: Ref<UnifiedRelease[]>, favoriteIds?: Ref<string[]>) => {
   const hideMissing = ref(false)
   const showLinked = ref(true)
   const favoritesOnly = ref(false)
@@ -47,16 +50,10 @@ export const useArtistCatalogue = (releases: Ref<UnifiedRelease[]>) => {
   const activeStatuses = ref<Set<string>>(new Set())
   const sortKey = ref<string>('year-asc')
 
-  const favoriteReleases = ref<Set<string>>(new Set())
-  onMounted(async () => {
-    try {
-      const data = await $fetch<any>('/api/favorites', { query: { type: 'releases', pageSize: 100 } })
-      if (data?.releases) {
-        favoriteReleases.value = new Set(data.releases.map((f: any) => f.release.id))
-      }
-    }
-    catch { /* ignore */ }
-  })
+  const favoriteReleases = ref<Set<string>>(new Set(favoriteIds?.value ?? []))
+  if (favoriteIds) {
+    watch(favoriteIds, ids => { favoriteReleases.value = new Set(ids) })
+  }
 
   const hasLinkedReleases = computed(() => releases.value.some(r => r.connectedArtistName))
 

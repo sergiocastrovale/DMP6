@@ -32,15 +32,15 @@ const player = usePlayerStore()
 const global = useGlobalStore()
 const favoriteTracks = ref<Set<string>>(new Set())
 
-onMounted(async () => {
-  try {
-    const favorites = await $fetch<any>('/api/favorites')
-    if (favorites?.tracks) {
-      favoriteTracks.value = new Set(favorites.tracks.map((f: any) => f.track.id))
-    }
+// Hearts come with the tracks themselves (`isFavorite`, set per user by the tracks endpoints). Re-seeded
+// whenever the list is replaced; a toggle below only edits the set, so the two never disagree for long.
+watch(() => props.tracks, (tracks) => {
+  for (const t of tracks) {
+    if (t.isFavorite === undefined) {continue}
+    if (t.isFavorite) {favoriteTracks.value.add(t.id)}
+    else {favoriteTracks.value.delete(t.id)}
   }
-  catch { /* ignore */ }
-})
+}, { immediate: true })
 
 
 const isTrackPlaying = (trackId: string) => {

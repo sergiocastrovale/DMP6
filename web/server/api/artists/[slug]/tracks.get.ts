@@ -1,6 +1,7 @@
 import { prisma } from '~/server/utils/prisma'
 import { currentUserId } from '~/server/utils/libraryOwnership'
 import { trackPlaysByIds, withTrackPlay } from '~/server/utils/userPlays'
+import { attachTrackFavorites } from '~/server/utils/favorites'
 
 export default defineEventHandler(async (event) => {
   const userId = currentUserId(event)
@@ -46,11 +47,11 @@ export default defineEventHandler(async (event) => {
 
   const plays = await trackPlaysByIds(userId, tracks.map(t => t.id))
 
-  return tracks.map(({ trackRelatedArtists, ...t }) => ({
+  return attachTrackFavorites(userId, tracks.map(({ trackRelatedArtists, ...t }) => ({
     ...withTrackPlay(t, plays),
     artists: trackRelatedArtists.map(ta => ({
       name: ta.artist.name,
       slug: ta.artist.slug,
     })),
-  }))
+  })))
 })
