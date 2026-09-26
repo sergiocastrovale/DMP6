@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { acquireFailureMessage, actionReleaseIds, artistScanFolders, boxRowDiscLabel, boxRowSubtitle, canRedownload, connectedArtistNames, dedupeLocalFolders, dlPollNeeded, favoriteLabel, favoriteTargetId, filterInFlight, findBundleParentRelease, isBoxSetRow, isDissolvedBoxRow, mergeDownloadStatus, tracksToPlayerTracks, viewQueryMatches } from '../../helpers/artistPageLogic'
-import type { UnifiedRelease } from '../../types/release'
+import { acquireFailureMessage, actionReleaseIds, artistScanFolders, boxRowDiscLabel, boxRowSubtitle, canRedownload, connectedArtistNames, dedupeLocalFolders, dlPollNeeded, favoriteLabel, favoriteTargetId, filterInFlight, findBundleParentRelease, isBoxSetRow, isDissolvedBoxRow, mergeDownloadStatus, releaseTitleSlug, sortReleaseGroups, tracksToPlayerTracks, viewQueryMatches } from '../../helpers/artistPageLogic'
+import type { ReleaseGroup, UnifiedRelease } from '../../types/release'
 import type { Track } from '../../types/track'
 import type { DlStatusValue } from '../../types/download'
 
@@ -378,5 +378,36 @@ describe('viewQueryMatches', () => {
     expect(viewQueryMatches(undefined, 'catalogue')).toBe(true)
     expect(viewQueryMatches('list', 'catalogue')).toBe(false)
     expect(viewQueryMatches('bogus', 'catalogue')).toBe(false)
+  })
+})
+
+describe('sortReleaseGroups', () => {
+  const group = (key: string, title: string, earliest: string, tracks: number, plays: number) => ({
+    key, earliest, totalTracks: tracks, totalLocalTracks: tracks, totalPlayCount: plays, releases: [], primary: { title },
+  }) as unknown as ReleaseGroup
+  const groups = [group('a', 'Beta', '1990', 10, 5), group('b', 'Alpha', '1985', 20, 9), group('c', 'Gamma', '2001', 5, 1)]
+  const keys = (sortKey: string) => sortReleaseGroups(groups, sortKey).map(g => g.key)
+
+  it('orders by year, title, tracks and plays in both directions', () => {
+    expect(keys('year-asc')).toEqual(['b', 'a', 'c'])
+    expect(keys('year-desc')).toEqual(['c', 'a', 'b'])
+    expect(keys('title-asc')).toEqual(['b', 'a', 'c'])
+    expect(keys('title-desc')).toEqual(['c', 'a', 'b'])
+    expect(keys('tracks-desc')).toEqual(['b', 'a', 'c'])
+    expect(keys('tracks-asc')).toEqual(['c', 'a', 'b'])
+    expect(keys('plays-desc')).toEqual(['b', 'a', 'c'])
+    expect(keys('plays-asc')).toEqual(['c', 'a', 'b'])
+  })
+
+  it('an unknown key falls back to oldest first, and the input is never reordered', () => {
+    expect(keys('nonsense')).toEqual(['b', 'a', 'c'])
+    expect(groups.map(g => g.key)).toEqual(['a', 'b', 'c'])
+  })
+})
+
+describe('releaseTitleSlug', () => {
+  it('lowercases and hyphenates', () => {
+    expect(releaseTitleSlug('OK Computer (Deluxe)')).toBe('ok-computer-deluxe')
+    expect(releaseTitleSlug('  !!Hi!!  ')).toBe('hi')
   })
 })

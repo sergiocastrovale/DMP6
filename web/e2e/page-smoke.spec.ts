@@ -14,6 +14,9 @@ const { markReady } = createReadyGuard()
 const SHOTS = process.env.SHOT_DIR
 
 let playlistSlug: string
+let artistSlug: string
+let releaseId: string
+let releaseTitle: string
 
 test.beforeAll(async () => {
   const suffix = randomUUID().slice(0, 6)
@@ -35,9 +38,12 @@ test.beforeAll(async () => {
         },
       },
     },
-    select: { localReleases: { select: { localRelease: { select: { tracks: { select: { id: true } } } } } } },
+    select: { slug: true, localReleases: { select: { localRelease: { select: { id: true, title: true, tracks: { select: { id: true } } } } } } },
   })
   const trackId = artist.localReleases[0]!.localRelease.tracks[0]!.id
+  artistSlug = artist.slug
+  releaseId = artist.localReleases[0]!.localRelease.id
+  releaseTitle = artist.localReleases[0]!.localRelease.title
   const admin = await prisma.user.findFirstOrThrow({ where: { username: 'admin' }, select: { id: true } })
   playlistSlug = `smoke-playlist-${suffix}`
   await prisma.playlist.create({
@@ -55,6 +61,8 @@ test.beforeAll(async () => {
 
 const routes = (): [string, string, RegExp][] => [
   ['playlist-detail', `/playlists/${playlistSlug}`, /Smoke Playlist/],
+  ['artist-deep-link', `/artist/${artistSlug}?releaseId=${releaseId}`, new RegExp(releaseTitle)],
+  ['artist-list-view', `/artist/${artistSlug}?view=list`, /Smoke Track One/],
   ['timeline', '/timeline', /Timeline/],
   ['statistics', '/statistics', /Statistics/],
   ['labs-decades', '/labs/decades', /Decade/i],
@@ -63,7 +71,7 @@ const routes = (): [string, string, RegExp][] => [
   ['labs-mosaic', '/labs/mosaic', /Album Mosaic/],
 ]
 
-for (const name of ['playlist-detail', 'timeline', 'statistics', 'labs-decades', 'labs-map', 'labs-network', 'labs-mosaic']) {
+for (const name of ['playlist-detail', 'artist-deep-link', 'artist-list-view', 'timeline', 'statistics', 'labs-decades', 'labs-map', 'labs-network', 'labs-mosaic']) {
   test(`${name} loads without page errors`, async ({ page }) => {
     const [, path, heading] = routes().find(r => r[0] === name)!
     const problems: string[] = []

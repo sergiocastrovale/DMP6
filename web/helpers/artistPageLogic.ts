@@ -1,6 +1,6 @@
 // Pure logic extracted from composables/useArtistPage.ts so the download-status merge/filter/dedup
 // rules are directly unit-testable without booting useFetch/Nuxt lifecycle.
-import type { UnifiedRelease } from '~/types/release'
+import type { UnifiedRelease, ReleaseGroup } from '~/types/release'
 import type { DownloadedReleaseStatus, DlStatusValue, DlInFlightItem } from '~/types/download'
 import type { PlayerTrack } from '~/types/player'
 import type { Track } from '~/types/track'
@@ -188,3 +188,23 @@ export const tracksToPlayerTracks = (tracks: Track[], artistSlug: string): Playe
 // Whether the URL's ?view already says `mode` - list mode is `view=list`, catalogue mode is no `view` at all.
 export const viewQueryMatches = (current: unknown, mode: 'catalogue' | 'list'): boolean =>
   mode === 'list' ? current === 'list' : current === undefined
+
+// How the catalogue's release groups are ordered, keyed by the sort dropdown's value. Anything unknown falls back to the
+// default, oldest first.
+export const RELEASE_GROUP_COMPARATORS: Record<string, (a: ReleaseGroup, b: ReleaseGroup) => number> = {
+  'year-asc': (a, b) => a.earliest.localeCompare(b.earliest),
+  'year-desc': (a, b) => b.earliest.localeCompare(a.earliest),
+  'title-asc': (a, b) => a.primary.title.localeCompare(b.primary.title),
+  'title-desc': (a, b) => b.primary.title.localeCompare(a.primary.title),
+  'tracks-desc': (a, b) => b.totalTracks - a.totalTracks,
+  'tracks-asc': (a, b) => a.totalTracks - b.totalTracks,
+  'plays-desc': (a, b) => b.totalPlayCount - a.totalPlayCount,
+  'plays-asc': (a, b) => a.totalPlayCount - b.totalPlayCount,
+}
+
+export const sortReleaseGroups = (groups: ReleaseGroup[], sortKey: string): ReleaseGroup[] =>
+  [...groups].sort(RELEASE_GROUP_COMPARATORS[sortKey] ?? RELEASE_GROUP_COMPARATORS['year-asc']!)
+
+// A release title as the slug the `?release=` deep link carries.
+export const releaseTitleSlug = (title: string): string =>
+  title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')

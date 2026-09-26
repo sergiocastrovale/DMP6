@@ -1,15 +1,10 @@
 <script setup lang="ts">
-import { apiErrorMessage } from '~/helpers/apiError'
-import type { UnifiedRelease, ReleaseGroup, ReleaseInfoExtra, ReleaseStatus } from '~/types/release'
+import type { UnifiedRelease } from '~/types/release'
 import type { Track } from '~/types/track'
 import type { TrackListColumn } from '~/types/ui'
-import { useDownloadsStore } from '~/stores/downloads'
-import { useTerminalStore } from '~/stores/terminal'
-import { useToastStore } from '~/stores/toast'
-import { useGlobalStore } from '~/stores/global'
-import { scanSessionName } from '~/helpers/functions'
+import { favoriteTargetId, sortReleaseGroups } from '~/helpers/artistPageLogic'
 import { toPlayerTrack } from '~/helpers/playerTrack'
-import { acquireFailureMessage, actionReleaseIds, favoriteTargetId, findBundleParentRelease, viewQueryMatches } from '~/helpers/artistPageLogic'
+import { useDownloadsStore } from '~/stores/downloads'
 import type { useArtistCatalogue } from '~/composables/useArtistCatalogue'
 
 const props = defineProps<{
@@ -18,108 +13,14 @@ const props = defineProps<{
   releases: UnifiedRelease[]
 }>()
 
-const route = useRoute()
-const router = useRouter()
 const player = usePlayerStore()
 const { toggleOrPlay } = usePlayRelease()
 const downloadsStore = useDownloadsStore()
-const terminal = useTerminalStore()
-const toast = useToastStore()
-const global = useGlobalStore()
-const api = useApi()
 const { hasPerm } = useAuth()
 const canViewDownloads = hasPerm('sync.view')
 const catalogue = inject<ReturnType<typeof useArtistCatalogue>>('catalogue')!
-// The artist page polls download status on demand only - acquiring or cancelling here is what
-// creates/kills a row, so it has to kick the poll back into life.
-const refreshDownloadStatus = inject<() => void>('refreshDownloadStatus', () => {})
 
 const { searchQuery, sortKey, groups, favoriteReleases, activeStatuses } = catalogue
-
-const initialView = route.query.view === 'list' ? 'list' : 'catalogue'
-const viewMode = ref<'catalogue' | 'list'>(initialView)
-const expandedGroup = ref<string | null>(null)
-const expandedEdition = ref<string | null>(null)
-const allTracks = ref<Track[]>([])
-const allTracksLoading = ref(false)
-const allTracksLoaded = ref(false)
-const cancelRelease = ref<UnifiedRelease | null>(null)
-const showCancelDialog = ref(false)
-const redownloadRelease = ref<UnifiedRelease | null>(null)
-const showRedownloadDialog = ref(false)
-const infoRelease = ref<UnifiedRelease | null>(null)
-const showInfoDialog = ref(false)
-const infoExtra = ref<ReleaseInfoExtra | null>(null)
-const acquiringIds = ref<Set<string>>(new Set())
-
-onMounted(() => {
-  if (!canViewDownloads.value) {
-    return
-  }
-  downloadsStore.checkStatus()
-  downloadsStore.fetchDownloadCapabilities()
-})
-
-const sortedGroups = computed<ReleaseGroup[]>(() => {
-  const arr = [...groups.value]
-  switch (sortKey.value) {
-    case 'year-desc':
-      arr.sort((a, b) => b.earliest.localeCompare(a.earliest))
-      break
-    case 'title-asc':
-      arr.sort((a, b) => a.primary.title.localeCompare(b.primary.title))
-      break
-    case 'title-desc':
-      arr.sort((a, b) => b.primary.title.localeCompare(a.primary.title))
-      break
-    case 'tracks-desc':
-      arr.sort((a, b) => b.totalTracks - a.totalTracks)
-      break
-    case 'tracks-asc':
-      arr.sort((a, b) => a.totalTracks - b.totalTracks)
-      break
-    case 'plays-desc':
-      arr.sort((a, b) => b.totalPlayCount - a.totalPlayCount)
-      break
-    case 'plays-asc':
-      arr.sort((a, b) => a.totalPlayCount - b.totalPlayCount)
-      break
-    default:
-      arr.sort((a, b) => a.earliest.localeCompare(b.earliest))
-  }
-  return arr
-})
-
-const releaseMap = computed(() => {
-  const map: Record<string, { title: string; status: ReleaseStatus; image: string | null; imageUrl: string | null }> = {}
-  for (const r of props.releases) {
-    if (r.localReleaseId) {
-      map[r.localReleaseId] = { title: r.title, status: r.status, image: r.image, imageUrl: r.imageUrl }
-    }
-  }
-  return map
-})
-
-const filteredAllTracks = computed(() => {
-  let tracks = allTracks.value
-  if (activeStatuses.value.size > 0) {
-    const matchingReleaseIds = new Set(
-      props.releases
-        .filter(r => activeStatuses.value.has(r.status) && r.localReleaseId)
-        .map(r => r.localReleaseId),
-    )
-    tracks = tracks.filter(t => t.localReleaseId && matchingReleaseIds.has(t.localReleaseId))
-  }
-  if (searchQuery.value) {
-    const q = searchQuery.value.toLowerCase()
-    tracks = tracks.filter(t =>
-      t.title?.toLowerCase().includes(q)
-      || t.artist?.toLowerCase().includes(q)
-      || t.album?.toLowerCase().includes(q),
-    )
-  }
-  return tracks
-})
 
 const listViewColumns: TrackListColumn[] = [
   { key: 'play' },
@@ -131,237 +32,38 @@ const listViewColumns: TrackListColumn[] = [
   { key: 'favorite' },
 ]
 
-// Only navigates when ?view actually changes. This watcher is immediate, and the artist page remounts
-// this component whenever its releases refetch (every terminal run ends with one) - an unconditional
-// replace to the current route then superseded whatever navigation was already in flight, e.g.
-// DeleteDialog's redirect to /browse, stranding the user on the deleted artist's page.
-watch(viewMode, (val) => {
-  if (val === 'list') {
-    loadAllTracks()
-  }
-  if (viewQueryMatches(route.query.view, val)) {
+const { viewMode, allTracksLoading, releaseMap, filteredAllTracks } = useArtistListView(
+  () => props.slug,
+  () => props.releases,
+  { searchQuery, activeStatuses },
+)
+const { expandedGroup, expandedEdition, selectedTrackId, toggleGroup, toggleEdition, goToReleaseById, goToBundleParent } = useReleaseExpansion(() => props.releases)
+const {
+  acquiringIds, acquireRelease,
+  redownloadRelease, showRedownloadDialog, openRedownloadDialog, confirmRedownload,
+  cancelRelease, showCancelDialog, openCancelDialog, confirmCancelDownload,
+  refreshRelease,
+  infoRelease, infoExtra, showInfoDialog, openInfoDialog,
+  toggleFavoriteRelease,
+} = useReleaseActions(favoriteReleases)
+
+onMounted(() => {
+  if (!canViewDownloads.value) {
     return
   }
-  const query = { ...route.query }
-  if (val === 'list') {
-    query.view = 'list'
-  }
-  else {
-    delete query.view
-  }
-  router.replace({ query })
-}, { immediate: true })
+  downloadsStore.checkStatus()
+  downloadsStore.fetchDownloadCapabilities()
+})
 
-const toReleaseSlug = (title: string) => {
-  return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-}
+const sortedGroups = computed(() => sortReleaseGroups(groups.value, sortKey.value))
 
-// replacesLocalReleaseId is set only by the re-download flow: the server stamps it on the download
-// row so the merge deletes this incomplete copy before moving the new one in.
-const acquireRelease = async (release: UnifiedRelease, replacesLocalReleaseId?: string) => {
-  if (!release.mbReleaseRowId || acquiringIds.value.has(release.id)) {
-    return
-  }
-  acquiringIds.value = new Set(acquiringIds.value).add(release.id)
-  try {
-    const result = await $fetch<{ status: string; otherCopyInFlight?: boolean }>('/api/downloads/acquire', {
-      method: 'POST',
-      body: { mbReleaseRowId: release.mbReleaseRowId, replacesLocalReleaseId },
-    })
-    const message = acquireFailureMessage(result.status)
-    if (message) {
-      toast.error(message)
-    }
-    else if (result.otherCopyInFlight) {
-      toast.info('A download for another copy of this release is already running - it will replace that copy, not this one.')
-    }
-    refreshDownloadStatus()
-  }
-  catch (e) {
-    toast.error(apiErrorMessage(e, 'Download request failed'))
-  }
-  finally {
-    const next = new Set(acquiringIds.value)
-    next.delete(release.id)
-    acquiringIds.value = next
-  }
-}
-
-const openRedownloadDialog = (release: UnifiedRelease) => {
-  redownloadRelease.value = release
-  showRedownloadDialog.value = true
-}
-
-const confirmRedownload = async () => {
-  showRedownloadDialog.value = false
-  const release = redownloadRelease.value
-  redownloadRelease.value = null
-  if (!release?.localReleaseId) {
-    return
-  }
-  await acquireRelease(release, release.localReleaseId)
-}
-
-const openCancelDialog = (release: UnifiedRelease) => {
-  cancelRelease.value = release
-  showCancelDialog.value = true
-}
-
-const confirmCancelDownload = async () => {
-  showCancelDialog.value = false
-  const id = cancelRelease.value?.downloadedReleaseId
-  cancelRelease.value = null
-  if (!id) {
-    return
-  }
-  await downloadsStore.cancel(id)
-  refreshDownloadStatus()
-}
-
-// One `./refresh --release` stage per LocalRelease - a dissolved box row carries one per disc, so a
-// single click refreshes the whole box as one run.
-const refreshRelease = (edition: UnifiedRelease) => {
-  terminal.runSequence(actionReleaseIds(edition).map(id => ({
-    command: './refresh',
-    args: ['--release', id, '--overwrite'],
-    session: scanSessionName('refresh-release', id),
-  })))
-}
-
-const openInfoDialog = async (edition: UnifiedRelease) => {
-  infoRelease.value = edition
-  infoExtra.value = null
-  showInfoDialog.value = true
-  if (edition.localReleaseId) {
-    infoExtra.value = await api.load(() => $fetch<ReleaseInfoExtra>(`/api/releases/${edition.localReleaseId}/info`), 'Could not load the release info')
-  }
-}
-
-const toggleGroup = (key: string) => {
-  expandedGroup.value = expandedGroup.value === key ? null : key
-  if (expandedGroup.value !== key) {
-    expandedEdition.value = null
-  }
-}
-
-
-const toggleEdition = (id: string) => {
-  expandedEdition.value = expandedEdition.value === id ? null : id
-}
-
-const getReleaseId = (r: UnifiedRelease) => r.localReleaseId || r.id
-const handleReleaseClick = (r: UnifiedRelease) => toggleOrPlay(getReleaseId(r), props.slug)
-
-let allTracksSlug = ''
-const loadAllTracks = async () => {
-  if (allTracksLoaded.value && allTracksSlug === props.slug) {
-    return
-  }
-  allTracksLoading.value = true
-  try {
-    allTracks.value = await $fetch<Track[]>(`/api/artists/${props.slug}/tracks`)
-    allTracksSlug = props.slug
-    allTracksLoaded.value = true
-  }
-  catch (e) {
-    api.report(e, 'Could not load the tracks')
-  }
-  finally {
-    allTracksLoading.value = false
-  }
-}
+const handleReleaseClick = (r: UnifiedRelease) => toggleOrPlay(r.localReleaseId || r.id, props.slug)
 
 const buildPlayerTracks = (tracks: Track[], startTrack: Track) => {
   const playerTracks = tracks.map(t => toPlayerTrack(t, { artistSlug: props.slug }))
   const start = playerTracks.find(pt => pt.id === startTrack.id)
   player.setQueue(playerTracks, start)
 }
-
-const toggleFavoriteRelease = async (release: UnifiedRelease) => {
-  const localId = favoriteTargetId(release)
-  if (!localId) {
-    return
-  }
-  const isFavorite = favoriteReleases.value.has(localId)
-  const ok = await api.run(() => $fetch<unknown>(`/api/favorites/releases/${localId}`, {
-    method: isFavorite ? 'DELETE' : 'POST',
-  }), 'Could not update the favorite')
-  if (!ok) {
-    return
-  }
-  if (isFavorite) {
-    favoriteReleases.value.delete(localId)
-    global.stats.favorites--
-  } else {
-    favoriteReleases.value.add(localId)
-    global.stats.favorites++
-  }
-}
-
-const selectedTrackId = ref<string | null>(null)
-
-const expandAndScrollTo = async (release: UnifiedRelease) => {
-  const groupKey = release.releaseGroupId || `solo:${release.id}`
-  expandedGroup.value = groupKey
-  expandedEdition.value = release.id
-  await nextTick()
-  document.querySelector(`[data-group-key="${groupKey}"]`)
-    ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-}
-
-// An "also part of" link in the info dialog: the box's MusicBrainz release id, which is the card's own id
-// for a box that is a gap or a dissolved box, or its mbReleaseRowId for a box kept as one local release.
-const goToReleaseById = async (releaseId: string) => {
-  const release = props.releases.find(r => r.id === releaseId || r.localReleaseId === releaseId)
-    ?? props.releases.find(r => r.mbReleaseRowId === releaseId)
-  if (!release) {
-    return
-  }
-  await expandAndScrollTo(release)
-}
-
-const handleReleaseDeepLink = async () => {
-  const targetSlug = route.query.release as string | undefined
-  const targetId = route.query.releaseId as string | undefined
-  if (!targetSlug && !targetId) {
-    return
-  }
-  await nextTick()
-  const release = targetId
-    ? props.releases.find(r => r.localReleaseId === targetId || r.id === targetId)
-    : props.releases.find(r => toReleaseSlug(r.title) === targetSlug)
-  if (!release) {
-    return
-  }
-  selectedTrackId.value = (route.query.trackId as string) || null
-  await expandAndScrollTo(release)
-}
-
-const goToBundleParent = async (release: UnifiedRelease) => {
-  const parent = findBundleParentRelease(props.releases, release)
-  if (!parent) {
-    return
-  }
-  await expandAndScrollTo(parent)
-}
-
-// onMounted (not an immediate watcher) for the initial run: handleReleaseDeepLink ends in
-// document.querySelector, and an immediate watcher's callback runs synchronously at the
-// watch() call site - during Nuxt's server-side setup(), where `document` doesn't exist. A
-// deep-linked release (?releaseId=...) would reach that call once its `await nextTick()`
-// resumed, throwing on the server. onMounted is client-only; the plain watch below only ever
-// fires for a later, client-side change to `releases` (e.g. slower-arriving async data).
-onMounted(() => {
-  if (props.releases.length) {
-    handleReleaseDeepLink()
-  }
-})
-
-watch(() => props.releases, () => {
-  if (props.releases.length) {
-    handleReleaseDeepLink()
-  }
-})
 </script>
 
 <template>
