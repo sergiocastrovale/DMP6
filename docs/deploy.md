@@ -42,7 +42,7 @@ Optional vars (image storage, S3, etc.) are documented in `.env` itself.
 
 ### Encrypting stored credentials (`SETTINGS_ENCRYPTION_KEY`)
 
-**Status:** on since 2026-09-26. Both variables live in the NAS `.env` (`/mnt/SSD/web/dmp/.env`, which `docker compose` reads and passes into the container - `.env.bak-d2d3` beside it is the file from before), and the key is also kept in the local `web/.env`.
+**Status:** on since 2026-09-26. Both variables live in the NAS `.env` (`/mnt/SSD/web/dmp/.env`, which `docker compose` reads and passes into the container), and the key is also kept in the local `web/.env`.
 
 The keys entered in Settings (slskd, S3, Fanart.tv, Genius, the Last.fm application secret) and every user's Last.fm
 session key sit in the database, so a `./backup` dump or a replica would carry them in the clear. Setting
