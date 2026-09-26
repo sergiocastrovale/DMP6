@@ -75,11 +75,31 @@ ssh_cmd "sudo mkdir -p '$DL_ROOT/dmp/_approved' && sudo chown -R :568 '$DL_ROOT/
 echo "--- Ensuring data dir permissions ---"
 ssh_cmd "mkdir -p $NAS_DEPLOY_PATH/img/releases $NAS_DEPLOY_PATH/img/artists $NAS_DEPLOY_PATH/dump $NAS_DEPLOY_PATH/logs && chmod 777 $NAS_DEPLOY_PATH/img $NAS_DEPLOY_PATH/img/releases $NAS_DEPLOY_PATH/img/artists $NAS_DEPLOY_PATH/dump $NAS_DEPLOY_PATH/logs"
 
+# Migrate BEFORE swapping the container. The old order (restart, sleep 3, migrate) ran new code against the old
+# schema for however long the migrations took - seconds for a column, minutes while an index builds - and, if a
+# migration failed, left the new code running against the old schema indefinitely. A one-off container from the
+# NEW image applies the migrations while the OLD container keeps serving; `set -e` stops the deploy on failure
+# with the old container still up.
+MIGRATE="cd $NAS_DEPLOY_PATH && sudo docker compose run --rm --no-deps -T web prisma"
+echo "--- Checking pending DB migrations ---"
+PENDING="$(ssh_cmd "$MIGRATE migrate status --schema=prisma/schema.prisma" 2>&1 || true)"
+echo "$PENDING" | tail -n 12
+# Migrations named drop_dead_* / drop_column_* / drop_table_* remove columns or tables - unlike index changes they
+# are not recoverable from a re-index. Make sure there is a backup before letting them run.
+if echo "$PENDING" | grep -qE 'drop_(dead|column|table)'; then
+  echo ""
+  echo "WARNING: pending migrations DROP data (columns/tables). Take a backup first: ./backup"
+  if [ -t 0 ] && [ -z "${DEPLOY_ASSUME_BACKUP:-}" ]; then
+    read -r -p "Continue deploying? [y/N] " answer
+    [ "$answer" = "y" ] || { echo "Aborted - nothing was changed."; exit 1; }
+  fi
+fi
+
+echo "--- Applying DB migrations (new image, before restart) ---"
+ssh_cmd "$MIGRATE migrate deploy --schema=prisma/schema.prisma"
+
 echo "--- Restarting container ---"
 ssh_cmd "cd $NAS_DEPLOY_PATH && sudo docker compose up -d web"
-
-echo "--- Applying DB migrations ---"
-ssh_cmd "cd $NAS_DEPLOY_PATH && sleep 3 && sudo docker compose exec -T web prisma migrate deploy --schema=prisma/schema.prisma"
 
 # Clean up old images (after restart so the old image is no longer in use)
 echo "--- Cleaning up old images ---"

@@ -20,9 +20,10 @@ The `deploy` script builds the image locally, ships it to the NAS, and restarts 
 1. **Build** - runs `docker build` locally, producing a single `dmp:latest` image (Rust scripts + Nuxt app).
 2. **Pack & transfer** - saves the image to `/tmp/dmp-image.tar.gz`, SCPs to the NAS.
 3. **Load** - runs `docker load` on the NAS, then deletes the archive.
-4. **Deploy** - copies `docker-compose.yml` and the shell wrappers to `DEPLOY_PATH`, ensures the data dirs exist, runs `docker compose up -d web`.
-5. **Schema** - runs `prisma migrate deploy` inside the container (migrations only — never `db push` against production).
-6. **Cleanup** - `docker image prune -f` on the NAS, once the old image is no longer in use.
+4. **Stage** - copies `docker-compose.yml` and the shell wrappers to `DEPLOY_PATH` and ensures the data dirs exist.
+5. **Schema, before the swap** - a one-off container from the NEW image runs `prisma migrate deploy` (`docker compose run --rm --no-deps web prisma ...`) while the OLD container keeps serving. If a migration fails the deploy stops with the old container still running. Migrations only - never `db push` against production. Before applying, `prisma migrate status` is shown; if a pending migration is named `drop_dead_*`, `drop_column_*` or `drop_table_*` (data-removing, unlike index changes) the script warns to run `./backup` and asks to continue (skipped when not on a terminal or when `DEPLOY_ASSUME_BACKUP` is set).
+6. **Restart** - `docker compose up -d web` swaps to the new image.
+7. **Cleanup** - `docker image prune -f` on the NAS, once the old image is no longer in use.
 
 ## Required env vars
 
