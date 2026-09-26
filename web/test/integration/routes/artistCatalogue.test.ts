@@ -121,3 +121,36 @@ describe('applyPlays', () => {
     expect(card!.totalPlayCount).toBe(7)
   })
 })
+
+describe('a Bach-sized catalogue', () => {
+  beforeEach(async () => {
+    await resetDb()
+  })
+
+  it('assembles ~6,000 MusicBrainz releases (90k tracks) well inside the response budget', async () => {
+    const artist = await makeArtist(prisma, { name: 'Prolific', slug: 'prolific' })
+    const type = await prisma.releaseType.upsert({ where: { name: 'Album' }, create: { name: 'Album', slug: 'album' }, update: {} })
+    await prisma.$executeRawUnsafe(`
+      INSERT INTO "MusicBrainzRelease" (id, title, "typeId", year, "musicbrainzId", "releaseGroupId", status, "updatedAt")
+      SELECT 'perf-mb-' || g, 'Perf Album ' || g, '${type.id}', 1700 + g % 300, 'perf-mbid-' || g, 'perf-rg-' || (g / 2), 'MISSING', now()
+      FROM generate_series(1, 6000) g`)
+    await prisma.$executeRawUnsafe(`
+      INSERT INTO "MusicBrainzReleaseArtist" (id, "releaseId", "artistId")
+      SELECT 'perf-mra-' || g, 'perf-mb-' || g, '${artist.id}' FROM generate_series(1, 6000) g`)
+    await prisma.$executeRawUnsafe(`
+      INSERT INTO "MusicBrainzReleaseTrack" (id, title, position, "releaseId", "updatedAt")
+      SELECT 'perf-t-' || g || '-' || t, 'Track ' || t, t, 'perf-mb-' || g, now()
+      FROM generate_series(1, 6000) g, generate_series(1, 15) t`)
+    await prisma.$executeRawUnsafe('ANALYZE')
+
+    const started = performance.now()
+    const cards = await buildArtistCatalogue('prolific')
+    const elapsed = performance.now() - started
+
+    expect(cards).toHaveLength(6000)
+    expect(cards.every(c => c.trackCount === 15)).toBe(true)
+    // The budget is generous for shared CI hardware; the point is that it's seconds, not the tens of seconds
+    // (and megabytes of track ids) the per-track selects cost.
+    expect(elapsed).toBeLessThan(4000)
+  })
+})

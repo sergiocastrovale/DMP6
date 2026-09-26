@@ -123,3 +123,32 @@ export const applyPlays = (
     ...card,
     totalPlayCount: playReleaseIds(card).reduce((sum, id) => sum + (plays.get(id)?.totalPlayCount ?? 0), 0),
   }))
+
+export interface CataloguePage {
+  releases: UnifiedRelease[]
+  total: number
+  page: number
+  pageSize: number
+  hasMore: boolean
+}
+
+// `all` returns the whole catalogue as one page. The artist page needs every card - it groups editions of a
+// release group, filters and counts across them - so the earlier "first 500" cut silently dropped the tail of
+// large catalogues (Bach has ~5,800 MusicBrainz releases). Explicit paging stays for other callers.
+export const pageCatalogue = (
+  releases: UnifiedRelease[],
+  paging: { page: number, pageSize: number, all: boolean },
+): CataloguePage => {
+  const total = releases.length
+  if (paging.all) {
+    return { releases, total, page: 1, pageSize: total, hasMore: false }
+  }
+  const start = (paging.page - 1) * paging.pageSize
+  return {
+    releases: releases.slice(start, start + paging.pageSize),
+    total,
+    page: paging.page,
+    pageSize: paging.pageSize,
+    hasMore: start + paging.pageSize < total,
+  }
+}

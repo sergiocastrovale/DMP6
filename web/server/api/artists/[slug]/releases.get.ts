@@ -4,7 +4,7 @@ import { parsePagination } from '~/server/utils/pagination'
 import { hasPermission } from '~/server/utils/permissions'
 import { currentUserId } from '~/server/utils/libraryOwnership'
 import { releasePlayTotals } from '~/server/utils/userPlays'
-import { applyPlays, buildArtistCatalogue, playReleaseIds } from '~/server/utils/artistCatalogue'
+import { applyPlays, buildArtistCatalogue, pageCatalogue, playReleaseIds } from '~/server/utils/artistCatalogue'
 
 export default defineEventHandler(async (event) => {
   const userId = currentUserId(event)
@@ -13,6 +13,7 @@ export default defineEventHandler(async (event) => {
 
   const query = getQuery(event)
   const { page, pageSize } = parsePagination(query, { defaultSize: 20, maxSize: 500 })
+  const all = query.all === '1' || query.all === 'true'
 
   // The catalogue is user-independent and expensive to assemble, so it is cached (10 min, library-versioned -
   // a rescan or merge invalidates it). Everything that differs per user - plays, download state - is attached
@@ -22,10 +23,8 @@ export default defineEventHandler(async (event) => {
   const localIds = catalogue.flatMap(playReleaseIds)
   const releases = applyPlays(catalogue, await releasePlayTotals(userId, localIds))
 
-  // Paginate the unified list
-  const total = releases.length
-  const start = (page - 1) * pageSize
-  const paged = releases.slice(start, start + pageSize)
+  const result = pageCatalogue(releases, { page, pageSize, all })
+  const paged = result.releases
 
   // Attach in-flight download state (acquisition pipeline) for the paged cards.
   // PROMOTED/REJECTED are excluded on purpose: promoted shows as a real local release,
@@ -54,11 +53,5 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  return {
-    releases: paged,
-    total,
-    page,
-    pageSize,
-    hasMore: start + pageSize < total,
-  }
+  return result
 })

@@ -27,7 +27,7 @@ export const useArtistPage = (slug: Ref<string>) => {
 
   const { data: releasesData, pending: releasesPending, refresh: refreshReleases } = useFetch(() => `/api/artists/${slug.value}/releases`, {
     key: () => `artist-releases-${slug.value}`,
-    query: { pageSize: 500 },
+    query: { all: 1 },
   })
 
   const dlStatusMap = ref<Map<string, DlStatusValue>>(new Map())
