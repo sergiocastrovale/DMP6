@@ -39,18 +39,6 @@ describe('useDownloadsStore - pure getters (seeded state)', () => {
     expect(store.readyCount).toBe(2)
   })
 
-  it('activeCount counts InProgress/Queued/Initializing slskd transfers only', () => {
-    const store = useDownloadsStore()
-    store.activeDownloads = [
-      { state: 'InProgress' } as any,
-      { state: 'Queued' } as any,
-      { state: 'Initializing' } as any,
-      { state: 'Completed, Errored' } as any,
-      { state: 'Completed, Succeeded' } as any,
-    ]
-    expect(store.activeCount).toBe(3)
-  })
-
   it('mergingIds/mergeActive reflect ids while a merge streams through the terminal, then clear', async () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise(() => {}))) // never resolves - stay "in flight"
     fetchMock.mockResolvedValue({ active: [], ready: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: null })
@@ -334,15 +322,6 @@ describe('useDownloadsStore - simple fetch/action wrappers', () => {
 
     expect(store.downloadsEnabled).toBe(false)
     expect(store.capabilitiesChecked).toBe(true)
-  })
-
-  it('fetchActive populates activeDownloads', async () => {
-    fetchMock.mockResolvedValueOnce({ downloads: [{ id: 'd1' }] })
-    const store = useDownloadsStore()
-
-    await store.fetchActive()
-
-    expect(store.activeDownloads).toEqual([{ id: 'd1' }])
   })
 
   it('reject posts to the reject endpoint then refreshes the queue', async () => {

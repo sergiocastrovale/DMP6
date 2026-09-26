@@ -1,5 +1,6 @@
 import { useTerminalStore } from '~/stores/terminal'
 import { ORPHAN_POLL_MS } from '~/helpers/constants'
+import { createPoller } from '~/helpers/poller'
 
 // App-wide orphan-session recovery: catches a job that's still running server-side but this tab has
 // no memory of (a page reload, or the drop happened on a page that was never watching it - any page
@@ -12,21 +13,20 @@ export default defineNuxtPlugin(() => {
   const { user, hasPerm } = useAuth()
   const canViewSessions = hasPerm('sync.view')
 
-  let pollInterval: ReturnType<typeof setInterval> | null = null
+  // Pauses while the tab is hidden, so a background tab isn't listing tmux sessions every 15 s.
+  const poller = createPoller({
+    run: () => { if (!terminal.isRunning) {return terminal.autoReconnectOrphan()} },
+    delay: () => ORPHAN_POLL_MS,
+  })
 
   function start() {
-    if (pollInterval) {return}
+    if (poller.active) {return}
     terminal.autoReconnectOrphan()
-    pollInterval = setInterval(() => {
-      if (!terminal.isRunning) {terminal.autoReconnectOrphan()}
-    }, ORPHAN_POLL_MS)
+    poller.start()
   }
 
   function stop() {
-    if (pollInterval) {
-      clearInterval(pollInterval)
-      pollInterval = null
-    }
+    poller.stop()
   }
 
   // /api/terminal/sessions is gated on sync.view - a VIEWER's tab must not poll it just to collect 403s.

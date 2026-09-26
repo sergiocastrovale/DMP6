@@ -28,10 +28,28 @@ export async function countNoYearMissing(): Promise<number> {
   return Number(rows[0]?.count ?? 0)
 }
 
+// The count above joins MusicBrainzRelease (350k rows, 68% MISSING) to its artists and their monitored flag - far too
+// heavy to run on every /downloads queue poll, and it only changes when a sync runs. Cached in-process for 5 minutes.
+const NO_YEAR_TTL_MS = 5 * 60_000
+let noYearCache: { value: number, at: number } | null = null
+
+export async function cachedNoYearMissing(now: number = Date.now()): Promise<number> {
+  if (noYearCache && now - noYearCache.at < NO_YEAR_TTL_MS) {
+    return noYearCache.value
+  }
+  const value = await countNoYearMissing().catch(() => noYearCache?.value ?? 0)
+  noYearCache = { value, at: now }
+  return value
+}
+
+export const _resetNoYearCacheForTest = (): void => {
+  noYearCache = null
+}
+
 // Snapshot of why acquisition is (or isn't) running, for the /downloads idle banner.
 export async function getAcquisitionStatus(): Promise<Acquisition> {
   const enabled = await isDownloadsEnabled()
-  const noYearMissing = await countNoYearMissing().catch(() => 0)
+  const noYearMissing = await cachedNoYearMissing()
   const environment = await checkDownloadEnvironment()
   const canAcquire = enabled && acquireBlockReasons(environment).length === 0
   return { canAcquire, enabled, noYearMissing, environment }

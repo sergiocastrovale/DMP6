@@ -1,10 +1,11 @@
 import { defineStore } from 'pinia'
 import { useTerminalStore } from '~/stores/terminal'
-import type { ActiveDownload, DownloadSourceStatus, DownloadedReleaseItem, Acquisition, SongkongHealth, DownloadEnvironment, MergeProgressEntry } from '~/types/download'
+import { createPoller } from '~/helpers/poller'
+import { QUEUE_POLL_ACTIVE_MS, QUEUE_POLL_IDLE_MS } from '~/helpers/constants'
+import type { DownloadSourceStatus, DownloadedReleaseItem, Acquisition, SongkongHealth, DownloadEnvironment, MergeProgressEntry } from '~/types/download'
 
 export const useDownloadsStore = defineStore('downloads', () => {
   const slskd = ref<DownloadSourceStatus>({ configured: false, connected: false })
-  const activeDownloads = ref<ActiveDownload[]>([])
   const statusChecked = ref(false)
 
   // Soulseek on/off switch (Settings.downloadsEnabled). Gates the per-release Download button.
@@ -123,18 +124,14 @@ export const useDownloadsStore = defineStore('downloads', () => {
   const hasInFlight = computed(() =>
     queueActive.value.some(i => i.status === 'DOWNLOADING' || i.status === 'ENRICHING' || i.status === 'SEARCHING'),
   )
-  const queuePollNeeded = computed(() =>
-    hasInFlight.value || mergeActive.value || (!paused.value && !!acquisition.value?.canAcquire),
-  )
-
-  let pollInterval: ReturnType<typeof setInterval> | null = null
-  let queuePollTimer: ReturnType<typeof setInterval> | null = null
-
-  const activeCount = computed(() =>
-    activeDownloads.value.filter(d =>
-      d.state.includes('InProgress') || d.state === 'Queued' || d.state === 'Initializing',
-    ).length,
-  )
+  // How long until the next queue read. 2 s while something is actually moving (a transfer, a merge) so
+  // progress feels live; 15 s while merely "acquisition could start a download any tick" - the monitor's own
+  // cadence is minutes, so faster polling just re-runs a heavy endpoint for nothing. null when there is
+  // nothing to watch at all (paused / acquisition off): the loop stops itself.
+  const queuePollDelay = (): number | null =>
+    hasInFlight.value || mergeActive.value
+      ? QUEUE_POLL_ACTIVE_MS
+      : (!paused.value && !!acquisition.value?.canAcquire) ? QUEUE_POLL_IDLE_MS : null
 
   const checkStatus = async () => {
     try {
@@ -164,27 +161,6 @@ export const useDownloadsStore = defineStore('downloads', () => {
     }
   }
 
-  const fetchActive = async () => {
-    try {
-      const data = await $fetch<{ downloads: ActiveDownload[] }>('/api/downloads/active')
-      activeDownloads.value = data.downloads
-    }
-    catch { /* ignore */ }
-  }
-
-  const startPolling = () => {
-    if (pollInterval) { return }
-    fetchActive()
-    pollInterval = setInterval(fetchActive, 3000)
-  }
-
-  const stopPolling = () => {
-    if (pollInterval) {
-      clearInterval(pollInterval)
-      pollInterval = null
-    }
-  }
-
   const fetchQueue = async () => {
     try {
       const data = await $fetch<{ active: DownloadedReleaseItem[]; ready: DownloadedReleaseItem[]; rejected: DownloadedReleaseItem[]; history: DownloadedReleaseItem[]; paused: boolean; pausedReason: string | null; freeGb: number | null; minFreeGb: number | null; acquisition: Acquisition; songkong: SongkongHealth }>('/api/downloads/queue')
@@ -210,31 +186,39 @@ export const useDownloadsStore = defineStore('downloads', () => {
     ensureQueuePolling()
   }
 
+  // The first round always waits one active interval - the queue was only just read, and until it has been
+  // there is no state to derive a cadence from. After that queuePollDelay() decides, and pauses while the tab
+  // is hidden (helpers/poller.ts).
+  let firstRound = true
+  const queuePoller = createPoller({
+    run: fetchQueue,
+    delay: () => {
+      if (firstRound) {
+        firstRound = false
+        return QUEUE_POLL_ACTIVE_MS
+      }
+      return queuePollDelay()
+    },
+  })
+
   const stopQueuePolling = () => {
-    if (queuePollTimer) {
-      clearTimeout(queuePollTimer)
-      queuePollTimer = null
-    }
+    queuePoller.stop()
+    firstRound = true
   }
 
   const startQueuePolling = () => {
-    if (queuePollTimer) {
-      return
-    }
-    const tick = async () => {
-      await fetchQueue()
-      if (queuePollNeeded.value) {
-        queuePollTimer = setTimeout(tick, 2000)
-      }
-      else {
-        queuePollTimer = null
-      }
-    }
-    queuePollTimer = setTimeout(tick, 2000)
+    queuePoller.start()
   }
 
+  // Called after every queue read and every action that changes it: starts the loop if there is now work to
+  // watch, and re-evaluates the cadence if it is already running (idle 15 s -> active 2 s the moment a
+  // download starts, without waiting out the old wait).
   const ensureQueuePolling = () => {
-    if (queuePollNeeded.value) {
+    if (queuePollDelay() === null) {return}
+    if (queuePoller.active) {
+      queuePoller.reschedule()
+    }
+    else {
       startQueuePolling()
     }
   }
@@ -359,13 +343,8 @@ export const useDownloadsStore = defineStore('downloads', () => {
     acquireBlockReasons,
     mergeBlockReasons,
     environmentBlockReasons,
-    activeDownloads,
     statusChecked,
-    activeCount,
     checkStatus,
-    fetchActive,
-    startPolling,
-    stopPolling,
     queueActive,
     queueReady,
     queueRejected,

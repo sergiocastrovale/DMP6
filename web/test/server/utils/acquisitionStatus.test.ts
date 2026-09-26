@@ -24,7 +24,7 @@ vi.mock('~/server/utils/downloadEnvironment', () => ({
   acquireBlockReasons: () => [],
 }))
 
-const { isDownloadsEnabled, countNoYearMissing, getAcquisitionStatus } = await import('../../../server/utils/acquisitionStatus')
+const { isDownloadsEnabled, countNoYearMissing, getAcquisitionStatus, cachedNoYearMissing, _resetNoYearCacheForTest } = await import('../../../server/utils/acquisitionStatus')
 
 describe('isDownloadsEnabled', () => {
   const originalEnv = process.env.DOWNLOADS_ENABLED
@@ -88,7 +88,10 @@ describe('countNoYearMissing', () => {
 })
 
 describe('getAcquisitionStatus', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    _resetNoYearCacheForTest()
+  })
 
   it('summarizes acquisition eligibility when downloads are enabled', async () => {
     prismaMocks.findUnique.mockResolvedValue({ downloadsEnabled: true })
@@ -106,5 +109,32 @@ describe('getAcquisitionStatus', () => {
     const status = await getAcquisitionStatus()
 
     expect(status).toEqual({ canAcquire: false, enabled: false, noYearMissing: 0, environment: healthyEnv })
+  })
+})
+
+describe('cachedNoYearMissing', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    _resetNoYearCacheForTest()
+  })
+
+  it('runs the heavy count once per 5 minutes, however often the queue is polled', async () => {
+    prismaMocks.queryRaw.mockResolvedValue([{ count: 7n }])
+
+    expect(await cachedNoYearMissing(1_000)).toBe(7)
+    expect(await cachedNoYearMissing(60_000)).toBe(7)
+    expect(await cachedNoYearMissing(299_000)).toBe(7)
+    expect(prismaMocks.queryRaw).toHaveBeenCalledTimes(1)
+
+    prismaMocks.queryRaw.mockResolvedValue([{ count: 9n }])
+    expect(await cachedNoYearMissing(302_000)).toBe(9)
+    expect(prismaMocks.queryRaw).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps serving the last value when a refresh fails instead of flashing 0', async () => {
+    prismaMocks.queryRaw.mockResolvedValueOnce([{ count: 4n }]).mockRejectedValueOnce(new Error('db down'))
+
+    expect(await cachedNoYearMissing(1_000)).toBe(4)
+    expect(await cachedNoYearMissing(400_000)).toBe(4)
   })
 })

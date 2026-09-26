@@ -441,3 +441,10 @@ export const SEARCH_TOTAL_CAP = 1000
 
 // How many random tracks /api/artists/[slug]/shuffle returns for the player's artist-shuffle queue.
 export const ARTIST_SHUFFLE_SIZE = 500
+
+// Downloads page queue poll (stores/downloads.ts). ACTIVE while a transfer or merge is moving; IDLE when the
+// page is open only because acquisition *could* start a download - the monitor's own cadence is minutes.
+export const QUEUE_POLL_ACTIVE_MS = 2000
+export const QUEUE_POLL_IDLE_MS = 15_000
+// Settings → Library scan status while a script is running (components/settings/RealTimeStatus.vue).
+export const SCAN_STATUS_POLL_MS = 3000

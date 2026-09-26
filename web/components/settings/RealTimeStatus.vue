@@ -8,13 +8,14 @@ import type { ScanStatus } from '~/types/scan'
 import { formatDate, formatRelative, parseProgress } from '~/helpers/functions'
 import { cx, ICON_STROKE_WIDTH, layout, surface, typography } from '~/helpers/ui'
 import { useTerminalStore } from '~/stores/terminal'
+import { SCAN_STATUS_POLL_MS } from '~/helpers/constants'
+import { createPoller } from '~/helpers/poller'
 
 const terminal = useTerminalStore()
 
 const status = ref<ScanStatus | null>(null)
 const loading = ref(true)
 const polling = ref(false)
-let pollInterval: ReturnType<typeof setInterval> | null = null
 
 async function fetchStatus() {
   try {
@@ -28,17 +29,16 @@ async function fetchStatus() {
   }
 }
 
+// Pauses while the tab is hidden and never overlaps a slow request (helpers/poller.ts).
+const poller = createPoller({ run: fetchStatus, delay: () => SCAN_STATUS_POLL_MS })
+
 function startPolling() {
-  if (pollInterval) {return}
+  poller.start()
   polling.value = true
-  pollInterval = setInterval(fetchStatus, 3000)
 }
 
 function stopPolling() {
-  if (pollInterval) {
-    clearInterval(pollInterval)
-    pollInterval = null
-  }
+  poller.stop()
   polling.value = false
 }
 
