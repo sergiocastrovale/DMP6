@@ -33,7 +33,7 @@ describe('mbFetch', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/artist?query=x&fmt=json'),
-      { headers: { 'User-Agent': 'DMPv6/0.1.0 ( https://github.com/dmp )' } },
+      expect.objectContaining({ headers: { 'User-Agent': 'DMPv6/0.1.0 ( https://github.com/dmp )' }, signal: expect.any(AbortSignal) }),
     )
   })
 

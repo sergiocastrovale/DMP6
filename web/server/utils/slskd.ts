@@ -2,9 +2,12 @@ import { readdir, mkdir, rename, rmdir, unlink, stat } from 'node:fs/promises'
 import { basename, join, dirname, sep, extname } from 'node:path'
 import { resolveDownloadSettings, resolveDownloadDir } from '~/server/utils/downloadSettings'
 import { transcodeDirToMp3320 } from '~/server/utils/transcode'
+import { fetchWithTimeout, isTimeoutError } from '~/server/utils/fetchWithTimeout'
 import { monitorLog } from '~/server/utils/monitorLog'
 import { streamCopyFile } from '~/server/utils/safeMove'
 import type { SlskdConfig, SlskdSearchResponse, SlskdFile, SlskdTransfer, SlskdMoveArgs, SlskdMoveResult } from '~/types/download'
+
+const SLSKD_TIMEOUT_MS = 20_000
 
 let configCache: (SlskdConfig & { cachedAt: number }) | null = null
 const CACHE_TTL = 60_000
@@ -36,7 +39,11 @@ async function slskdFetch(path: string, options: RequestInit = {}): Promise<Resp
     ...(options.headers as Record<string, string> || {}),
   }
 
-  const response = await fetch(url, { ...options, headers })
+  const response = await fetchWithTimeout(url, { ...options, headers }, { timeoutMs: SLSKD_TIMEOUT_MS }).catch((e) => {
+    throw isTimeoutError(e)
+      ? createError({ statusCode: 504, message: `slskd did not answer within ${SLSKD_TIMEOUT_MS / 1000}s` })
+      : e
+  })
   if (!response.ok && response.status !== 404) {
     const text = await response.text().catch(() => '')
     throw createError({

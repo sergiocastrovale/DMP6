@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from '~/server/utils/fetchWithTimeout'
 import { createHash } from 'node:crypto'
 import type { LastfmSettings } from '~/types/api'
 import { monitorLog } from '~/server/utils/monitorLog'
@@ -48,7 +49,7 @@ export const callLastFm = async (
   fullParams.format = 'json'
 
   try {
-    const res = await fetch(LASTFM_API_URL, {
+    const res = await fetchWithTimeout(LASTFM_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams(fullParams).toString(),
@@ -78,7 +79,7 @@ export const getLastfmSession = async (
   params.format = 'json'
 
   try {
-    const res = await fetch(LASTFM_API_URL, {
+    const res = await fetchWithTimeout(LASTFM_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams(params).toString(),

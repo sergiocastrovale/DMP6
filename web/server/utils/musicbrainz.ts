@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from '~/server/utils/fetchWithTimeout'
 // Read-only MusicBrainz client for the /add search/preview flow. Nothing here writes to the DB or
 // filesystem - artist creation itself runs through the Rust `./add` binary (CLAUDE.md: "No scripts
 // logic in the web app"). Mirrors the pacing/User-Agent of scripts/common/src/mb/api.rs so this
@@ -24,17 +25,20 @@ async function throttle(): Promise<void> {
   lastRequestAt = Date.now()
 }
 
+// MusicBrainz answers a cold query in ~10s, so the ceiling is well above that.
+const MB_TIMEOUT_MS = 30_000
+
 // Fetches one MB path (e.g. `/artist?query=...&fmt=json`), serialized against every other mbFetch
 // call in this process. One retry after a fixed 2s backoff on a 503 (MB's "server busy" load-shed,
 // same as the Rust client absorbs).
 export async function mbFetch(path: string): Promise<any> {
   const run = async (): Promise<any> => {
     await throttle()
-    const res = await fetch(`${MB_BASE}${path}`, { headers: { 'User-Agent': MB_USER_AGENT } })
+    const res = await fetchWithTimeout(`${MB_BASE}${path}`, { headers: { 'User-Agent': MB_USER_AGENT } }, { timeoutMs: MB_TIMEOUT_MS })
     if (res.status === 503) {
       await sleep(2000)
       await throttle()
-      const retry = await fetch(`${MB_BASE}${path}`, { headers: { 'User-Agent': MB_USER_AGENT } })
+      const retry = await fetchWithTimeout(`${MB_BASE}${path}`, { headers: { 'User-Agent': MB_USER_AGENT } }, { timeoutMs: MB_TIMEOUT_MS })
       if (!retry.ok) {throw new Error(`MusicBrainz ${retry.status}`)}
       return retry.json()
     }

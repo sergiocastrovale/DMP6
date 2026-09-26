@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from '~/server/utils/fetchWithTimeout'
 import type { Artist } from '@prisma/client'
 import { getCachedSettings } from '~/server/utils/settingsCache'
 import { cachedResponse } from '~/server/utils/cache'
@@ -28,10 +29,9 @@ const geniusGet = async <T>(path: string): Promise<T | null> => {
 
   return cachedResponse(`genius:${path}`, GENIUS_CACHE_TTL_SECONDS, async () => {
     try {
-      const res = await fetch(`${GENIUS_API_URL}${path}`, {
+      const res = await fetchWithTimeout(`${GENIUS_API_URL}${path}`, {
         headers: { Authorization: `Bearer ${token}` },
-        signal: AbortSignal.timeout(GENIUS_TIMEOUT_MS),
-      })
+      }, { timeoutMs: GENIUS_TIMEOUT_MS })
       if (!res.ok) {
         console.error(`[genius] ${path} -> HTTP ${res.status}`)
         return null
