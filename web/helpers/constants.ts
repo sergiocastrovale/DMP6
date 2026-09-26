@@ -411,3 +411,8 @@ export const SLOW_QUERY_MS = 1_000
 // whole list is cheaper to keep than to measure. Overscan is in grid rows, above and below the viewport.
 export const WINDOWED_GRID_MIN_ITEMS = 150
 export const WINDOWED_GRID_OVERSCAN_ROWS = 4
+
+// The Rust scripts (index, sync, tidy, mosaic) run inside the web container, so one hungry scan can push the container
+// past its memory limit. The kernel then kills the process with the highest oom_score: raising the scripts' oom_score_adj
+// (any process may raise its own) makes the scan the one it picks, instead of the web server. Range is -1000..1000.
+export const SCRIPT_OOM_SCORE_ADJ = 500

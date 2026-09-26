@@ -232,6 +232,12 @@ describe('buildScript', () => {
     expect(script).toContain('echo "DMP_EXIT:$?" >> "/tmp/dmp-x.log"')
   })
 
+  it('makes the run the OOM killer\'s first choice before it starts the command', () => {
+    const script = buildScript('/srv/dmp', '/bin/sync', '/tmp/dmp-x.log', 'sess1')
+    expect(script).toContain('/proc/self/oom_score_adj')
+    expect(script.indexOf('oom_score_adj')).toBeLessThan(script.indexOf('| tee'))
+  })
+
   it('sets pipefail so the sentinel reports the command exit code, not tee\'s', () => {
     // Without this the command is piped into tee, `$?` is tee's status, and every failed run was
     // streamed to the UI as DMP_EXIT:0 - a clean run that never happened.

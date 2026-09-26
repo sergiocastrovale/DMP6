@@ -3,6 +3,7 @@
 // parsing. Kept dependency-free (no h3/child_process/fs) so the injection-sensitive bits - especially
 // escapeArg - are directly unit-testable.
 import type { PermissionKey } from './permissions'
+import { OOM_SHIELD_SHELL } from './oomShield'
 
 export const ALLOWED_COMMANDS = [
   './index', './sync', './tidy', './analysis', './nuke',
@@ -118,6 +119,7 @@ export const buildCommandLine = (binary: string, args: string[]): string => {
 // SESSION_NAME_RE-validated value (alphanumeric/-/_ only), never raw user input, so no escaping needed.
 export const buildScript = (workDir: string, fullCmd: string, logFile: string, session: string): string => `#!/bin/bash
 set -o pipefail
+${OOM_SHIELD_SHELL}
 cd "${workDir}"
 trap 'echo "DMP_EXIT:$?" >> "${logFile}"; tmux kill-session -t "${session}" 2>/dev/null || true' EXIT
 trap 'exit 130' INT TERM

@@ -1,7 +1,9 @@
 import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { runExclusive } from '~/server/utils/scriptLock'
+import { oomShielded } from '~/server/utils/oomShield'
 
 // Where the Rust binaries live and how the web app runs them. One place, so an `index`/`sync`/`tidy` started
 // by the terminal, the auto-scan, a merge or the gaps worker all resolve the same directory - they previously
@@ -53,7 +55,13 @@ export const runScript = (name: string, args: string[] = [], options: RunScriptO
       options.onLine?.(line)
     }
 
-    const child = spawn(scriptPath(name), args, { cwd: projectRoot(), stdio: ['ignore', 'pipe', 'pipe'] })
+    // Through bash (oomShielded) a missing binary would only surface as exit 127, so it is reported here as spawn used to.
+    if (!existsSync(scriptPath(name))) {
+      reject(new ScriptError(`failed to start ${name}: ${scriptPath(name)} does not exist`, null, tail))
+      return
+    }
+
+    const child = spawn(...oomShielded(scriptPath(name), args), { cwd: projectRoot(), stdio: ['ignore', 'pipe', 'pipe'] })
     for (const stream of [child.stdout, child.stderr]) {
       createInterface({ input: stream }).on('line', push)
     }

@@ -6,6 +6,7 @@ import { getMosaicProcess, setMosaicProcess } from '~/server/utils/mosaic'
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
 import { projectRoot, scriptPath } from '~/server/utils/runScript'
+import { oomShielded } from '~/server/utils/oomShield'
 import { fetchMosaicSources } from '~/server/utils/mosaicSource'
 import { openSse } from '~/server/utils/sse'
 import { readBodyOf } from '~/server/utils/requestValidation'
@@ -51,8 +52,7 @@ export default defineEventHandler(async (event) => {
 
   return new Promise<void>((resolve_) => {
     const child = spawn(
-      binaryPath,
-      ['--image-dir', sourceDir, '--output-dir', outputDir, '--mode', mode, '--manifest', manifestPath, '--web'],
+      ...oomShielded(binaryPath, ['--image-dir', sourceDir, '--output-dir', outputDir, '--mode', mode, '--manifest', manifestPath, '--web']),
       { cwd: workDir },
     )
     setMosaicProcess(child)

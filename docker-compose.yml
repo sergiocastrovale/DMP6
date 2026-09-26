@@ -107,7 +107,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2G
+          # The Rust scripts (index/sync/tidy/mosaic) run inside this container and share the limit. Their oom_score_adj is
+          # raised (web/server/utils/oomShield.ts) so a scan that outgrows it is what the kernel kills, not the web server;
+          # raise the limit here (WEB_MEMORY_LIMIT in .env) if scans of a large library get killed.
+          memory: ${WEB_MEMORY_LIMIT:-2G}
         reservations:
           memory: 512M
     healthcheck:

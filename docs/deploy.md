@@ -79,6 +79,19 @@ the web process (as opposed to SQL injection) can still reach the owner credenti
 Every e2e run boots the app as this role (`e2e/with-test-db.ts`), and `test/integration/webRole.test.ts` replays the SQL
 file and checks what the role can and cannot do, so a new query the role does not allow fails CI instead of production.
 
+### Memory: the scripts share the web container
+
+`index`, `sync`, `tidy` and `mosaic` run inside the `dmp` container (tmux or a spawned child), so a scan that outgrows the
+container's memory limit used to leave the kernel free to kill the web server instead of the scan. Every way the web app
+starts a script now raises that process's `oom_score_adj` to 500 first (`web/server/utils/oomShield.ts`: the terminal's tmux
+wrapper, `runScript`, the mosaic generator; children inherit it), so the OOM killer prefers the scan. Checked with a 100 MB
+container: a 60 MB process plus a growing 80 MB hog killed the 60 MB one unshielded, and the hog once shielded.
+
+The limit itself is `WEB_MEMORY_LIMIT` in the NAS `.env` (default `2G`); a scan that is killed for lack of memory needs it raised.
+Not done: a separate `dmp-scripts` container. The web app would need to start processes in it, which means the Docker socket
+(root on the NAS) or a shared tmux socket plus moving every direct spawn (auto-scan, merges, gaps, mosaic) - more moving parts
+and more privilege than the problem justifies while the shield holds.
+
 For first-time NAS setup (storage, SSH key, NAS `.env`) see [docs/truenas.md](truenas.md).
 
 ## Docker services
