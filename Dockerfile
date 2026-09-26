@@ -27,7 +27,9 @@ COPY scripts/problems/Cargo.toml problems/Cargo.toml
 COPY scripts/extract-meta-images/Cargo.toml extract-meta-images/Cargo.toml
 COPY scripts/artist-photos/Cargo.toml artist-photos/Cargo.toml
 
-# Create dummy src files to pre-build dependencies
+# Cache-layer placeholders only: empty stand-ins for every crate's sources (the module names in common/src/lib.rs just
+# have to exist) so `cargo build` compiles the dependency graph once, in a layer that survives source edits. The real
+# sources are copied over them below and rebuilt.
 RUN mkdir -p common/src index/src sync/src tidy/src add/src fix/src analysis/src nuke/src audit/src playlists/src delete/src mosaic/src dissect/src problems/src extract-meta-images/src artist-photos/src \
     && echo 'pub mod config; pub mod db; pub mod slug; pub mod filters; pub mod artists; pub mod s3; pub mod progress; pub mod lock; pub mod checkpoint; pub mod totals; pub mod statistics; pub mod types; pub mod images;' > common/src/lib.rs \
     && for m in config db slug filters artists s3 progress lock checkpoint totals statistics types images; do echo '' > common/src/$m.rs; done \
