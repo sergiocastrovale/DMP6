@@ -4,6 +4,7 @@ import { LockOpen } from 'lucide-vue-next'
 const emit = defineEmits<{ unlocked: [] }>()
 
 const { hasPerm } = useAuth()
+const api = useApi()
 const canUnlock = hasPerm('terminal.control')
 const unlocking = ref(false)
 
@@ -14,7 +15,7 @@ const forceUnlock = async () => {
     emit('unlocked')
   }
   catch (e) {
-    console.error('Force unlock failed:', e)
+    api.report(e, 'Could not clear the scan lock')
   }
   finally {
     unlocking.value = false

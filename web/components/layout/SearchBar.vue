@@ -40,7 +40,6 @@ const performSearch = useDebounceFn(async (searchQuery: string) => {
   }
   catch (error) {
     if (!isAbortError(error)) {
-      console.error('Search failed:', error)
       searchResults.value = null
     }
   }

@@ -24,6 +24,7 @@ const downloadsStore = useDownloadsStore()
 const terminal = useTerminalStore()
 const toast = useToastStore()
 const global = useGlobalStore()
+const api = useApi()
 const { hasPerm } = useAuth()
 const canViewDownloads = hasPerm('sync.view')
 const catalogue = inject<ReturnType<typeof useArtistCatalogue>>('catalogue')!
@@ -230,10 +231,7 @@ async function openInfoDialog(edition: UnifiedRelease) {
   infoExtra.value = null
   showInfoDialog.value = true
   if (edition.localReleaseId) {
-    try {
-      infoExtra.value = await $fetch<ReleaseInfoExtra>(`/api/releases/${edition.localReleaseId}/info`)
-    }
-    catch { /* ignore */ }
+    infoExtra.value = await api.load(() => $fetch<ReleaseInfoExtra>(`/api/releases/${edition.localReleaseId}/info`), 'Could not load the release info')
   }
 }
 
@@ -263,7 +261,9 @@ async function loadAllTracks() {
     allTracksSlug = props.slug
     allTracksLoaded.value = true
   }
-  catch { /* ignore */ }
+  catch (e) {
+    api.report(e, 'Could not load the tracks')
+  }
   finally {
     allTracksLoading.value = false
   }
@@ -291,19 +291,19 @@ async function toggleFavoriteRelease(release: UnifiedRelease) {
     return
   }
   const isFavorite = favoriteReleases.value.has(localId)
-  try {
-    await $fetch(`/api/favorites/releases/${localId}`, {
-      method: isFavorite ? 'DELETE' : 'POST',
-    })
-    if (isFavorite) {
-      favoriteReleases.value.delete(localId)
-      global.stats.favorites--
-    } else {
-      favoriteReleases.value.add(localId)
-      global.stats.favorites++
-    }
+  const ok = await api.run(() => $fetch<unknown>(`/api/favorites/releases/${localId}`, {
+    method: isFavorite ? 'DELETE' : 'POST',
+  }), 'Could not update the favorite')
+  if (!ok) {
+    return
   }
-  catch { /* ignore */ }
+  if (isFavorite) {
+    favoriteReleases.value.delete(localId)
+    global.stats.favorites--
+  } else {
+    favoriteReleases.value.add(localId)
+    global.stats.favorites++
+  }
 }
 
 const selectedTrackId = ref<string | null>(null)

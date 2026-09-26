@@ -5,6 +5,7 @@ import { cx, data, layout } from '~/helpers/ui'
 import { formatDate } from '~/helpers/functions'
 
 const toast = useToastStore()
+const api = useApi()
 const terminal = useTerminalStore()
 
 const loading = ref(true)
@@ -18,8 +19,8 @@ const loadRows = async () => {
   try {
     rows.value = await $fetch<PlaylistGeneratorRow[]>('/api/playlist-generators')
   }
-  catch (error) {
-    console.error('Failed to load playlist generators:', error)
+  catch (e) {
+    api.report(e, 'Could not load the playlist generators')
   }
   finally {
     loading.value = false

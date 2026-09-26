@@ -28,9 +28,7 @@ export const useGlobalStore = defineStore('global', () => {
       stats.value = data
       loaded.value = true
     }
-    catch (error) {
-      console.error('Failed to load app stats:', error)
-    }
+    catch { /* the sidebar counters stay as they were */ }
   }
 
   const refresh = async () => {

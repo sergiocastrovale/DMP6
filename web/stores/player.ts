@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { useDebounceFn, useThrottleFn } from '@vueuse/core'
 import type { PlayerTrack, ShuffleMode, ExploreParams, PersistedPlayerState, MediaSessionTrackMeta, PlaySource } from '~/types/player'
+import { apiErrorMessage } from '~/helpers/apiError'
 import { MAX_CONSECUTIVE_PLAYBACK_ERRORS } from '~/helpers/constants'
 import { EXPLORER_SESSION_HISTORY_CAP, nextIndexWrap, playbackErrorAction, pushCapped, QUEUE_PERSIST_CAP, shouldScrobble, shuffleArray, sliceForPersist, unshiftCapped } from '~/helpers/playerLogic'
 
@@ -394,8 +395,8 @@ export const usePlayerStore = defineStore('player', () => {
           originalQueue.value = tracks
           queue.value = shuffleArray([...tracks])
         }
-        catch (error) {
-          console.error('Failed to load release tracks:', error)
+        catch (e) {
+          useToastStore().error(apiErrorMessage(e, 'Could not load the release for shuffling'))
         }
       }
     }
@@ -409,8 +410,8 @@ export const usePlayerStore = defineStore('player', () => {
           originalQueue.value = tracks
           queue.value = shuffleArray([...tracks])
         }
-        catch (error) {
-          console.error('Failed to load artist tracks:', error)
+        catch (e) {
+          useToastStore().error(apiErrorMessage(e, 'Could not load the artist for shuffling'))
         }
       }
     }

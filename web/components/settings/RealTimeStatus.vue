@@ -21,9 +21,7 @@ async function fetchStatus() {
   try {
     status.value = await $fetch<ScanStatus>('/api/scan/status')
   }
-  catch (e) {
-    console.error('Failed to fetch scan status:', e)
-  }
+  catch { /* a poll: the next tick retries */ }
   finally {
     loading.value = false
   }

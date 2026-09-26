@@ -71,13 +71,15 @@ const sections = computed<StatSection[]>(() => {
   ]
 })
 
+const api = useApi()
+
 const loadStats = async () => {
   loading.value = true
   try {
     stats.value = await $fetch<Statistics>('/api/stats', { query: { tz: browserTimeZone() } })
   }
-  catch (error) {
-    console.error('Failed to load statistics:', error)
+  catch (e) {
+    api.report(e, 'Could not load the statistics')
   }
   finally {
     loading.value = false

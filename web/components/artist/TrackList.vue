@@ -30,6 +30,7 @@ const props = withDefaults(defineProps<{
 
 const player = usePlayerStore()
 const global = useGlobalStore()
+const api = useApi()
 const favoriteTracks = ref<Set<string>>(new Set())
 
 // Hearts come with the tracks themselves (`isFavorite`, set per user by the tracks endpoints). Re-seeded
@@ -84,19 +85,17 @@ const playTrack = (track: Track) => {
 
 const toggleFavorite = async (trackId: string) => {
   const isFavorite = favoriteTracks.value.has(trackId)
-  try {
-    if (isFavorite) {
-      await $fetch(`/api/favorites/tracks/${trackId}`, { method: 'DELETE' })
-      favoriteTracks.value.delete(trackId)
-      global.stats.favorites--
-    }
-    else {
-      await $fetch(`/api/favorites/tracks/${trackId}`, { method: 'POST' })
-      favoriteTracks.value.add(trackId)
-      global.stats.favorites++
-    }
+  if (!await api.run(() => $fetch<unknown>(`/api/favorites/tracks/${trackId}`, { method: isFavorite ? 'DELETE' : 'POST' }), 'Could not update the favorite')) {
+    return
   }
-  catch { /* ignore */ }
+  if (isFavorite) {
+    favoriteTracks.value.delete(trackId)
+    global.stats.favorites--
+  }
+  else {
+    favoriteTracks.value.add(trackId)
+    global.stats.favorites++
+  }
 }
 
 
@@ -133,10 +132,7 @@ const openInfoDialog = async (track: Track) => {
   infoTrack.value = track
   infoData.value = null
   showInfoDialog.value = true
-  try {
-    infoData.value = await $fetch<TrackInfo>(`/api/tracks/${track.id}/info`)
-  }
-  catch { /* ignore */ }
+  infoData.value = await api.load(() => $fetch<TrackInfo>(`/api/tracks/${track.id}/info`), 'Could not load the track info')
 }
 
 const formatFileSize = (bytes: number) => {

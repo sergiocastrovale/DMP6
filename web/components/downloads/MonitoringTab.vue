@@ -8,6 +8,7 @@ import { storeToRefs } from 'pinia'
 
 const store = useDownloadsStore()
 const toast = useToastStore()
+const api = useApi()
 const { monitoredArtists, totalArtists } = storeToRefs(store)
 
 const search = ref('')
@@ -81,7 +82,9 @@ const fetchItems = async (append = false) => {
     monitoredArtists.value = data.monitoredCount
     hasMore.value = data.hasMore
   }
-  catch { /* ignore */ }
+  catch (e) {
+    api.report(e, 'Could not load the monitored artists')
+  }
   finally {
     loading.value = false
     loadingMore.value = false
@@ -106,7 +109,9 @@ const toggleMonitor = async (artist: ArtistRow) => {
     }
     monitoredArtists.value += wasMonitored ? -1 : 1
   }
-  catch { /* ignore */ }
+  catch (e) {
+    api.report(e, `Could not ${wasMonitored ? 'stop' : 'start'} monitoring ${artist.name}`)
+  }
   finally {
     busyIds.value.delete(artist.id)
     busyIds.value = new Set(busyIds.value)

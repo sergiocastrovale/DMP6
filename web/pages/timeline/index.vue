@@ -15,6 +15,7 @@ const loadingDecade = ref(false)
 const loadingMore = ref(false)
 
 const { releaseImage } = useImageUrl()
+const api = useApi()
 
 async function loadDecades() {
   loading.value = true
@@ -24,8 +25,8 @@ async function loadDecades() {
       await selectDecade(decades.value[0]!.decade)
     }
   }
-  catch (error) {
-    console.error('Failed to load decades:', error)
+  catch (e) {
+    api.report(e, 'Could not load the timeline')
   }
   finally {
     loading.value = false
@@ -48,9 +49,7 @@ async function fetchDecadeData(url: string) {
   }
   catch (error) {
     if (token !== requestToken) {return}
-    if (!isAbortError(error)) {
-      console.error('Failed to load timeline data:', error)
-    }
+    api.report(error, 'Could not load that decade')
   }
   finally {
     if (token === requestToken) {
@@ -86,8 +85,8 @@ async function loadMore() {
     decadeData.value.page = more.page
     decadeData.value.hasMore = more.hasMore
   }
-  catch (error) {
-    console.error('Failed to load more:', error)
+  catch (e) {
+    api.report(e, 'Could not load more releases')
   }
   finally {
     loadingMore.value = false

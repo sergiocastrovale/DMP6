@@ -3,26 +3,25 @@ import type { PlayerTrack } from '~/types/player'
 
 export const usePlayRelease = () => {
   const player = usePlayerStore()
+  const api = useApi()
 
   const playRelease = async (releaseId: string, artistSlug?: string) => {
-    try {
-      const data = await $fetch<any>(`/api/releases/${releaseId}/tracks`)
-      const playable = data?.tracks?.filter((t: any) => !t.missing) ?? []
-      if (!playable.length) { return }
-      const playerTracks: PlayerTrack[] = playable.map((t: any) => ({
-        id: t.id,
-        title: t.title || 'Unknown',
-        artist: t.artist || 'Unknown',
-        album: t.album || data.release?.title || '',
-        duration: t.duration || 0,
-        artistSlug: artistSlug ?? data.release?.artistSlug ?? null,
-        releaseImage: data.release?.image || null,
-        releaseImageUrl: data.release?.imageUrl || null,
-        localReleaseId: t.localReleaseId,
-      }))
-      player.setQueue(playerTracks, playerTracks[0])
-    }
-    catch { /* ignore */ }
+    const data = await api.load(() => $fetch<any>(`/api/releases/${releaseId}/tracks`), 'Could not load the release')
+    if (!data) { return }
+    const playable = data?.tracks?.filter((t: any) => !t.missing) ?? []
+    if (!playable.length) { return }
+    const playerTracks: PlayerTrack[] = playable.map((t: any) => ({
+      id: t.id,
+      title: t.title || 'Unknown',
+      artist: t.artist || 'Unknown',
+      album: t.album || data.release?.title || '',
+      duration: t.duration || 0,
+      artistSlug: artistSlug ?? data.release?.artistSlug ?? null,
+      releaseImage: data.release?.image || null,
+      releaseImageUrl: data.release?.imageUrl || null,
+      localReleaseId: t.localReleaseId,
+    }))
+    player.setQueue(playerTracks, playerTracks[0])
   }
 
   const isCurrentRelease = (releaseId: string) =>

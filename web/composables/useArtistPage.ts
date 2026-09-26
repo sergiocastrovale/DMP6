@@ -17,6 +17,7 @@ import { useDownloadsStore } from '~/stores/downloads'
 export const useArtistPage = (slug: Ref<string>) => {
   const terminal = useTerminalStore()
   const toast = useToastStore()
+const api = useApi()
   const player = usePlayerStore()
   const downloads = useDownloadsStore()
   const { hasPerm } = useAuth()
@@ -130,8 +131,9 @@ export const useArtistPage = (slug: Ref<string>) => {
       await $fetch<unknown, string>(`/api/artists/${slug.value}`, { method: 'PATCH', body: { monitored: target } })
       if (target) { fetchDownloadStatus() } // kick fired server-side; surface rows ASAP
     }
-    catch {
+    catch (e) {
       artist.value.monitored = !target // revert
+      api.report(e, 'Could not change monitoring')
     }
     finally {
       ensureDlPolling() // monitoring off (or the revert) tears the heartbeat down
@@ -203,7 +205,9 @@ export const useArtistPage = (slug: Ref<string>) => {
       }
       player.setQueue(playerTracks, playerTracks[0])
     }
-    catch { /* ignore */ }
+    catch (e) {
+      api.report(e, 'Could not load the artist\'s tracks')
+    }
     finally {
       playingAll.value = false
     }
@@ -223,7 +227,9 @@ export const useArtistPage = (slug: Ref<string>) => {
       player.shuffleMode = 'artist'
       player.setQueue(playerTracks)
     }
-    catch { /* ignore */ }
+    catch (e) {
+      api.report(e, 'Could not shuffle the artist')
+    }
     finally {
       shufflingAll.value = false
     }

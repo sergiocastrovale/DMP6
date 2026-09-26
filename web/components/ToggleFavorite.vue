@@ -25,6 +25,7 @@ const isControlled = computed(() => props.active !== undefined)
 
 const player = usePlayerStore()
 const global = useGlobalStore()
+const api = useApi()
 const { hasPerm } = useAuth()
 const canCrud = hasPerm('favorites.crud')
 const selfFavorite = ref(false)
@@ -39,21 +40,16 @@ async function checkFavorite() {
     const { isFavorite: fav } = await $fetch<{ isFavorite: boolean }>(`/api/favorites/tracks/${player.currentTrack.id}`)
     selfFavorite.value = fav
   }
-  catch (error) {
-    console.error('Failed to check favorite:', error)
-  }
+  catch { /* a stale heart is not worth interrupting playback for */ }
 }
 
 async function toggleSelf() {
-  try {
-    await $fetch(`/api/favorites/tracks/${player.currentTrack?.id}`, {
-      method: selfFavorite.value ? 'DELETE' : 'POST',
-    })
+  const ok = await api.run(() => $fetch<unknown>(`/api/favorites/tracks/${player.currentTrack?.id}`, {
+    method: selfFavorite.value ? 'DELETE' : 'POST',
+  }), 'Could not update the favorite')
+  if (ok) {
     selfFavorite.value = !selfFavorite.value
     global.stats.favorites += selfFavorite.value ? 1 : -1
-  }
-  catch (error) {
-    console.error('Failed to toggle favorite:', error)
   }
 }
 

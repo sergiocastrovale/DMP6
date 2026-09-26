@@ -8,6 +8,7 @@ import { cx, layout } from '~/helpers/ui'
 useTitle('Dashboard')
 
 const { releaseImage } = useImageUrl()
+const api = useApi()
 const loading = ref(true)
 
 const sections: DashboardSection[] = [
@@ -39,8 +40,8 @@ const loadData = async () => {
     const results = await Promise.all(endpoints.map((url) => $fetch(url)))
     sections.forEach((s, i) => { s.items.value = results[i] as any })
   }
-  catch (error) {
-    console.error('Failed to load home page data:', error)
+  catch (e) {
+    api.report(e, 'Could not load the home page')
   }
   finally {
     loading.value = false

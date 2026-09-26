@@ -11,6 +11,7 @@ const { hasPerm, isAdmin } = useAuth()
 const canCrud = hasPerm('playlists.crud')
 const terminal = useTerminalStore()
 const global = useGlobalStore()
+const api = useApi()
 
 const loading = ref(true)
 const playlists = ref<PlaylistSummary[]>([])
@@ -26,8 +27,8 @@ async function loadPlaylists() {
   try {
     playlists.value = await $fetch<PlaylistSummary[]>('/api/playlists')
   }
-  catch (error) {
-    console.error('Failed to load playlists:', error)
+  catch (e) {
+    api.report(e, 'Could not load your playlists')
   }
   finally {
     loading.value = false

@@ -20,6 +20,7 @@ import type { PlayerTrack } from '~/types/player'
 const props = defineProps<{ playlist: PlaylistSummary }>()
 
 const playerStore = usePlayerStore()
+const api = useApi()
 
 const isCurrent = computed(() => playerStore.currentPlaylistSlug === props.playlist.slug)
 const isPlaying = computed(() => isCurrent.value && playerStore.isPlaying)
@@ -42,8 +43,8 @@ async function play() {
     }))
     playerStore.playPlaylist(props.playlist.slug, tracks)
   }
-  catch (error) {
-    console.error('Failed to play playlist:', error)
+  catch (e) {
+    api.report(e, 'Could not play the playlist')
   }
 }
 </script>

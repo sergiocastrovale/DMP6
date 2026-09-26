@@ -10,6 +10,7 @@ export const useFavoritesPage = () => {
   const route = useRoute()
   const router = useRouter()
   const global = useGlobalStore()
+  const api = useApi()
 
   const loading = ref(true)
   const loadingMore = ref(false)
@@ -65,7 +66,9 @@ export const useFavoritesPage = () => {
         }
       }
     }
-    catch { /* ignore */ }
+    catch (e) {
+      api.report(e, 'Could not load your favorites')
+    }
     finally {
       loading.value = false
     }
@@ -82,7 +85,9 @@ export const useFavoritesPage = () => {
       activeTab.value === 'releases' ? await fetchReleases(next) : await fetchTracks(next)
       router.replace({ query: { ...route.query, page: String(next) } })
     }
-    catch { /* ignore */ }
+    catch (e) {
+      api.report(e, 'Could not load more favorites')
+    }
     finally {
       loadingMore.value = false
     }
@@ -98,23 +103,21 @@ export const useFavoritesPage = () => {
   ])
 
   const unfavoriteRelease = async (releaseId: string) => {
-    try {
-      await $fetch(`/api/favorites/releases/${releaseId}`, { method: 'DELETE' })
-      releases.value = releases.value.filter(r => r.release.id !== releaseId)
-      totalReleases.value--
-      global.stats.favorites--
+    if (!await api.run(() => $fetch<unknown>(`/api/favorites/releases/${releaseId}`, { method: 'DELETE' }), 'Could not remove the favorite')) {
+      return
     }
-    catch { /* ignore */ }
+    releases.value = releases.value.filter(r => r.release.id !== releaseId)
+    totalReleases.value--
+    global.stats.favorites--
   }
 
   const unfavoriteTrack = async (trackId: string) => {
-    try {
-      await $fetch(`/api/favorites/tracks/${trackId}`, { method: 'DELETE' })
-      tracks.value = tracks.value.filter(t => t.track.id !== trackId)
-      totalTracks.value--
-      global.stats.favorites--
+    if (!await api.run(() => $fetch<unknown>(`/api/favorites/tracks/${trackId}`, { method: 'DELETE' }), 'Could not remove the favorite')) {
+      return
     }
-    catch { /* ignore */ }
+    tracks.value = tracks.value.filter(t => t.track.id !== trackId)
+    totalTracks.value--
+    global.stats.favorites--
   }
 
   return {

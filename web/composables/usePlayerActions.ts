@@ -8,6 +8,7 @@ import type { UnifiedRelease, ReleaseInfoExtra } from '~/types/release'
 export const usePlayerActions = () => {
   const player = usePlayerStore()
   const global = useGlobalStore()
+  const api = useApi()
 
   const showPlaylistMenu = ref(false)
   const showNewPlaylistDialog = ref(false)
@@ -34,7 +35,9 @@ export const usePlayerActions = () => {
       infoRelease.value = release
       infoExtra.value = extra
     }
-    catch { /* ignore */ }
+    catch (e) {
+      api.report(e, 'Could not load the release info')
+    }
   }
 
   watch(() => player.currentTrack?.id, () => {
@@ -53,8 +56,8 @@ export const usePlayerActions = () => {
       playlists.value = all
       trackPlaylistSlugs.value = new Set(slugs)
     }
-    catch (error) {
-      console.error('Failed to load playlists:', error)
+    catch (e) {
+      api.report(e, 'Could not load your playlists')
     }
   }
 
@@ -78,8 +81,8 @@ export const usePlayerActions = () => {
         trackPlaylistSlugs.value.add(playlistSlug)
       }
     }
-    catch (error) {
-      console.error('Failed to update playlist:', error)
+    catch (e) {
+      api.report(e, 'Could not update the playlist')
     }
   }
 

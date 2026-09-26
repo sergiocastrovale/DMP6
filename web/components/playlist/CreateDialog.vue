@@ -5,6 +5,8 @@ const emit = defineEmits<{
 
 const show = defineModel<boolean>({ default: false })
 
+const api = useApi()
+
 const name = ref('')
 const description = ref('')
 const creating = ref(false)
@@ -33,8 +35,8 @@ async function create() {
     show.value = false
     emit('created')
   }
-  catch (error) {
-    console.error('Failed to create playlist:', error)
+  catch (e) {
+    api.report(e, 'Could not create the playlist')
   }
   finally {
     creating.value = false

@@ -10,6 +10,7 @@ const route = useRoute()
 const router = useRouter()
 const slug = route.params.slug as string
 const toast = useToastStore()
+const api = useApi()
 const global = useGlobalStore()
 
 const loading = ref(true)
@@ -41,8 +42,8 @@ const loadPlaylist = async () => {
   try {
     playlist.value = await $fetch<PlaylistDetail>(`/api/playlists/${slug}`)
   }
-  catch (error) {
-    console.error('Failed to load playlist:', error)
+  catch (e) {
+    api.report(e, 'Could not load the playlist')
   }
   finally {
     loading.value = false
@@ -67,26 +68,18 @@ const playAll = () => {
 
 const removeTrack = async (trackId: string) => {
   if (!playlist.value) { return }
-  try {
-    await $fetch(`/api/playlists/${slug}/tracks/${trackId}`, { method: 'DELETE' })
+  if (await api.run(() => $fetch<unknown>(`/api/playlists/${slug}/tracks/${trackId}`, { method: 'DELETE' }), 'Could not remove the track')) {
     await loadPlaylist()
-  }
-  catch (error) {
-    console.error('Failed to remove track:', error)
   }
 }
 
 const deletePlaylist = async () => {
   if (!playlist.value) { return }
   showDeleteConfirm.value = false
-  try {
-    await $fetch(`/api/playlists/${slug}`, { method: 'DELETE' })
+  const name = playlist.value.name
+  if (await api.run(() => $fetch<unknown>(`/api/playlists/${slug}`, { method: 'DELETE' }), `Could not delete "${name}"`)) {
     global.stats.playlists--
     router.push('/playlists')
-  }
-  catch (error) {
-    console.error('Failed to delete playlist:', error)
-    toast.error(`Failed to delete "${playlist.value.name}"`)
   }
 }
 
