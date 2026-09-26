@@ -79,7 +79,6 @@ model Artist {
   @@index([createdAt])
   @@index([name])
   @@index([country])
-  @@index([monitored, lastGapsCheckedAt])
   @@index([monitored])
   @@index([primaryArtistId])
 }
@@ -111,7 +110,6 @@ model Genre {
   artists  Artist[]             @relation("ArtistGenres")
   releases MusicBrainzRelease[] @relation("ReleaseGenres")
 
-  @@index([name])
 }
 
 // ---------------------------------------------------------------------------
@@ -204,7 +202,6 @@ model MusicBrainzReleaseMedium {
   @@unique([releaseId, position])
   @@index([releaseId])
   @@index([equivalentReleaseGroupId])
-  @@index([recordingFingerprint])
 }
 
 // ---------------------------------------------------------------------------
@@ -404,13 +401,9 @@ model LocalReleaseTrack {
 
   @@index([localReleaseId])
   @@index([mbTrackId])
-  @@index([contentHash])
-  @@index([mtime])
   @@index([year])
-  @@index([year, genre])
   @@index([genre])
   @@index([localReleaseId, discNumber, trackNumber]) // Composite for ORDER BY discNumber, trackNumber within a release
-  @@index([mbReleaseGroupId])
   @@index([mbReleaseId])
   // Also indexed as ("filePath" varchar_pattern_ops) by migration 20260923000100 - Prisma cannot declare it.
   // Partial index LocalReleaseTrack_lowBitrate_idx (bitrate > 0 AND < 256) by migration 20260926001600 - likewise.
@@ -842,7 +835,6 @@ model IssueCorruptedTpe2 {
   auditRun      AuditRun          @relation(fields: [auditRunId], references: [id], onDelete: Cascade)
   track         LocalReleaseTrack @relation("CorruptedTrackIssue", fields: [trackId], references: [id], onDelete: Cascade)
 
-  @@index([status])
   @@index([status, createdAt])
   @@index([auditRunId])
 }
@@ -858,7 +850,6 @@ model IssueOrphanArtist {
   auditRun   AuditRun    @relation(fields: [auditRunId], references: [id], onDelete: Cascade)
   artist     Artist      @relation("OrphanArtistIssue", fields: [artistId], references: [id], onDelete: Cascade)
 
-  @@index([status])
   @@index([status, createdAt])
   @@index([auditRunId])
 }
@@ -875,7 +866,6 @@ model IssueDuplicateArtist {
   artistA    Artist      @relation("DuplicateArtistA", fields: [artistAId], references: [id], onDelete: Cascade)
   artistB    Artist      @relation("DuplicateArtistB", fields: [artistBId], references: [id], onDelete: Cascade)
 
-  @@index([status])
   @@index([status, createdAt])
   @@index([auditRunId])
 }
@@ -892,7 +882,6 @@ model IssueDuplicateRelease {
   releaseA   LocalRelease @relation("DuplicateReleaseA", fields: [releaseAId], references: [id], onDelete: Cascade)
   releaseB   LocalRelease @relation("DuplicateReleaseB", fields: [releaseBId], references: [id], onDelete: Cascade)
 
-  @@index([status])
   @@index([status, createdAt])
   @@index([auditRunId])
 }
@@ -909,7 +898,6 @@ model IssueMismatchedReleaseId {
   releaseA   LocalRelease @relation("MismatchedReleaseIdA", fields: [releaseAId], references: [id], onDelete: Cascade)
   releaseB   LocalRelease @relation("MismatchedReleaseIdB", fields: [releaseBId], references: [id], onDelete: Cascade)
 
-  @@index([status])
   @@index([status, createdAt])
   @@index([auditRunId])
 }
@@ -926,7 +914,6 @@ model IssueMissingMetadata {
   auditRun       AuditRun          @relation(fields: [auditRunId], references: [id], onDelete: Cascade)
   track          LocalReleaseTrack @relation("MissingMetadataIssue", fields: [trackId], references: [id], onDelete: Cascade)
 
-  @@index([status])
   @@index([status, createdAt])
   @@index([auditRunId])
 }
@@ -943,7 +930,6 @@ model IssueEnrichmentGap {
   auditRun       AuditRun     @relation(fields: [auditRunId], references: [id], onDelete: Cascade)
   localRelease   LocalRelease @relation(fields: [localReleaseId], references: [id], onDelete: Cascade)
 
-  @@index([status])
   @@index([status, createdAt])
   @@index([auditRunId])
   @@index([localReleaseId])
@@ -1018,7 +1004,6 @@ model RolePermission {
   permission String
 
   @@unique([role, permission])
-  @@index([role])
 }
 
 // Capped log of background monitor-loop issues (warn/error), persisted so any instance's UI can show
