@@ -59,7 +59,28 @@ test.afterAll(async () => {
   await prisma.$disconnect()
 })
 
+// The fixture track has no file on disk, and a file that will not load is (correctly) skipped by the player - so the
+// audio request is answered with two seconds of silence.
+const silentWav = (seconds = 2, rate = 8000) => {
+  const data = Buffer.alloc(seconds * rate, 0x80)
+  const header = Buffer.alloc(44)
+  header.write('RIFF', 0)
+  header.writeUInt32LE(36 + data.length, 4)
+  header.write('WAVEfmt ', 8)
+  header.writeUInt32LE(16, 16)
+  header.writeUInt16LE(1, 20)
+  header.writeUInt16LE(1, 22)
+  header.writeUInt32LE(rate, 24)
+  header.writeUInt32LE(rate, 28)
+  header.writeUInt16LE(1, 32)
+  header.writeUInt16LE(8, 34)
+  header.write('data', 36)
+  header.writeUInt32LE(data.length, 40)
+  return Buffer.concat([header, data])
+}
+
 test('playing a track opens a PlayEvent, and skipping to the next one closes it as skipped', async ({ page }) => {
+  await page.route('**/api/audio/**', route => route.fulfill({ status: 200, contentType: 'audio/wav', body: silentWav() }))
   await page.goto(`/artist/${artistSlug}`)
   await page.getByRole('button', { name: 'Play', exact: true }).first().click()
   await expect(page.getByText(trackTitle).and(page.locator(':visible'))).toBeVisible()
