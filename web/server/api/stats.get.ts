@@ -5,6 +5,7 @@ import { releaseTypeBuckets } from '~/helpers/constants'
 import type { ReleaseTypeBucketId } from '~/types/stats'
 import { currentUserId } from '~/server/utils/libraryOwnership'
 import { userTotalPlays, recentPlayCounts } from '~/server/utils/userPlays'
+import { resolveTimeZone } from '~/server/utils/timezone'
 
 export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'private, max-age=300, stale-while-revalidate=60')
@@ -89,6 +90,6 @@ export default defineEventHandler(async (event) => {
   }, { shared: true })
 
   // Per-user, so kept out of the shared cache above (its Redis entry is process-wide, not per caller).
-  const [plays, recentPlays] = await Promise.all([userTotalPlays(userId), recentPlayCounts(userId)])
+  const [plays, recentPlays] = await Promise.all([userTotalPlays(userId), recentPlayCounts(userId, resolveTimeZone(getQuery(event).tz))])
   return { ...shared, plays, recentPlays }
 })

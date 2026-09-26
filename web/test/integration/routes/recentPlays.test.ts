@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { getTestPrisma, resetDb } from '../../../test/setup/db'
 import { makeUser, makeLocalTrack } from '../../../test/factories'
-import { recentPlayCounts } from '../../../server/utils/userPlays'
+import { periodStart, recentPlayCounts } from '../../../server/utils/userPlays'
 
 // The Statistics "Recent Plays" panel (helpers/constants.ts's playPeriods) - exercised against real
 // Postgres because the period boundaries are DB-side date comparisons, not something a mocked-prisma
@@ -64,5 +64,19 @@ describe('recent play counts (real Postgres)', () => {
 
     const counts = await recentPlayCounts(alice.id)
     expect(counts.today).toBe(0)
+  })
+
+  it.each(['Pacific/Kiritimati', 'UTC', 'Pacific/Pago_Pago'])('"today" is the listener\'s calendar day in %s', async (tz) => {
+    const alice = await makeUser(prisma)
+    const track = await makeLocalTrack(prisma)
+    const start = periodStart('today', new Date(), tz)
+    await prisma.playEvent.createMany({
+      data: [
+        { userId: alice.id, trackId: track.id, source: 'QUEUE', counted: true, startedAt: new Date(start.getTime() + 1000) },
+        { userId: alice.id, trackId: track.id, source: 'QUEUE', counted: true, startedAt: new Date(start.getTime() - 1000) },
+      ],
+    })
+
+    expect((await recentPlayCounts(alice.id, tz)).today).toBe(1)
   })
 })

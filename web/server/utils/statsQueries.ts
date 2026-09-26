@@ -4,6 +4,7 @@ import { escapeLike } from '~/server/utils/searchRank'
 import { releaseTypeBucketSql } from '~/server/utils/releaseTypeBuckets'
 import { releaseTypeBuckets, playPeriods } from '~/helpers/constants'
 import { periodStart } from '~/server/utils/userPlays'
+import { resolveTimeZone } from '~/server/utils/timezone'
 import type { PlayPeriod } from '~/types/stats'
 
 const RELEASE_TYPE_BUCKET_ID_SET = new Set<string>(releaseTypeBuckets.map(b => b.id))
@@ -57,7 +58,7 @@ export async function runStatQuery(type: string, query: Record<string, unknown>,
       if (!PLAY_PERIOD_ID_SET.has(period)) {
         throw createError({ statusCode: 400, statusMessage: 'Invalid period' })
       }
-      return queryRecentPlays(a.userId!, period as PlayPeriod, search, skip, pageSize, page, sort, order)
+      return queryRecentPlays(a.userId!, period as PlayPeriod, resolveTimeZone(query.tz), search, skip, pageSize, page, sort, order)
     }
     case 'size':
       return querySize(search, skip, pageSize, page, sort, order)
@@ -268,8 +269,8 @@ async function queryPlays(userId: number, search: string, skip: number, pageSize
 
 // Backs the Recent Plays panel's detail subpages (pages/statistics/recent-plays/[period].vue) - the
 // individual PlayEvent rows within the period, not the per-track aggregate `queryPlays` above uses.
-async function queryRecentPlays(userId: number, period: PlayPeriod, search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
-  const where: any = { userId, counted: true, startedAt: { gte: periodStart(period) } }
+async function queryRecentPlays(userId: number, period: PlayPeriod, timeZone: string, search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
+  const where: any = { userId, counted: true, startedAt: { gte: periodStart(period, new Date(), timeZone) } }
   if (search) { where.track = { title: { contains: search, mode: 'insensitive' } } }
 
   const sortMap: Record<string, any> = {

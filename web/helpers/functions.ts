@@ -297,3 +297,6 @@ export const envInt = (name: string, fallback: number): number => {
   const n = raw != null ? parseInt(raw, 10) : NaN
   return Number.isFinite(n) ? n : fallback
 }
+
+// The browser's IANA time zone ("Europe/Lisbon"); the server resolves "today/month/year" boundaries in it.
+export const browserTimeZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone

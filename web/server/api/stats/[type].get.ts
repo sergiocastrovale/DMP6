@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { cachedResponse } from '~/server/utils/cache'
 import { parsePagination } from '~/server/utils/pagination'
+import { resolveTimeZone } from '~/server/utils/timezone'
 import { currentUserId } from '~/server/utils/libraryOwnership'
 import { runStatQuery, VALID_TYPES } from '~/server/utils/statsQueries'
 
@@ -22,7 +23,9 @@ export default defineEventHandler(async (event) => {
   const order = ((query.order as string) === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc'
   const userId = PER_USER_TYPES.has(type) ? currentUserId(event) : null
 
-  const keyParts = JSON.stringify([type, query.bucket ?? '', query.artist ?? '', query.period ?? '', search, sort, order, page, pageSize, userId])
+  // The period boundary depends on the listener's zone, so it is part of a recent-plays key (and only of that one).
+  const tz = type === 'recent-plays' ? resolveTimeZone(query.tz) : ''
+  const keyParts = JSON.stringify([type, query.bucket ?? '', query.artist ?? '', query.period ?? '', search, sort, order, page, pageSize, userId, tz])
   const cacheKey = `stats:type:${createHash('sha1').update(keyParts).digest('hex')}`
 
   return cachedResponse(cacheKey, 300, () => runStatQuery(type, query, { userId, search, skip, pageSize, page, sort, order }), { shared: true })

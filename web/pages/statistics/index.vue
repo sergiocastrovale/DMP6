@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { LucideLibrary, LucidePlay, LucideRefreshCw, LucideImage, LucideAlertTriangle, LucideDisc3, LucideLink, Info } from 'lucide-vue-next'
 import type { Statistics, StatSection, StatTile } from '~/types/stats'
-import { formatNumber, formatFileSize, formatDate } from '~/helpers/functions'
+import { browserTimeZone, formatNumber, formatFileSize, formatDate } from '~/helpers/functions'
 import { layout, surface, toneText } from '~/helpers/ui'
 import { releaseTypeBuckets } from '~/helpers/constants'
 
@@ -74,7 +74,7 @@ const sections = computed<StatSection[]>(() => {
 const loadStats = async () => {
   loading.value = true
   try {
-    stats.value = await $fetch<Statistics>('/api/stats')
+    stats.value = await $fetch<Statistics>('/api/stats', { query: { tz: browserTimeZone() } })
   }
   catch (error) {
     console.error('Failed to load statistics:', error)

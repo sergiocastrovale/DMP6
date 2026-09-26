@@ -3,6 +3,7 @@ import { ArrowLeft } from 'lucide-vue-next'
 import type { DataTableColumn, TabItem } from '~/types/ui'
 import type { SortDirection } from '~/types/common'
 import { layout, cx, typography } from '~/helpers/ui'
+import { browserTimeZone } from '~/helpers/functions'
 
 const props = withDefaults(defineProps<{
   title: string
@@ -70,6 +71,7 @@ const fetchItems = async (append = false) => {
         search: searchQuery.value || undefined,
         sort: sort.value.key || undefined,
         order: sort.value.dir,
+        tz: browserTimeZone(),
         ...props.extraQuery,
       },
     })
