@@ -10,6 +10,7 @@ import {
   type ArtistRow, type AlbumRow, type SongRow,
 } from '~/server/utils/subsonic/select'
 import { clamp } from '~/server/utils/subsonic/util'
+import { subsonicSeeker } from '~/server/utils/subsonic/seek'
 import { toArtist, toAlbum, toSong } from '~/server/utils/subsonic/mappers'
 import type { XmlObject } from '~/server/utils/subsonic/xml'
 import type { HandlerContext } from '~/server/utils/subsonic/types'
@@ -45,10 +46,16 @@ export const search3 = async (_event: H3Event, ctx: HandlerContext): Promise<Xml
     ])
   }
   else {
-    [artists, albums, songs] = await Promise.all([
-      prisma.artist.findMany({ where: subsonicArtistWhere, orderBy: { id: 'asc' }, skip: artistOffset, take: artistCount, select: ARTIST_SELECT }),
-      prisma.localRelease.findMany({ where: subsonicAlbumWhere, orderBy: { id: 'asc' }, skip: albumOffset, take: albumCount, select: ALBUM_SELECT }),
-      prisma.localReleaseTrack.findMany({ orderBy: { id: 'asc' }, skip: songOffset, take: songCount, select: SONG_SELECT }),
+    // A client's first sync walks every row at increasing offsets; subsonicSeeker turns that from quadratic
+    // OFFSET scans into short seeks from remembered checkpoints (see seek.ts).
+    const after = (afterId: string | null) => (afterId ? { id: { gt: afterId } } : {})
+    ;[artists, albums, songs] = await Promise.all([
+      subsonicSeeker.page('search3:artists', artistOffset, artistCount, (afterId, skip, take) =>
+        prisma.artist.findMany({ where: { ...subsonicArtistWhere, ...after(afterId) }, orderBy: { id: 'asc' }, skip, take, select: ARTIST_SELECT })),
+      subsonicSeeker.page('search3:albums', albumOffset, albumCount, (afterId, skip, take) =>
+        prisma.localRelease.findMany({ where: { ...subsonicAlbumWhere, ...after(afterId) }, orderBy: { id: 'asc' }, skip, take, select: ALBUM_SELECT })),
+      subsonicSeeker.page('search3:songs', songOffset, songCount, (afterId, skip, take) =>
+        prisma.localReleaseTrack.findMany({ where: after(afterId), orderBy: { id: 'asc' }, skip, take, select: SONG_SELECT })),
     ])
   }
 
