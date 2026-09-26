@@ -24,3 +24,8 @@ export const createReadyGuard = () => {
     isReady: () => ready,
   }
 }
+
+// Typing into a field before the page has hydrated loses the input (hydration resets the model) and drops Enter; under
+// parallel load that is a real race. Resolves once Nuxt reports the client app as hydrated.
+export const waitForHydration = (page: import('@playwright/test').Page) =>
+  page.waitForFunction(() => (window as unknown as { useNuxtApp?: () => { isHydrating: boolean } }).useNuxtApp?.().isHydrating === false)

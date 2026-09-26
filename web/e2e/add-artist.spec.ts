@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcrypt'
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { createReadyGuard, onlyId } from './helpers/fixtures'
+import { createReadyGuard, onlyId, waitForHydration } from './helpers/fixtures'
 
 // /add runs the same class of mutating command as the scan buttons (see scan-actions.spec.ts) - it
 // creates a folder under MUSIC_DIR and an Artist row via `./add`. Every test intercepts
@@ -96,6 +96,7 @@ test('searching and adding a new artist runs ./add and lands on its page', async
   })
 
   await page.goto('/add')
+  await waitForHydration(page)
   await page.getByPlaceholder('Artist name or MusicBrainz ID...').fill('E2E New Artist')
   await page.getByPlaceholder('Artist name or MusicBrainz ID...').press('Enter')
   await expect(page.getByText('E2E New Artist')).toBeVisible()
@@ -118,6 +119,7 @@ test('adding an already-in-library artist shows the dialog, no terminal run', as
   })
 
   await page.goto('/add')
+  await waitForHydration(page)
   await page.getByPlaceholder('Artist name or MusicBrainz ID...').fill(existingArtistName)
   await page.getByPlaceholder('Artist name or MusicBrainz ID...').press('Enter')
   await expect(page.getByText(existingArtistName)).toBeVisible()
@@ -133,6 +135,7 @@ test('a row already flagged existing by mb-search shows no Add button', async ({
   await stubMbSearch(page, existingArtistName, { slug: existingArtistSlug, name: existingArtistName })
 
   await page.goto('/add')
+  await waitForHydration(page)
   await page.getByPlaceholder('Artist name or MusicBrainz ID...').fill(existingArtistName)
   await page.getByPlaceholder('Artist name or MusicBrainz ID...').press('Enter')
   await expect(page.getByText(existingArtistName)).toBeVisible()
@@ -160,6 +163,7 @@ test.describe('viewer (no sync.run)', () => {
     await expect(page.getByRole('link', { name: 'Add artist' })).toHaveCount(0)
 
     await page.goto('/add')
+  await waitForHydration(page)
     await page.waitForURL('/')
   })
 })
