@@ -44,6 +44,9 @@ jobs:
       # npx-installs it into a temp tree that pairs it with a mismatched typescript, and vue-tsc
       # dies on `require('typescript/lib/tsc')` (ERR_PACKAGE_PATH_NOT_EXPORTED).
       - run: pnpm typecheck
+      # After typecheck, which runs `nuxt prepare`: the ESLint config imports the generated .nuxt/eslint.config.mjs.
+      # Warnings (func-style, no-explicit-any, ...) are being burned down per folder and do not fail the job; errors do.
+      - run: pnpm lint
 
   e2e:
     runs-on: ubuntu-latest
