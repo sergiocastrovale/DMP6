@@ -56,3 +56,19 @@ export const parseRangeHeader = (rangeHeader: string | undefined, fileSize: numb
   }
   return { start, end, chunkSize: end - start + 1 }
 }
+
+// `Content-Disposition: attachment` for a download. A raw `filename="${name}"` breaks two ways: Node refuses
+// header values containing characters above U+00FF (any CJK/Cyrillic/Greek/emoji filename -> 500), and a
+// `"` in the name ends the quoted string early. So: an ASCII-only fallback in `filename=` for old clients
+// plus the real name percent-encoded in `filename*=UTF-8''...` (RFC 5987/6266), which modern clients prefer.
+export const contentDispositionAttachment = (filename: string): string => {
+  const fallback = filename
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036F]/g, '')
+    .replace(/[^\x20-\x7E]/g, '_')
+    .replace(/["\\]/g, '_')
+    .trim() || 'download'
+  // encodeURIComponent leaves ' ( ) * unescaped; RFC 5987's attr-char set doesn't allow ' ( ) * so encode them too.
+  const encoded = encodeURIComponent(filename).replace(/['()*]/g, c => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`
+}

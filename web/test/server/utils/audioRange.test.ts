@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildEtag, mimeForFile, parseRangeHeader } from '../../../server/utils/audioRange'
+import { buildEtag, contentDispositionAttachment, mimeForFile, parseRangeHeader } from '../../../server/utils/audioRange'
 
 describe('mimeForFile', () => {
   it('maps known audio extensions', () => {
@@ -57,5 +57,36 @@ describe('parseRangeHeader', () => {
 
   it('tolerates surrounding whitespace', () => {
     expect(parseRangeHeader('  bytes=0-9  ', 1000)).toEqual({ start: 0, end: 9, chunkSize: 10 })
+  })
+})
+
+describe('contentDispositionAttachment', () => {
+  it('quotes a plain ASCII name and repeats it percent-encoded', () => {
+    expect(contentDispositionAttachment('01 - Song.mp3')).toBe('attachment; filename="01 - Song.mp3"; filename*=UTF-8\'\'01%20-%20Song.mp3')
+  })
+
+  it('never puts a character above U+00FF in the header value (Node rejects those)', () => {
+    for (const name of ['01 - 東京.mp3', 'Кино - Группа крови.flac', '🎵 song.mp3', 'Ελληνικά.mp3']) {
+      const header = contentDispositionAttachment(name)
+      expect(header).toMatch(/^[\x20-\x7E]*$/)
+      expect(header).toContain(`filename*=UTF-8''`)
+    }
+  })
+
+  it('round-trips the real name through filename*', () => {
+    const name = '01 - 東京 (live) *ok*\'s.mp3'
+    const header = contentDispositionAttachment(name)
+    const encoded = header.split('filename*=UTF-8\'\'')[1]!
+    expect(decodeURIComponent(encoded)).toBe(name)
+    expect(encoded).not.toMatch(/['()*]/)
+  })
+
+  it('strips quotes and backslashes from the ASCII fallback so it stays one quoted string', () => {
+    const header = contentDispositionAttachment('a"b\\c.mp3')
+    expect(header).toContain('filename="a_b_c.mp3"')
+  })
+
+  it('falls back to a fixed name when nothing ASCII-safe remains', () => {
+    expect(contentDispositionAttachment('   ')).toContain('filename="download"')
   })
 })

@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import type { H3Event } from 'h3'
 import { prisma } from '~/server/utils/prisma'
 import { getCachedSettings } from '~/server/utils/settingsCache'
-import { buildEtag, mimeForFile, parseRangeHeader } from '~/server/utils/audioRange'
+import { buildEtag, contentDispositionAttachment, mimeForFile, parseRangeHeader } from '~/server/utils/audioRange'
 
 export interface ServeTrackOptions {
   // Content-Disposition: attachment instead of inline - /rest/download vs. /rest/stream.
@@ -52,8 +52,8 @@ export const serveTrackFile = async (event: H3Event, id: string, options: ServeT
 
   const contentType = mimeForFile(filePath)
   if (options.download) {
-    const filename = track.filePath.split('/').pop()
-    setResponseHeader(event, 'Content-Disposition', `attachment; filename="${filename}"`)
+    const filename = track.filePath.split('/').pop() ?? 'download'
+    setResponseHeader(event, 'Content-Disposition', contentDispositionAttachment(filename))
   }
 
   const range = parseRangeHeader(getRequestHeader(event, 'range'), fileSize)
