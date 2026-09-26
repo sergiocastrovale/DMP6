@@ -34,12 +34,21 @@ export const invalidatePermissionCache = (): void => {
   cache = null
 }
 
+// ADMIN holds every permission by definition, not by table rows. A permission key added in a new release
+// therefore works for admins the moment it ships - before any migration has granted it - and no edit of the
+// Settings → Permissions matrix can lock the admin out of the app they administer.
 export const hasPermission = async (role: Role, key: PermissionKey): Promise<boolean> => {
+  if (role === 'ADMIN') {
+    return true
+  }
   const matrix = await loadMatrix()
   return matrix[role].has(key)
 }
 
 export const getPermissionsForRole = async (role: Role): Promise<string[]> => {
+  if (role === 'ADMIN') {
+    return [...ALL_PERMISSIONS].sort()
+  }
   const matrix = await loadMatrix()
   return Array.from(matrix[role]).sort()
 }

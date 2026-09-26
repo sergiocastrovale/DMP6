@@ -10,6 +10,7 @@ export default defineEventHandler(async (event) => {
   for (const row of rows) {
     matrix[row.role]!.push(row.permission)
   }
+  matrix.ADMIN = [...ALL_PERMISSIONS]
   for (const role of Object.keys(matrix)) {
     matrix[role]!.sort()
   }

@@ -23,10 +23,10 @@ describe('permissions', () => {
   })
 
   it('caches the matrix across calls (single findMany call)', async () => {
-    findManyMock.mockResolvedValue([{ role: 'ADMIN', permission: 'issues.view' }])
+    findManyMock.mockResolvedValue([{ role: 'MANAGER', permission: 'issues.view' }])
     const { hasPermission } = await import('../../../server/utils/permissions')
-    await hasPermission('ADMIN', 'issues.view')
-    await hasPermission('ADMIN', 'issues.view')
+    await hasPermission('MANAGER', 'issues.view')
+    await hasPermission('MANAGER', 'issues.view')
     expect(findManyMock).toHaveBeenCalledOnce()
   })
 
@@ -71,11 +71,28 @@ describe('permissions', () => {
 
   it('getPermissionsForRole returns a sorted list', async () => {
     findManyMock.mockResolvedValue([
-      { role: 'ADMIN', permission: 'sync.view' },
-      { role: 'ADMIN', permission: 'issues.view' },
+      { role: 'MANAGER', permission: 'sync.view' },
+      { role: 'MANAGER', permission: 'issues.view' },
     ])
     const { getPermissionsForRole } = await import('../../../server/utils/permissions')
-    expect(await getPermissionsForRole('ADMIN')).toEqual(['issues.view', 'sync.view'])
+    expect(await getPermissionsForRole('MANAGER')).toEqual(['issues.view', 'sync.view'])
+  })
+
+  it('ADMIN holds every permission implicitly, even with an empty or hostile RolePermission table', async () => {
+    findManyMock.mockResolvedValue([{ role: 'ADMIN', permission: 'play.view' }])
+    const { hasPermission, getPermissionsForRole, ALL_PERMISSIONS } = await import('../../../server/utils/permissions')
+    for (const key of ALL_PERMISSIONS) {
+      expect(await hasPermission('ADMIN', key)).toBe(true)
+    }
+    expect(await getPermissionsForRole('ADMIN')).toEqual([...ALL_PERMISSIONS].sort())
+    expect(findManyMock).not.toHaveBeenCalled()
+  })
+
+  it('requirePermission never blocks an ADMIN, including a key with no rows yet', async () => {
+    findManyMock.mockResolvedValue([])
+    const { requirePermission } = await import('../../../server/utils/permissions')
+    const event = { context: { user: { role: 'ADMIN' } } } as unknown as H3Event
+    await expect(requirePermission(event, 'variables.edit')).resolves.toBeUndefined()
   })
 
   it('requirePermission throws 401 when there is no user', async () => {

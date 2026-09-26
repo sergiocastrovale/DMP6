@@ -25,6 +25,8 @@ const allPermissions = computed(() => data.value?.allPermissions ?? [])
 const roles = ['VIEWER', 'MANAGER', 'ADMIN'] as const
 
 const toggle = (role: string, perm: string) => {
+  // ADMIN holds every permission implicitly - its column is read-only.
+  if (role === 'ADMIN') {return}
   const s = matrix.value[role]!
   if (s.has(perm)) {
     s.delete(perm)
@@ -45,7 +47,9 @@ const save = async () => {
   try {
     const body: Record<string, string[]> = {}
     for (const role of roles) {
-      body[role] = Array.from(matrix.value[role]!)
+      if (role !== 'ADMIN') {
+        body[role] = Array.from(matrix.value[role]!)
+      }
     }
     await $fetch('/api/permissions', { method: 'PUT', body: { matrix: body } })
     saved.value = true
@@ -80,7 +84,8 @@ const permLabel = (p: string) => {
             </td>
             <td v-for="role in roles" :key="role" :class="cx(tableCell.td, 'text-center')">
               <UiCheckbox
-                :model-value="matrix[role]?.has(perm) ?? false"
+                :model-value="role === 'ADMIN' || (matrix[role]?.has(perm) ?? false)"
+                :disabled="role === 'ADMIN'"
                 :aria-label="`${perm} for ${role.toLowerCase()}`"
                 @update:model-value="toggle(role, perm)"
               />
