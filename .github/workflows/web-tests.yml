@@ -87,7 +87,7 @@ jobs:
           mkdir -p "/tmp/music/'68/EP/2020 - Love is Ain't Dead. (EP)"
           head -c 4096 /dev/urandom > "/tmp/music/'68/EP/2020 - Love is Ain't Dead. (EP)/03 - Rock On.mp3"
       - run: pnpm db:generate
-      - run: pnpm db:push
+      - run: pnpm exec prisma migrate deploy
       - run: pnpm db:seed
       # Seed creates admin/admin with mustChangePassword=true (blocks the API). Clear it for tests.
       - run: node -e "const{PrismaClient}=require('@prisma/client');const p=new PrismaClient();p.user.updateMany({where:{username:'admin'},data:{mustChangePassword:false}}).then(()=>p.\$disconnect())"

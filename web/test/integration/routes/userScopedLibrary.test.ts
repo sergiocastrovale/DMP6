@@ -6,10 +6,9 @@ import { favoriteReleaseCard, favoriteReleaseInclude } from '../../../server/uti
 
 // Favorites and MANUAL playlists are per-user and private (CLAUDE.md Data Model). Exercised against
 // real Postgres because the FK/cascade and composite-unique behaviour the routes rely on is DB-level,
-// not something a mocked-prisma unit test can fake. The partial unique index + CHECK constraint that
-// also guard this (raw migration SQL, see prisma/migrations/20260914000000_.../migration.sql) aren't
-// present here - `pushSchema` regenerates only from schema.prisma (see test/setup/db.ts) - so this
-// suite covers what the app-level code enforces on top of that.
+// not something a mocked-prisma unit test can fake. The raw-SQL CHECKs and partial unique index that also
+// guard this (prisma/migrations/20260914000000_...) exist here because the test DB is built by replaying
+// the migrations (test/setup/db.ts); test/integration/constraints.test.ts asserts them directly.
 // verifyImage needs Nuxt's runtime config + settings cache; this suite is about rows, not image files.
 vi.mock('../../../server/utils/images', () => ({
   verifyImage: (image: string | null, imageUrl: string | null) => ({ image, imageUrl }),
@@ -52,7 +51,7 @@ describe('user-scoped favorites and playlists (real Postgres)', () => {
 
   // A dissolved box has no LocalRelease of its own, so it is favorited via its MusicBrainzRelease
   // (FavoriteRelease.boxReleaseId) - one row for the box, never one per disc. The either/or CHECK is raw
-  // migration SQL and absent here (see the header note), so this covers the schema-level behaviour.
+  // migration SQL (asserted in constraints.test.ts); this covers the schema-level behaviour.
   describe('box favorites', () => {
     const makeBox = async () => {
       const box = await makeMbRelease(prisma, { title: 'Deliverance & Damnation', mediumCount: 2 })

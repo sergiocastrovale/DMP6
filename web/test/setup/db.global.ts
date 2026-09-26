@@ -1,8 +1,8 @@
 import type { TestProject } from 'vitest/node'
-import { pushSchema, seedTestData } from './db'
+import { migrateSchema, seedTestData } from './db'
 
 // Runs once before the `integration` project. Boots an ephemeral Postgres (testcontainers) unless
-// DATABASE_URL_TEST is already set (CI provides one via a `postgres` service), pushes the schema,
+// DATABASE_URL_TEST is already set (CI provides one via a `postgres` service), replays the migrations,
 // seeds RBAC + admin, and exposes DATABASE_URL to every integration test file.
 export default async function setup(_project: TestProject): Promise<() => Promise<void>> {
   process.env.MONITOR_PRIMARY = 'false'
@@ -23,7 +23,7 @@ export default async function setup(_project: TestProject): Promise<() => Promis
   process.env.DATABASE_URL = databaseUrl
   process.env.DATABASE_URL_TEST = databaseUrl
 
-  pushSchema(databaseUrl)
+  migrateSchema(databaseUrl)
   await seedTestData()
 
   return async () => {

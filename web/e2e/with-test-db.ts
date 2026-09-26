@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 // Explicit extension: this file runs under Node's own ESM resolver (type-stripped), not a bundler,
 // so extensionless specifiers do not resolve.
-import { pushSchema, seedTestData } from '../test/setup/db.ts'
+import { migrateSchema, seedTestData } from '../test/setup/db.ts'
 
 // Gives the e2e suite its own database before handing off to Playwright.
 //
@@ -13,7 +13,7 @@ import { pushSchema, seedTestData } from '../test/setup/db.ts'
 // like flake rather than a missing database.
 //
 // CI already provisions and seeds a Postgres service and exports DATABASE_URL for it, so there it
-// passes straight through. Locally it boots a throwaway container, pushes the schema and seeds the
+// passes straight through. Locally it boots a throwaway container, replays the migrations and seeds the
 // same admin/admin the specs expect.
 const run = async (): Promise<number> => {
   let stopContainer: (() => Promise<void>) | undefined
@@ -36,7 +36,7 @@ const run = async (): Promise<number> => {
     }
 
     process.env.DATABASE_URL = databaseUrl
-    pushSchema(databaseUrl)
+    migrateSchema(databaseUrl)
     // Creates admin/admin with mustChangePassword already cleared, plus the RBAC matrix the
     // permission specs assert against.
     await seedTestData()

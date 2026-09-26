@@ -1,9 +1,9 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { getTestPrisma, resetDb } from '../../../test/setup/db'
+import { makeUser } from '../../../test/factories'
 
-// PlaylistGenerator/Playlist.generatorId only exist via prisma db push here (schema, not migrations
-// - see test/setup/db.ts), so this exercises the FK/cascade behaviour the migration.sql relies on
-// rather than the seed data itself (seeds are inserted by the migration, which `db push` never runs).
+// Exercises the FK/cascade behaviour the migration.sql relies on. The test DB is built by replaying the
+// migrations (test/setup/db.ts); resetDb() truncates the seed rows they insert, so each test starts empty.
 const prisma = getTestPrisma()
 
 describe('PlaylistGenerator (real Postgres)', () => {
@@ -32,8 +32,9 @@ describe('PlaylistGenerator (real Postgres)', () => {
     const generator = await prisma.playlistGenerator.create({
       data: { type: 'REGION', name: 'Japan', slug: 'japan', terms: ['JP'] },
     })
+    const owner = await makeUser(prisma)
     const manual = await prisma.playlist.create({
-      data: { type: 'MANUAL', name: 'My Mix', slug: 'my-mix' },
+      data: { type: 'MANUAL', name: 'My Mix', slug: 'my-mix', userId: owner.id },
     })
 
     await prisma.playlist.delete({ where: { id: manual.id } })

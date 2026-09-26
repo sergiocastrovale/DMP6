@@ -11,8 +11,12 @@ export const getTestPrisma = (): PrismaClient => {
   return prismaClient
 }
 
-export const pushSchema = (databaseUrl: string): void => {
-  execFileSync('pnpm', ['exec', 'prisma', 'db', 'push', '--skip-generate', '--accept-data-loss'], {
+// Builds the schema exactly the way ./deploy does - by replaying prisma/migrations - so the raw-SQL
+// objects Prisma can't declare (the Playlist and FavoriteRelease CHECKs, the partial unique slug index,
+// pattern_ops and trigram indexes) exist in every test database and a broken migration fails here
+// instead of on the NAS. `databaseUrl` must be a throwaway database, never web/.env's DATABASE_URL.
+export const migrateSchema = (databaseUrl: string): void => {
+  execFileSync('pnpm', ['exec', 'prisma', 'migrate', 'deploy'], {
     cwd: process.cwd(),
     env: { ...process.env, DATABASE_URL: databaseUrl },
     stdio: 'inherit',
