@@ -5,6 +5,8 @@ import { tmpdir } from 'os'
 import { getMosaicProcess, setMosaicProcess } from '~/server/utils/mosaic'
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
+import { projectRoot, scriptPath } from '~/server/utils/runScript'
+import { fetchMosaicSources } from '~/server/utils/mosaicSource'
 import { openSse } from '~/server/utils/sse'
 import { readBodyOf } from '~/server/utils/requestValidation'
 import { mosaicBodySchema } from '~/server/schemas/labs'
@@ -31,28 +33,14 @@ export default defineEventHandler(async (event) => {
   }
 
   const { imageDir } = useRuntimeConfig()
-  const workDir = process.env.PROJECT_ROOT!
-  const scriptsDir = process.env.SCRIPTS_DIR || workDir
+  const workDir = projectRoot()
   const absImageDir = resolve(imageDir)
   const sourceDir = join(absImageDir, 'releases')
   const outputDir = join(absImageDir, 'labs')
 
-  const binaryPath = join(scriptsDir, 'mosaic')
+  const binaryPath = scriptPath('mosaic')
 
-  const releases = await prisma.$queryRaw<{ image: string; year: number | null }[]>`
-    SELECT DISTINCT ON (
-      CASE WHEN "groupKey" LIKE 'mb:%' THEN split_part("groupKey", ':', 2)
-           ELSE "groupKey"
-      END
-    ) image, year
-    FROM "LocalRelease"
-    WHERE image IS NOT NULL
-    ORDER BY
-      CASE WHEN "groupKey" LIKE 'mb:%' THEN split_part("groupKey", ':', 2)
-           ELSE "groupKey"
-      END,
-      "createdAt" ASC
-  `
+  const releases = await fetchMosaicSources()
 
   const manifestPath = join(tmpdir(), `mosaic-manifest-${Date.now()}.json`)
   writeFileSync(manifestPath, JSON.stringify(

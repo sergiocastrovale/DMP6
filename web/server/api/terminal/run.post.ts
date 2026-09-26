@@ -9,6 +9,7 @@ import {
   permissionsForFlags,
   withWebFlag,
 } from '~/server/utils/terminalCommand'
+import { projectRoot, scriptPath } from '~/server/utils/runScript'
 import { openSse, streamLogAsSse } from '~/server/utils/sse'
 import { readBodyOf } from '~/server/utils/requestValidation'
 import { terminalRunBodySchema } from '~/server/schemas/terminal'
@@ -44,10 +45,8 @@ export default defineEventHandler(async (event) => {
     await requirePermission(event, flagPerm)
   }
 
-  const workDir = process.env.PROJECT_ROOT!
-  const scriptsDir = process.env.SCRIPTS_DIR || workDir
-  const binaryName = command.replace(/^\.\//, '')
-  const binary = `${scriptsDir}/${binaryName}`
+  const workDir = projectRoot()
+  const binary = scriptPath(command.replace(/^\.\//, ''))
 
   const args = withWebFlag(command, body.args ?? [])
 
