@@ -1,67 +1,31 @@
+import { prisma } from '~/server/utils/prisma'
 import { cachedResponse } from '~/server/utils/cache'
 import { COUNTRY_NAMES } from '~/server/utils/countries'
+import { fetchCountryRows } from '~/server/utils/countryCovers'
 import { verifyImage } from '~/server/utils/images'
-import type { MapCountry, CountryRow } from '~/types/labs'
+import type { MapCountry } from '~/types/labs'
 
 export default defineEventHandler(async (event) => {
   if (!event.context.user) {
     throw createError({ statusCode: 401, message: 'Unauthorized' })
   }
 
-  return cachedResponse<Record<string, MapCountry>>('map:countries', 86400, async () => {
-    const rows = await prisma.$queryRaw<CountryRow[]>`
-      WITH candidates AS (
-        SELECT
-          a.country,
-          lr.image,
-          lr."imageUrl",
-          ROW_NUMBER() OVER (
-            PARTITION BY a.country, COALESCE(lr.image, lr."imageUrl")
-            ORDER BY lr."createdAt" DESC
-          ) as rn
-        FROM "Artist" a
-        JOIN "LocalReleaseArtist" lra ON lra."artistId" = a.id
-        JOIN "LocalRelease" lr ON lr.id = lra."localReleaseId"
-        WHERE a.country IS NOT NULL
-          AND a."primaryArtistId" IS NULL
-          AND (lr.image IS NOT NULL OR lr."imageUrl" IS NOT NULL)
-      ),
-      unique_images AS (
-        SELECT country, image, "imageUrl"
-        FROM candidates
-        WHERE rn = 1
-      )
-      SELECT
-        country,
-        COUNT(*)::text as artist_count,
-        (array_agg(image) FILTER (WHERE image IS NOT NULL))[:150] as images,
-        (array_agg("imageUrl") FILTER (WHERE "imageUrl" IS NOT NULL))[:150] as image_urls
-      FROM unique_images
-      GROUP BY country
-      ORDER BY COUNT(*) DESC
-    `
+  // v2: the payload's counts and image pairing changed shape-compatibly, so the old 24h entry must not be served.
+  return cachedResponse<Record<string, MapCountry>>('map:countries:v2', 86400, async () => {
+    const rows = await fetchCountryRows(prisma)
 
     const result: Record<string, MapCountry> = {}
-
     for (const row of rows) {
-      const localImages = row.images ?? []
-      const remoteImages = row.image_urls ?? []
-
-      const verified = localImages.map((img, i) =>
-        verifyImage(img, remoteImages[i] ?? null, 'releases'),
-      )
-
+      const verified = (row.images ?? []).map(cover => verifyImage(cover.image, cover.imageUrl, 'releases'))
       if (verified.length === 0) {
         continue
       }
-
       result[row.country] = {
         name: COUNTRY_NAMES[row.country] ?? row.country,
         count: parseInt(row.artist_count, 10),
-        images: verified.slice(0, 150),
+        images: verified,
       }
     }
-
     return result
   })
 })

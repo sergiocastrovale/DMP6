@@ -73,8 +73,7 @@ export interface NetworkTrackRow {
 export interface CountryRow {
   country: string
   artist_count: string
-  images: string[] | null
-  image_urls: string[] | null
+  images: { image: string | null, imageUrl: string | null }[] | null
 }
 
 // Canvas-tiled cover texture built per-country by pages/labs/map.vue.
