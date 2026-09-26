@@ -19,11 +19,6 @@ export interface Artist extends ArtistListItem {
   relatedArtists?: RelatedArtist[]
 }
 
-export interface ArtistReleaseLink {
-  artistId: string
-  localRelease: { id: string }
-}
-
 export interface ReleaseStatsResult {
   releaseCount: number
 }
