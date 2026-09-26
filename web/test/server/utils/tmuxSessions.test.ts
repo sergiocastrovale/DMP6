@@ -22,6 +22,7 @@ const {
   findReconnectableSessions,
   LOG_TAIL_BYTES,
 } = await import('../../../server/utils/tmuxSessions')
+const { terminalLogPath } = await import('../../../server/utils/terminalPaths')
 
 type ExecCb = (error: Error | null, stdout?: string) => void
 
@@ -138,7 +139,7 @@ describe('findReconnectableSessions', () => {
     expect(await findReconnectableSessions()).toEqual([
       { session: 'rebuild-al-jolson', startedAt: '2026-09-19T18:26:00.000Z' },
     ])
-    expect(open).toHaveBeenCalledWith('/tmp/dmp-rebuild-al-jolson.log', 'r')
+    expect(open).toHaveBeenCalledWith(terminalLogPath('rebuild-al-jolson'), 'r')
   })
 
   // The self-cleaning guarantee: buildScript's EXIT trap already kills its own tmux session once it

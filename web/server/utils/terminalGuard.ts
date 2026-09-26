@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs'
+import { terminalMetaPath } from '~/server/utils/terminalPaths'
 import type { H3Event } from 'h3'
 import { requirePermission, requireRole } from '~/server/utils/permissions'
 import {
   gateForTerminalAction,
   parseTerminalRunMeta,
-  terminalRunMetaPath,
   type TerminalAction,
   type TerminalGate,
   type TerminalRunMeta,
@@ -12,7 +12,7 @@ import {
 
 export const readTerminalRunMeta = (session: string): TerminalRunMeta | null => {
   try {
-    return parseTerminalRunMeta(readFileSync(terminalRunMetaPath(session), 'utf8'))
+    return parseTerminalRunMeta(readFileSync(terminalMetaPath(session), 'utf8'))
   }
   catch {
     return null

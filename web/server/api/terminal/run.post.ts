@@ -14,8 +14,7 @@ import {
   withWebFlag,
 } from '~/server/utils/terminalCommand'
 import { hasUnfinishedLog, killTmuxSession, startTmuxSession, tmuxAvailable, tmuxSessionAlive } from '~/server/utils/tmuxSessions'
-import { terminalLogPath, terminalScriptPath } from '~/server/utils/terminalPaths'
-import { terminalRunMetaPath } from '~/server/utils/terminalAccess'
+import { ensureTerminalDir, pruneTerminalFiles, terminalLogPath, terminalMetaPath, terminalScriptPath } from '~/server/utils/terminalPaths'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody<{
@@ -105,10 +104,13 @@ export default defineEventHandler(async (event) => {
 
   const fullCmd = buildCommandLine(binary, args)
   const script = buildScript(workDir, fullCmd, logFile, session)
-  fs.writeFileSync(scriptFile, script, { mode: 0o755 })
-  fs.writeFileSync(logFile, '')
+  await ensureTerminalDir()
+  // Old runs' files are pruned opportunistically, off the request's critical path.
+  void pruneTerminalFiles()
+  fs.writeFileSync(scriptFile, script, { mode: 0o700 })
+  fs.writeFileSync(logFile, '', { mode: 0o600 })
   // What `stop` needs to gate on: a MANAGER must not be able to stop an ADMIN-only run.
-  fs.writeFileSync(terminalRunMetaPath(session), JSON.stringify({ command, args: body.args ?? [] }))
+  fs.writeFileSync(terminalMetaPath(session), JSON.stringify({ command, args: body.args ?? [] }), { mode: 0o600 })
 
   try {
     await killTmuxSession(session)
