@@ -67,12 +67,12 @@ const inflight = new Map<string, Promise<unknown>>()
  * Wraps an async function with caching (Redis when configured, an in-process LRU otherwise) and singleflight.
  * Falls through to fn() when the cache is unreachable.
  */
-export async function cachedResponse<T>(
+export const cachedResponse = async <T>(
   key: string,
   ttlSeconds: number,
   fn: () => Promise<T>,
   options: CacheOptions = {},
-): Promise<T> {
+): Promise<T> => {
   const fullKey = options.shared ? sharedCacheKey(await libraryVersion(), key) : key
 
   const running = inflight.get(fullKey)
@@ -100,7 +100,7 @@ export async function cachedResponse<T>(
   }
 }
 
-export async function invalidateCache(pattern: string) {
+export const invalidateCache = async (pattern: string) => {
   if (!pattern.includes('*')) {
     memory.delete(pattern)
   }

@@ -16,7 +16,7 @@ const CONVERT_EXTENSIONS = new Set(['flac', 'm4a', 'aac', 'ogg', 'opus', 'wav', 
 // passed through untouched instead of converted.
 export const TRACK_EXTENSIONS = new Set(['mp3', ...CONVERT_EXTENSIONS])
 
-export function ext(name: string): string {
+export const ext = (name: string): string => {
   return extname(name).slice(1).toLowerCase()
 }
 
@@ -32,7 +32,7 @@ export const sanitize = sanitizePathSegment
  * `signal` cancels the run: the in-flight ffmpeg is killed and the function throws instead of carrying on with
  * the remaining files (the monitor loop's deadline uses this so a timed-out relocate really stops).
  */
-export async function transcodeDirToMp3320(dir: string, bitrate = 320, signal?: AbortSignal): Promise<{ converted: number; failed: number }> {
+export const transcodeDirToMp3320 = async (dir: string, bitrate = 320, signal?: AbortSignal): Promise<{ converted: number; failed: number }> => {
   const log = (msg: string) => monitorLog('notice', `transcode: ${msg}`)
   const warn = (msg: string) => monitorLog('warn', `transcode: ${msg}`)
   let converted = 0
@@ -94,7 +94,7 @@ export async function transcodeDirToMp3320(dir: string, bitrate = 320, signal?: 
 }
 
 /** Read track/disc/title/year tags via ffprobe (checks both format and stream tags). */
-export async function probeTags(file: string, signal?: AbortSignal): Promise<AudioTags> {
+export const probeTags = async (file: string, signal?: AbortSignal): Promise<AudioTags> => {
   const keys = 'track,tracknumber,title,disc,discnumber,disctotal,totaldiscs,date,year,originalyear,originaldate'
   const { stdout } = await execFileAsync('ffprobe', [
     '-v', 'quiet',
@@ -130,7 +130,7 @@ export async function probeTags(file: string, signal?: AbortSignal): Promise<Aud
  * silently leaving the second file un-renamed (audit #83).
  * Returns null when there's no usable track number/title.
  */
-export function buildTrackFilename(tags: AudioTags): string | null {
+export const buildTrackFilename = (tags: AudioTags): string | null => {
   const { track, title, disc, discTotal } = tags
   if (!track || !title) {return null}
 
@@ -147,7 +147,7 @@ export function buildTrackFilename(tags: AudioTags): string | null {
 }
 
 /** Rename a single mp3 to `NN. Title.mp3` (or `D-NN. Title.mp3` for multi-disc); no-op when tags are missing or the target exists. */
-async function renameFromTags(file: string): Promise<void> {
+const renameFromTags = async (file: string): Promise<void> => {
   const tags = await probeTags(file)
   const name = buildTrackFilename(tags)
   if (!name) {return}
@@ -159,7 +159,7 @@ async function renameFromTags(file: string): Promise<void> {
   await rename(file, dest)
 }
 
-export async function collectAudioFiles(dir: string, depth = 0): Promise<string[]> {
+export const collectAudioFiles = async (dir: string, depth = 0): Promise<string[]> => {
   if (depth > 6) {return []}
   let entries: { name: string; isDir: boolean }[]
   try {
@@ -178,7 +178,7 @@ export async function collectAudioFiles(dir: string, depth = 0): Promise<string[
 }
 
 /** Whether ffmpeg is available on PATH. */
-export async function ffmpegAvailable(): Promise<boolean> {
+export const ffmpegAvailable = async (): Promise<boolean> => {
   try {
     await execFileAsync('ffmpeg', ['-version'])
     return true

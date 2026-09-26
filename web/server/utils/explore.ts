@@ -118,7 +118,7 @@ const SOUND_CONFIGS: [number, number][] = [
 ]
 
 // Split raw genre tag into individual genre terms
-function tokenizeGenre(raw: string): string[] {
+const tokenizeGenre = (raw: string): string[] => {
   return raw
     .split(/\s\/\s|,\s*/)
     .map(g => g.trim().toLowerCase())
@@ -126,7 +126,7 @@ function tokenizeGenre(raw: string): string[] {
 }
 
 // Look up a genre map value, trying exact match then substring/partial matches
-function lookupGenre(tokens: string[], map: Record<string, number>): number | null {
+const lookupGenre = (tokens: string[], map: Record<string, number>): number | null => {
   const scores: number[] = []
   for (const token of tokens) {
     if (map[token] !== undefined) {
@@ -146,13 +146,13 @@ function lookupGenre(tokens: string[], map: Record<string, number>): number | nu
 }
 
 // Clamp a metadata value to 0-99
-function clampMood(val: unknown): number {
+const clampMood = (val: unknown): number => {
   const n = typeof val === 'string' ? parseInt(val, 10) : typeof val === 'number' ? val : 0
   return Math.max(0, Math.min(99, isNaN(n) ? 0 : n))
 }
 
 // Resolve a metadata key across MP3 (e.g. "MOOD_HAPPY") and iTunes (e.g. "----:com.apple.iTunes:MOOD_HAPPY") variants
-function getMeta(meta: Record<string, string | number> | null, key: string): string | number | undefined {
+const getMeta = (meta: Record<string, string | number> | null, key: string): string | number | undefined => {
   if (!meta) {return undefined}
   if (meta[key] !== undefined) {return meta[key]}
   const itunesKey = `----:com.apple.iTunes:${key}`
@@ -161,7 +161,7 @@ function getMeta(meta: Record<string, string | number> | null, key: string): str
 }
 
 // Check if any mood tag exists (MP3 or iTunes)
-function hasMoodData(meta: Record<string, string | number> | null): boolean {
+const hasMoodData = (meta: Record<string, string | number> | null): boolean => {
   return getMeta(meta, 'MOOD_HAPPY') !== undefined
 }
 
@@ -180,7 +180,7 @@ export const EXPLORE_METADATA_KEYS: string[] = [
 ]
 
 // Get BPM from any available key variant, returns integer or null
-function getBpm(meta: Record<string, string | number> | null): number | null {
+const getBpm = (meta: Record<string, string | number> | null): number | null => {
   if (!meta) {return null}
   for (const key of BPM_KEYS) {
     if (meta[key] !== undefined) {
@@ -193,7 +193,7 @@ function getBpm(meta: Record<string, string | number> | null): number | null {
 
 // Pre-computed genre signals passed to sub-scorers to prevent double-counting
 
-export function scoreTrack(track: TrackCandidate, params: ExploreParams): number {
+export const scoreTrack = (track: TrackCandidate, params: ExploreParams): number => {
   const meta = track.metadata as Record<string, string | number> | null
   const genreTokens = track.genre ? tokenizeGenre(track.genre) : []
 
@@ -211,7 +211,7 @@ export function scoreTrack(track: TrackCandidate, params: ExploreParams): number
   return (energyScore * 0.40) + (eraScore * 0.20) + (familiarityScore * 0.20) + (soundScore * 0.20)
 }
 
-function scoreEnergy(meta: Record<string, string | number> | null, genre: ExploreGenreSignals, slider: number): number {
+const scoreEnergy = (meta: Record<string, string | number> | null, genre: ExploreGenreSignals, slider: number): number => {
   const config = ENERGY_CONFIGS[slider]!
   const bpm = getBpm(meta)
   const hasMood = hasMoodData(meta)
@@ -268,7 +268,7 @@ function scoreEnergy(meta: Record<string, string | number> | null, genre: Explor
   return (bpmScore * 0.5 + moodScore * 0.5) * confidence
 }
 
-function scoreEra(year: number | null, slider: number): number {
+const scoreEra = (year: number | null, slider: number): number => {
   if (year === null) {return 0.5}
 
   const [targetMin, targetMax] = ERA_CONFIGS[slider]!
@@ -280,7 +280,7 @@ function scoreEra(year: number | null, slider: number): number {
   return Math.max(0, 1 - dist / 30)
 }
 
-function scoreFamiliarity(playCount: number, lastPlayedAt: Date | null, slider: number, recentSkips: number): number {
+const scoreFamiliarity = (playCount: number, lastPlayedAt: Date | null, slider: number, recentSkips: number): number => {
   if (slider === 9 && playCount > 0) {return 0}
 
   // Weight play count by recency: plays from 1 year ago count half
@@ -300,7 +300,7 @@ function scoreFamiliarity(playCount: number, lastPlayedAt: Date | null, slider: 
   return score / (1 + 0.5 * recentSkips)
 }
 
-function scoreSound(meta: Record<string, string | number> | null, genre: ExploreGenreSignals, slider: number): number {
+const scoreSound = (meta: Record<string, string | number> | null, genre: ExploreGenreSignals, slider: number): number => {
   const [targetAcoustic, targetElectronic] = SOUND_CONFIGS[slider]!
   const hasAcousticMood = getMeta(meta, 'MOOD_ACOUSTIC') !== undefined
 
@@ -342,11 +342,11 @@ const poolCache = new Map<string, CachedPool>()
 // Plays are per-user (LocalReleaseTrackPlay, server/utils/userPlays.ts) and familiarity scoring
 // reads them, so the pool cache is keyed per user too - otherwise one user's "uncharted" pick would
 // leak into another user's cached pool.
-export function getPoolCacheKey(userId: number, params: ExploreParams): string {
+export const getPoolCacheKey = (userId: number, params: ExploreParams): string => {
   return `${userId}-${params.energy}-${params.era}-${params.familiarity}-${params.sound}`
 }
 
-export function getCachedPool(key: string, excludeIds: string[]): TrackCandidate[] | null {
+export const getCachedPool = (key: string, excludeIds: string[]): TrackCandidate[] | null => {
   const entry = poolCache.get(key)
   if (!entry) {return null}
   if (Date.now() - entry.createdAt > POOL_TTL) {
@@ -368,7 +368,7 @@ export function getCachedPool(key: string, excludeIds: string[]): TrackCandidate
 // that's set once and never revisited would otherwise sit in the map forever - this sweep runs on
 // every SET instead, so the map self-bounds to the working set of combos actually explored within the
 // last TTL window regardless of which specific keys get read again (audit #93).
-export function sweepExpiredPools(cache: Map<string, CachedPool>, now: number, ttlMs: number): void {
+export const sweepExpiredPools = (cache: Map<string, CachedPool>, now: number, ttlMs: number): void => {
   for (const [key, entry] of cache) {
     if (now - entry.createdAt > ttlMs) {
       cache.delete(key)
@@ -376,19 +376,19 @@ export function sweepExpiredPools(cache: Map<string, CachedPool>, now: number, t
   }
 }
 
-export function setCachedPool(key: string, candidates: TrackCandidate[]): void {
+export const setCachedPool = (key: string, candidates: TrackCandidate[]): void => {
   sweepExpiredPools(poolCache, Date.now(), POOL_TTL)
   poolCache.set(key, { candidates: [...candidates], createdAt: Date.now() })
 }
 
-export function removeFromPool(key: string, trackId: string): void {
+export const removeFromPool = (key: string, trackId: string): void => {
   const entry = poolCache.get(key)
   if (entry) {
     entry.candidates = entry.candidates.filter(t => t.id !== trackId)
   }
 }
 
-export function weightedRandomPick(scored: ScoredTrack[]): ScoredTrack | null {
+export const weightedRandomPick = (scored: ScoredTrack[]): ScoredTrack | null => {
   if (scored.length === 0) {return null}
 
   // Softmax temperature sampling over all candidates

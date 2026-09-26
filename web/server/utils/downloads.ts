@@ -14,14 +14,14 @@ const toStatus = (r: { ok: boolean; error?: string }) => ({
   error: r.error,
 })
 
-export async function getDownloadStatus() {
+export const getDownloadStatus = async () => {
   const slskd = await checkSlskdConnection().catch(() => ({ ok: false, error: 'Connection failed' }))
   return { slskd: toStatus(slskd) }
 }
 
 // --- Search ---
 
-export async function getSlskdResults(searchId: string, allowedFormats?: string, minBitrate?: number): Promise<DownloadSearchResult[]> {
+export const getSlskdResults = async (searchId: string, allowedFormats?: string, minBitrate?: number): Promise<DownloadSearchResult[]> => {
   const responses = await getSlskdSearchResults(searchId)
   const results: DownloadSearchResult[] = []
 
@@ -109,7 +109,7 @@ export async function getSlskdResults(searchId: string, allowedFormats?: string,
 
 // --- Downloads ---
 
-export async function getAllActiveDownloads(): Promise<ActiveDownload[]> {
+export const getAllActiveDownloads = async (): Promise<ActiveDownload[]> => {
   const slskdTransfers = await getSlskdActiveDownloads().catch(() => [])
 
   return slskdTransfers.map(t => ({
@@ -125,9 +125,9 @@ export async function getAllActiveDownloads(): Promise<ActiveDownload[]> {
   }))
 }
 
-export async function cancelDownloadBySource(
+export const cancelDownloadBySource = async (
   username: string,
   id: string,
-): Promise<void> {
+): Promise<void> => {
   await cancelSlskdDownload(username, id)
 }

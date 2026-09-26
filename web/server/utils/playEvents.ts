@@ -18,7 +18,7 @@ export interface ProgressPatch {
 // must never claw it back down. counted only ever flips false->true - once a listen has crossed the
 // "meaningfully listened to" threshold (shouldScrobble, helpers/playerLogic.ts) it stays counted, even
 // if a later patch omits the flag.
-export function applyProgress(prev: PlayEventProgress, patch: ProgressPatch): PlayEventProgress {
+export const applyProgress = (prev: PlayEventProgress, patch: ProgressPatch): PlayEventProgress => {
   return {
     listenedSeconds: Math.max(prev.listenedSeconds, patch.listenedSeconds ?? 0),
     counted: prev.counted || !!patch.counted,
@@ -43,7 +43,7 @@ export interface PlayEventPatchBody {
 //   - the counted false->true flip happens once, so LocalReleaseTrackPlay is incremented exactly once;
 //   - the flip and the increment commit together - a crash between them can no longer leave a counted event
 //     with no counter bump, which a replay could never repair (counted is already true).
-export async function applyPlayEventPatch(userId: number, id: string, patch: PlayEventPatchBody) {
+export const applyPlayEventPatch = async (userId: number, id: string, patch: PlayEventPatchBody) => {
   const flipped = await prisma.$transaction(async (tx) => {
     const [existing] = await tx.$queryRaw<{ trackId: string, listenedSeconds: number, counted: boolean, startedAt: Date }[]>`
       SELECT "trackId", "listenedSeconds", counted, "startedAt" FROM "PlayEvent"
@@ -83,7 +83,7 @@ export async function applyPlayEventPatch(userId: number, id: string, patch: Pla
 // synthesizes one already-finished/counted event so it lands in stats/recap the same as a normal
 // play, then folds it into the LocalReleaseTrackPlay counter the same way applyPlayEventPatch does -
 // in one transaction, so the log and the counter can't disagree.
-export async function recordExternalPlay(userId: number, trackId: string, source: PlaySource = 'SUBSONIC') {
+export const recordExternalPlay = async (userId: number, trackId: string, source: PlaySource = 'SUBSONIC') => {
   const track = await prisma.localReleaseTrack.findUnique({ where: { id: trackId }, select: { duration: true } })
   if (!track) {
     throw createError({ statusCode: 404, statusMessage: 'Track not found' })

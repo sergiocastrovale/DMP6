@@ -6,7 +6,7 @@ import { getSettingsRow } from '~/server/utils/settings'
  * Monitoring/downloader knobs, resolved DB → env → default (DB wins; null in DB = use env).
  * Queried per call (like downloadSettings) so UI changes apply live, no restart.
  */
-export async function resolveMonitorSettings(): Promise<ResolvedMonitorSettings> {
+export const resolveMonitorSettings = async (): Promise<ResolvedMonitorSettings> => {
   const s = await getSettingsRow().catch(() => null)
 
   const envEnabled = process.env.MONITOR_ENABLED !== 'false'

@@ -13,7 +13,7 @@ const artistSelect = { artist: { select: { name: true, slug: true } } } as const
  * tabs), each bucket queried and capped separately so none of them can starve the others out of the
  * response. Newest first within each bucket.
  */
-export async function fetchActiveQueueRows() {
+export const fetchActiveQueueRows = async () => {
   const [inFlight, failed, unavailable] = await Promise.all([
     prisma.downloadedRelease.findMany({
       where: { status: { in: ['SEARCHING', 'DOWNLOADING', 'ENRICHING'] } },
@@ -42,12 +42,12 @@ export async function fetchActiveQueueRows() {
  * awaiting manual merge (Ready). Deliberately excludes SEARCHING (not yet acquiring anything) and
  * every terminal status, unlike fetchActiveQueueRows above.
  */
-export async function countActiveDownloads(): Promise<number> {
+export const countActiveDownloads = async (): Promise<number> => {
   return prisma.downloadedRelease.count({ where: { status: { in: ['DOWNLOADING', 'ENRICHING', 'READY'] } } })
 }
 
 /** The dedicated "Rejected" tab bucket — terminal, force-rejected rows, newest first, capped. */
-export async function fetchRejectedQueueRows() {
+export const fetchRejectedQueueRows = async () => {
   return prisma.downloadedRelease.findMany({
     where: { status: 'REJECTED' },
     include: artistSelect,
@@ -62,7 +62,7 @@ export async function fetchRejectedQueueRows() {
  * actionable (retryable, see autoDownload.ts's forceRetry), so it lives exclusively in the Failed tab
  * (fetchActiveQueueRows) — showing it in both was the duplicate-tab bug from audit #75.
  */
-export async function fetchHistoryQueueRows() {
+export const fetchHistoryQueueRows = async () => {
   return prisma.downloadedRelease.findMany({
     where: { status: { in: ['PROMOTED', 'INVALID'] } },
     include: artistSelect,

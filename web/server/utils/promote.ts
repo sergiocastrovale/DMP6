@@ -16,7 +16,7 @@ import { streamCopyFile } from '~/server/utils/safeMove'
 // Cancelling/rejecting an ENRICHING row leaves its SongKong spool/done markers behind - the host
 // drainer (songkong-drain.sh) treats a stale spool entry as "retry next tick" by design, so a
 // cancelled download otherwise means eternal cron noise over a path that no longer exists.
-async function cleanupSongkongMarkers(id: string): Promise<void> {
+const cleanupSongkongMarkers = async (id: string): Promise<void> => {
   const dirs = songkongDirs()
   await rm(join(dirs.spool, id), { force: true }).catch(() => {})
   await rm(join(dirs.done, id), { force: true }).catch(() => {})
@@ -27,11 +27,11 @@ async function cleanupSongkongMarkers(id: string): Promise<void> {
  * Run the Rust reconciler binary, serialized against every other script run in this process so it
  * never hits the binaries' exclusive DB lock (which hard-exits on contention).
  */
-async function runReconciler(name: 'index' | 'sync', args: string[]): Promise<void> {
+const runReconciler = async (name: 'index' | 'sync', args: string[]): Promise<void> => {
   await runScript(name, args, { exclusive: true })
 }
 
-async function moveDir(src: string, dest: string): Promise<void> {
+const moveDir = async (src: string, dest: string): Promise<void> => {
   await mkdir(dirname(dest), { recursive: true })
   try {
     await rename(src, dest)
@@ -54,7 +54,7 @@ async function moveDir(src: string, dest: string): Promise<void> {
 }
 
 /** Relative layout path under a root; falls back to the folder basename if outside the root. */
-function relUnder(root: string, full: string): string {
+const relUnder = (root: string, full: string): string => {
   const rel = root ? relative(root, full) : ''
   return !rel || rel.startsWith('..') ? basename(full) : rel
 }
@@ -64,7 +64,7 @@ function relUnder(root: string, full: string): string {
  * READY (awaiting manual merge). No library write yet. Same relative layout is preserved so merge can
  * mirror it into MUSIC_DIR. This is the automatic, hands-off step — there is no approval gate.
  */
-export async function moveToReady(id: string): Promise<void> {
+export const moveToReady = async (id: string): Promise<void> => {
   const row = await prisma.downloadedRelease.findUnique({ where: { id } })
   if (!row) {throw createError({ statusCode: 404, message: 'download not found' })}
 
@@ -111,7 +111,7 @@ const stripDiscSegment = (rel: string): string => rel.replace(DISC_SEGMENT_RE, '
 const merging = new Set<string>()
 
 // Delete a merged folder from disk, but only when it actually lives under MUSIC_DIR (safety guard).
-async function purgeLibraryFolder(music: string, rel: string): Promise<void> {
+const purgeLibraryFolder = async (music: string, rel: string): Promise<void> => {
   if (!music || !rel) {return}
   const full = join(music, rel)
   if (full.startsWith(music + sep)) {
@@ -127,7 +127,7 @@ async function purgeLibraryFolder(music: string, rel: string): Promise<void> {
  * The bound MusicBrainzRelease is deliberately left alone: it's the real edition `sync --release`
  * re-binds the new copy to in stampMerged.
  */
-async function purgeReplacedRelease(row: MergeRow, music: string): Promise<void> {
+const purgeReplacedRelease = async (row: MergeRow, music: string): Promise<void> => {
   if (!row.replacesLocalReleaseId) {return}
   const old = await prisma.localRelease.findUnique({
     where: { id: row.replacesLocalReleaseId },
@@ -144,7 +144,7 @@ async function purgeReplacedRelease(row: MergeRow, music: string): Promise<void>
 }
 
 // Move one ready release into MUSIC_DIR (idempotent: skip if already there) and return its rel path.
-async function moveIntoLibrary(row: MergeRow, music: string, readyPath: string): Promise<string> {
+const moveIntoLibrary = async (row: MergeRow, music: string, readyPath: string): Promise<string> => {
   if (row.stagingPath!.startsWith(music + sep) || row.stagingPath === music) {
     return relUnder(music, row.stagingPath!) // already merged on disk; just (re)index in place
   }
@@ -192,7 +192,7 @@ async function moveIntoLibrary(row: MergeRow, music: string, readyPath: string):
  *     worker can hope a properly-tagged copy surfaces.
  * Returns { id: localReleaseId, error: null } on success, { id: null, error: reason } when invalidated.
  */
-async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloadAttempts: number): Promise<{ id: string | null; error: string | null }> {
+const stampMerged = async (row: MergeRow, music: string, rel: string, maxDownloadAttempts: number): Promise<{ id: string | null; error: string | null }> => {
   const stripped = stripDiscSegment(rel)
   // Exact match first - "Artist/2001 - Album" must not match "Artist/2001 - Album (Deluxe)". Only fall
   // back to a prefix match for genuine disc subfolders ("Artist/2001 - Album/cd2"), constrained to a
@@ -341,7 +341,7 @@ async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloa
  * Merge one READY download into the library: move READY → MUSIC_DIR (idempotent), reconcile
  * (index + sync, serialized), stamp provenance, mark PROMOTED.
  */
-export async function mergeDownloadedRelease(id: string, emit?: (line: string) => void): Promise<{ localReleaseId: string | null; error: string | null }> {
+export const mergeDownloadedRelease = async (id: string, emit?: (line: string) => void): Promise<{ localReleaseId: string | null; error: string | null }> => {
   if (merging.has(id)) {throw createError({ statusCode: 409, message: 'already merging' })}
 
   const row = await prisma.downloadedRelease.findUnique({ where: { id }, include: { artist: { select: { name: true } } } })
@@ -386,7 +386,7 @@ export async function mergeDownloadedRelease(id: string, emit?: (line: string) =
  * ONE sync per distinct artist (deduped) — far cheaper than per-release index+full-artist-sync, and
  * the whole thing runs serialized so it can't collide with the gaps worker on the Rust lock.
  */
-export async function mergeManyDownloadedReleases(ids: string[], emit?: (line: string) => void): Promise<{ merged: number; errors: string[] }> {
+export const mergeManyDownloadedReleases = async (ids: string[], emit?: (line: string) => void): Promise<{ merged: number; errors: string[] }> => {
   const music = await resolveMusicDir()
   if (!music) {throw createError({ statusCode: 503, message: 'MUSIC_DIR not configured' })}
   const { downloadsReadyPath } = await resolveDownloadSettings()
@@ -468,7 +468,7 @@ const baseName = (f: string) => basename(f.replace(/\\/g, '/'))
 
 // Delete the staged folder from disk, but only inside the configured downloads/staging or ready
 // roots (safety) — used by both reject and cancel.
-async function purgeStagedFiles(stagingPath: string | null): Promise<void> {
+const purgeStagedFiles = async (stagingPath: string | null): Promise<void> => {
   if (!stagingPath) {return}
   const { downloadsPath, downloadsReadyPath } = await resolveDownloadSettings()
   const inside = (root: string) => root && (stagingPath.startsWith(root + sep) || stagingPath === root)
@@ -486,7 +486,7 @@ async function purgeStagedFiles(stagingPath: string | null): Promise<void> {
  * The counter accumulates across the whole download→ready→reject lifecycle, so the try/ready/reject
  * churn is bounded by N. A manual download from the artist page resets the cap (deliberate override).
  */
-async function applyRejectionCap(row: { id: string; attempts: number }, reason: string): Promise<void> {
+const applyRejectionCap = async (row: { id: string; attempts: number }, reason: string): Promise<void> => {
   const { maxDownloadAttempts } = await resolveMonitorSettings()
   const attempts = (row.attempts ?? 0) + 1
   const terminal = attempts >= Math.max(1, maxDownloadAttempts)
@@ -497,7 +497,7 @@ async function applyRejectionCap(row: { id: string; attempts: number }, reason: 
 }
 
 /** Reject a staged download (FAILED or READY/ready-to-merge — identical outcome). */
-export async function rejectDownloadedRelease(id: string): Promise<void> {
+export const rejectDownloadedRelease = async (id: string): Promise<void> => {
   const row = await prisma.downloadedRelease.findUnique({ where: { id } })
   if (!row) {throw createError({ statusCode: 404, message: 'download not found' })}
   await purgeStagedFiles(row.stagingPath)
@@ -512,7 +512,7 @@ export async function rejectDownloadedRelease(id: string): Promise<void> {
  * attempts cap. Without this, rejecting a batch of FAILED rows with attempts still below the cap just
  * cycles them back to FAILED (attempts+1) and the list looks completely unchanged.
  */
-export async function forceRejectDownloadedReleases(ids: string[]): Promise<{ rejected: number }> {
+export const forceRejectDownloadedReleases = async (ids: string[]): Promise<{ rejected: number }> => {
   const rows = await prisma.downloadedRelease.findMany({ where: { id: { in: ids } } })
   for (const row of rows) {
     await purgeStagedFiles(row.stagingPath)
@@ -536,7 +536,7 @@ const REQUEUE_EPOCH = new Date(0)
  * normal retry pool (pickRetry, gated by retryCooldownDays) picks it up on its own next cycle —
  * deliberately NOT an immediate forced search (that's "Force retry", a different action).
  */
-export async function requeueRejectedDownload(id: string): Promise<void> {
+export const requeueRejectedDownload = async (id: string): Promise<void> => {
   const row = await prisma.downloadedRelease.findUnique({ where: { id } })
   if (!row) {throw createError({ statusCode: 404, message: 'download not found' })}
   await prisma.downloadedRelease.update({
@@ -546,7 +546,7 @@ export async function requeueRejectedDownload(id: string): Promise<void> {
 }
 
 /** Bulk "Move all back to queue" — same semantics as requeueRejectedDownload, batched. */
-export async function requeueRejectedDownloads(ids: string[]): Promise<{ requeued: number }> {
+export const requeueRejectedDownloads = async (ids: string[]): Promise<{ requeued: number }> => {
   const result = await prisma.downloadedRelease.updateMany({
     where: { id: { in: ids } },
     data: { status: 'FAILED', attempts: 0, priority: 10, error: null, updatedAt: REQUEUE_EPOCH },
@@ -563,7 +563,7 @@ export async function requeueRejectedDownloads(ids: string[]): Promise<{ requeue
  * either way; keeping it around only bloats the table and every /downloads queue poll (see
  * docs/downloader_issues.md #3, #8). Pure DB operation — no filesystem dependency, safe on any instance.
  */
-export async function sweepDanglingDownloads(): Promise<{ removed: number }> {
+export const sweepDanglingDownloads = async (): Promise<{ removed: number }> => {
   const removed = await prisma.$executeRaw`
     DELETE FROM "DownloadedRelease" dr
     WHERE dr.status IN ('UNAVAILABLE', 'FAILED', 'INVALID', 'ABANDONED', 'REJECTED')
@@ -588,7 +588,7 @@ export async function sweepDanglingDownloads(): Promise<{ removed: number }> {
  * is absent we're a dev instance without the volume — we can't distinguish "files gone" from "volume not
  * mounted", so we bail without touching anything rather than nuking the whole queue.
  */
-export async function cleanupReadyDownloads(): Promise<{ removed: number; checked: number }> {
+export const cleanupReadyDownloads = async (): Promise<{ removed: number; checked: number }> => {
   const { downloadsReadyPath } = await resolveDownloadSettings()
   if (downloadsReadyPath) {
     const mounted = await access(downloadsReadyPath).then(() => true).catch(() => false)
@@ -624,7 +624,7 @@ export async function cleanupReadyDownloads(): Promise<{ removed: number; checke
  * FAILED/re-downloadable, at cap -> REJECTED/terminal). Same N-bounded outcome as FAILED/READY
  * rejection.
  */
-export async function cancelDownloadedRelease(id: string): Promise<void> {
+export const cancelDownloadedRelease = async (id: string): Promise<void> => {
   const row = await prisma.downloadedRelease.findUnique({ where: { id } })
   if (!row) {throw createError({ statusCode: 404, message: 'download not found' })}
 

@@ -11,7 +11,7 @@ const CACHE_TTL = 30_000
 
 const cache = new Map<number, { user: CachedAuthUser | null, expiry: number }>()
 
-export async function getCachedAuthUser(userId: number): Promise<CachedAuthUser | null> {
+export const getCachedAuthUser = async (userId: number): Promise<CachedAuthUser | null> => {
   const entry = cache.get(userId)
   if (entry && Date.now() < entry.expiry) {return entry.user}
 
@@ -31,6 +31,6 @@ export async function getCachedAuthUser(userId: number): Promise<CachedAuthUser 
   return user
 }
 
-export function invalidateAuthUserCache(userId: number): void {
+export const invalidateAuthUserCache = (userId: number): void => {
   cache.delete(userId)
 }

@@ -19,7 +19,7 @@ const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, m
 
 let lastRequestAt = 0
 
-async function throttle(): Promise<void> {
+const throttle = async (): Promise<void> => {
   const wait = lastRequestAt + MIN_DELAY_MS - Date.now()
   if (wait > 0) {await sleep(wait)}
   lastRequestAt = Date.now()
@@ -31,7 +31,7 @@ const MB_TIMEOUT_MS = 30_000
 // Fetches one MB path (e.g. `/artist?query=...&fmt=json`), serialized against every other mbFetch
 // call in this process. One retry after a fixed 2s backoff on a 503 (MB's "server busy" load-shed,
 // same as the Rust client absorbs).
-export async function mbFetch(path: string): Promise<any> {
+export const mbFetch = async (path: string): Promise<any> => {
   const run = async (): Promise<any> => {
     await throttle()
     const res = await fetchWithTimeout(`${MB_BASE}${path}`, { headers: { 'User-Agent': MB_USER_AGENT } }, { timeoutMs: MB_TIMEOUT_MS })
@@ -61,7 +61,7 @@ export interface MbArtistSearchRow {
   type: string | null
 }
 
-export async function searchArtists(query: string): Promise<MbArtistSearchRow[]> {
+export const searchArtists = async (query: string): Promise<MbArtistSearchRow[]> => {
   const data = await mbFetch(`/artist?query=${encodeURIComponent(query)}&fmt=json`)
   const artists = Array.isArray(data?.artists) ? data.artists : []
   return artists.map((a: any) => ({
@@ -75,7 +75,7 @@ export async function searchArtists(query: string): Promise<MbArtistSearchRow[]>
 
 // Direct lookup for the /add search box's "paste a MusicBrainz ID" path - a plain id lookup instead
 // of the query search, since `/artist?query=<uuid>` doesn't reliably match on id.
-export async function getArtistByMbid(mbid: string): Promise<MbArtistSearchRow | null> {
+export const getArtistByMbid = async (mbid: string): Promise<MbArtistSearchRow | null> => {
   try {
     const a = await mbFetch(`/artist/${mbid}?fmt=json`)
     return {

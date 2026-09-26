@@ -46,7 +46,7 @@ export default defineEventHandler(async (event) => {
   return paged(items as unknown[], total, { page: p, pageSize: ps, skip }) satisfies PaginatedResponse<unknown>
 })
 
-async function fetchType(
+const fetchType = async (
   type: IssueType,
   skip: number,
   take: number,
@@ -54,7 +54,7 @@ async function fetchType(
   order: 'asc' | 'desc',
   q: string | undefined,
   status: string,
-): Promise<[unknown[], number]> {
+): Promise<[unknown[], number]> => {
   switch (type) {
     case 'corrupted': {
       const where = q

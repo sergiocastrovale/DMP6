@@ -25,7 +25,7 @@ const checkPath = async (label: string, path: string, mode: number): Promise<Dow
 let cached: { at: number, value: DownloadEnvironment } | null = null
 const CACHE_TTL_MS = 10_000
 
-async function probeEnvironment(): Promise<DownloadEnvironment> {
+const probeEnvironment = async (): Promise<DownloadEnvironment> => {
   const { downloadsPath, downloadsReadyPath, flacToMp3 } = await resolveDownloadSettings()
   const music = await resolveMusicDir()
 
@@ -51,7 +51,7 @@ async function probeEnvironment(): Promise<DownloadEnvironment> {
   }
 }
 
-export async function checkDownloadEnvironment(force = false): Promise<DownloadEnvironment> {
+export const checkDownloadEnvironment = async (force = false): Promise<DownloadEnvironment> => {
   if (!force && cached && Date.now() - cached.at < CACHE_TTL_MS) {
     return cached.value
   }
@@ -60,12 +60,12 @@ export async function checkDownloadEnvironment(force = false): Promise<DownloadE
   return value
 }
 
-export function clearDownloadEnvironmentCache(): void {
+export const clearDownloadEnvironmentCache = (): void => {
   cached = null
 }
 
 /** Pure — every reason acquisition can't proceed, given a probed environment. No filesystem access. */
-export function acquireBlockReasons(env: DownloadEnvironment): string[] {
+export const acquireBlockReasons = (env: DownloadEnvironment): string[] => {
   const reasons: string[] = []
   if (!env.downloadsPath.ok) {reasons.push(env.downloadsPath.detail!)}
   if (!env.slskd.ok) {reasons.push(env.slskd.detail!)}
@@ -73,7 +73,7 @@ export function acquireBlockReasons(env: DownloadEnvironment): string[] {
 }
 
 /** Pure — every reason merging can't proceed, given a probed environment. No filesystem access. */
-export function mergeBlockReasons(env: DownloadEnvironment): string[] {
+export const mergeBlockReasons = (env: DownloadEnvironment): string[] => {
   const reasons: string[] = []
   if (!env.readyPath.ok) {reasons.push(env.readyPath.detail!)}
   if (!env.musicDir.ok) {reasons.push(env.musicDir.detail!)}
@@ -81,14 +81,14 @@ export function mergeBlockReasons(env: DownloadEnvironment): string[] {
   return reasons
 }
 
-export async function assertCanAcquire(): Promise<void> {
+export const assertCanAcquire = async (): Promise<void> => {
   const reasons = acquireBlockReasons(await checkDownloadEnvironment())
   if (reasons.length) {
     throw createError({ statusCode: 503, message: `Can't acquire downloads here: ${reasons.join('; ')}` })
   }
 }
 
-export async function assertCanMerge(): Promise<void> {
+export const assertCanMerge = async (): Promise<void> => {
   const reasons = mergeBlockReasons(await checkDownloadEnvironment())
   if (reasons.length) {
     throw createError({ statusCode: 503, message: `Can't merge downloads here: ${reasons.join('; ')}` })
@@ -96,11 +96,11 @@ export async function assertCanMerge(): Promise<void> {
 }
 
 /** Pure — every reason the download flow can't proceed at all, acquire or merge. */
-export function environmentBlockReasons(env: DownloadEnvironment): string[] {
+export const environmentBlockReasons = (env: DownloadEnvironment): string[] => {
   return [...new Set([...acquireBlockReasons(env), ...mergeBlockReasons(env)])]
 }
 
-export async function assertDownloadEnvironmentOk(): Promise<void> {
+export const assertDownloadEnvironmentOk = async (): Promise<void> => {
   const reasons = environmentBlockReasons(await checkDownloadEnvironment())
   if (reasons.length) {
     throw createError({ statusCode: 503, message: `Can't manage downloads here: ${reasons.join('; ')}` })

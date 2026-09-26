@@ -12,7 +12,7 @@ import type { AcquisitionTarget, MissingPick } from '~/types/download'
 // Mark a search-miss: slskd had no result. NOT a failure — never abandons. Bumps the tries counter
 // (shown in the UI) and lowers priority (floor 0) so the release sinks behind fresher candidates and
 // is retried later. Status -> UNAVAILABLE (its own queue tab, distinct from real download failures).
-async function failNoResult(rowId: string, attempts: number, priority: number, error: string) {
+const failNoResult = async (rowId: string, attempts: number, priority: number, error: string) => {
   await prisma.downloadedRelease.update({
     where: { id: rowId },
     data: { attempts: attempts + 1, priority: Math.max(0, priority - 1), status: 'UNAVAILABLE', error },
@@ -21,12 +21,12 @@ async function failNoResult(rowId: string, attempts: number, priority: number, e
 
 // Run the Soulseek acquire for an already-created SEARCHING row. Returns true on a hit (transfer
 // enqueued), false on a search miss (caller records the miss).
-export async function routeAcquire(
+export const routeAcquire = async (
   p: AcquisitionTarget,
   rowId: string,
   formats: string,
   minBitrate: number | null,
-): Promise<boolean> {
+): Promise<boolean> => {
   const best = await findBestSlskdResult(
     p.artistName, p.albumTitle, formats || undefined, minBitrate ?? undefined,
   ).catch(() => null)
@@ -49,7 +49,7 @@ export async function routeAcquire(
  * once), then runs a fresh Soulseek search + acquire detached. `files: []` parks it in the reconcile
  * loop's "not yet enqueued" grace window so it can't be failed before the search completes.
  */
-export async function forceRetryDownload(id: string): Promise<void> {
+export const forceRetryDownload = async (id: string): Promise<void> => {
   const row = await prisma.downloadedRelease.findUnique({ where: { id }, include: { artist: true } })
   if (!row) {throw createError({ statusCode: 404, message: 'download not found' })}
   if (!row.artist?.name) {throw createError({ statusCode: 409, message: 'download has no artist' })}
@@ -92,7 +92,7 @@ export async function forceRetryDownload(id: string): Promise<void> {
  * per id and refetched the queue after each would race those refetches against each other and
  * could land on a snapshot that missed rows retried later in the batch.
  */
-export async function forceRetryDownloads(ids: string[]): Promise<{ retried: number, failed: number }> {
+export const forceRetryDownloads = async (ids: string[]): Promise<{ retried: number, failed: number }> => {
   let retried = 0
   let failed = 0
   for (const id of ids) {
@@ -110,7 +110,7 @@ export async function forceRetryDownloads(ids: string[]): Promise<{ retried: num
 // Fresh pool: random monitored, non-junk artists (indexed), one never-tried MISSING album/EP each
 // (no DownloadedRelease row exists yet -> implicit priority 10). Avoids a full random sort over the
 // whole MISSING pool every tick at 19K.
-async function pickFresh(slots: number): Promise<MissingPick[]> {
+const pickFresh = async (slots: number): Promise<MissingPick[]> => {
   const artists = await prisma.$queryRaw<{ id: string; name: string }[]>(Prisma.sql`
     SELECT a.id, a.name FROM "Artist" a
     WHERE a.monitored = true AND a.name NOT LIKE '%;%'
@@ -147,7 +147,7 @@ async function pickFresh(slots: number): Promise<MissingPick[]> {
 // enrichment/merge paths) — is at least that old, so the same miss isn't re-searched every tick.
 // Ordered by priority DESC so the least-failed retry first; random within tier.
 // ABANDONED/REJECTED are terminal and excluded.
-async function pickRetry(slots: number, cooldownDays: number): Promise<MissingPick[]> {
+const pickRetry = async (slots: number, cooldownDays: number): Promise<MissingPick[]> => {
   // Join on the stable releaseGroupId first (survives the MB release row being deleted + recreated
   // with a fresh cuid by sync/catalogue-gaps); fall back to the volatile mbReleaseId only for legacy
   // rows predating that column being populated. DISTINCT ON dr.id guards against a fan-out if more
@@ -178,7 +178,7 @@ async function pickRetry(slots: number, cooldownDays: number): Promise<MissingPi
 // Fill `slots` fresh-first (deprioritized retries yield to fresh candidates), but always reserve at
 // least one slot for the retry pool when it has candidates so sunk items keep trickling. Each pool
 // fills the other's shortfall. As MISSING is exhausted into rows, fresh thins and retries take over.
-async function pickCandidates(slots: number, cooldownDays: number): Promise<MissingPick[]> {
+const pickCandidates = async (slots: number, cooldownDays: number): Promise<MissingPick[]> => {
   const reservedRetry = Math.min(slots, 1)
   const fresh = await pickFresh(slots - reservedRetry)
   const remaining = slots - fresh.length

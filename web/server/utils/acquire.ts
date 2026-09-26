@@ -8,7 +8,7 @@ import { sanitize } from '~/server/utils/transcode'
 import { normalizeTitle } from '~/server/utils/releaseTitle'
 import type { DownloadSearchResult, AcquireResult, AcquireParams } from '~/types/download'
 
-function sleep(ms: number) {
+const sleep = (ms: number) => {
   return new Promise(r => setTimeout(r, ms))
 }
 
@@ -16,7 +16,7 @@ function sleep(ms: number) {
 // including completely unrelated folders (score is format/bitrate/speed only, never a title check). Reject
 // candidates whose folder name has no meaningful overlap with the requested album title before scoring,
 // so a high-bitrate wrong-album result can't outscore/replace a real (or simply absent) match.
-export function albumFolderMatches(folderPath: string, albumTitle: string): boolean {
+export const albumFolderMatches = (folderPath: string, albumTitle: string): boolean => {
   const folder = normalizeTitle(folderPath.replace(/\\/g, '/').split('/').pop() || folderPath)
   const wanted = normalizeTitle(albumTitle)
   if (!wanted) {return true} // nothing to compare against — don't block on an empty title
@@ -33,12 +33,12 @@ export function albumFolderMatches(folderPath: string, albumTitle: string): bool
  * requested album (or null), polling with an early exit once a strong (FLAC/high-score) or sufficient
  * set of results arrives.
  */
-export async function findBestSlskdResult(
+export const findBestSlskdResult = async (
   artistName: string,
   albumTitle: string,
   allowedFormats?: string,
   minBitrate?: number,
-): Promise<DownloadSearchResult | null> {
+): Promise<DownloadSearchResult | null> => {
   const searchId = await slskdSearch(`${artistName} ${albumTitle}`.trim())
   let best: DownloadSearchResult | null = null
   try {
@@ -67,7 +67,7 @@ export async function findBestSlskdResult(
  * so it survives restarts and self-heals on every poll.
  * Pass `existingRowId` to reuse a pre-created row.
  */
-export async function acquireRelease(params: AcquireParams, existingRowId?: string): Promise<{ id: string }> {
+export const acquireRelease = async (params: AcquireParams, existingRowId?: string): Promise<{ id: string }> => {
   const { downloadsPath } = await resolveDownloadSettings()
   if (!downloadsPath) {throw createError({ statusCode: 503, message: 'DOWNLOADS_PATH not configured' })}
 

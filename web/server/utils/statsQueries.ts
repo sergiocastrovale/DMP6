@@ -29,7 +29,7 @@ export interface StatArgs {
   order: 'asc' | 'desc'
 }
 
-export async function runStatQuery(type: string, query: Record<string, unknown>, a: StatArgs) {
+export const runStatQuery = async (type: string, query: Record<string, unknown>, a: StatArgs) => {
   const { search, skip, pageSize, page, sort, order } = a
   switch (type) {
     case 'types':
@@ -101,7 +101,7 @@ const pageFromRows = async <T extends { total: bigint | number }>(
   return { items: rows.map(({ total: _t, ...rest }) => rest), total }
 }
 
-async function queryArtists(type: string, search: string, skip: number, pageSize: number, page: number, _sort: string, order: 'asc' | 'desc') {
+const queryArtists = async (type: string, search: string, skip: number, pageSize: number, page: number, _sort: string, order: 'asc' | 'desc') => {
   // Matches artists/index.get.ts's base filter: connected (duplicate) artists are aggregated onto
   // their primary - counting them here inflated the stat beyond what /browse actually lists (audit #82).
   const where: any = { primaryArtistId: null, localReleases: { some: {} } }
@@ -123,7 +123,7 @@ async function queryArtists(type: string, search: string, skip: number, pageSize
   return paged(items.map(a => ({ id: a.id, name: a.name, slug: a.slug })), total, { page, pageSize, skip })
 }
 
-async function queryReleases(type: string, search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
+const queryReleases = async (type: string, search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
   const where: any = {}
   if (search) { where.title = { contains: search, mode: 'insensitive' } }
   if (type === 'releases-with-art') { where.OR = [{ image: { not: null } }, { imageUrl: { not: null } }] }
@@ -158,7 +158,7 @@ async function queryReleases(type: string, search: string, skip: number, pageSiz
     })), total, { page, pageSize, skip })
 }
 
-async function queryTracks(search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
+const queryTracks = async (search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
   const where: any = {}
   if (search) { where.title = { contains: search, mode: 'insensitive' } }
 
@@ -182,7 +182,7 @@ async function queryTracks(search: string, skip: number, pageSize: number, page:
     })), total, { page, pageSize, skip })
 }
 
-async function queryGenres(search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
+const queryGenres = async (search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
   const where: any = {}
   if (search) { where.name = { contains: search, mode: 'insensitive' } }
 
@@ -210,7 +210,7 @@ async function queryGenres(search: string, skip: number, pageSize: number, page:
     })), total, { page, pageSize, skip })
 }
 
-async function queryPlays(userId: number, search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
+const queryPlays = async (userId: number, search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
   const where: any = { userId, playCount: { gt: 0 } }
   if (search) { where.track = { title: { contains: search, mode: 'insensitive' } } }
 
@@ -241,7 +241,7 @@ async function queryPlays(userId: number, search: string, skip: number, pageSize
 
 // Backs the Recent Plays panel's detail subpages (pages/statistics/recent-plays/[period].vue) - the
 // individual PlayEvent rows within the period, not the per-track aggregate `queryPlays` above uses.
-async function queryRecentPlays(userId: number, period: PlayPeriod, timeZone: string, search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
+const queryRecentPlays = async (userId: number, period: PlayPeriod, timeZone: string, search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
   const where: any = { userId, counted: true, startedAt: { gte: periodStart(period, new Date(), timeZone) } }
   if (search) { where.track = { title: { contains: search, mode: 'insensitive' } } }
 
@@ -271,7 +271,7 @@ async function queryRecentPlays(userId: number, period: PlayPeriod, timeZone: st
     })), total, { page, pageSize, skip })
 }
 
-async function querySize(search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
+const querySize = async (search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
   const orderColumn = whitelisted({ name: 'a."name"', totalSize: '"totalSize"' }, sort, '"totalSize"')
   const dir = dirSql(order)
 
@@ -308,7 +308,7 @@ async function querySize(search: string, skip: number, pageSize: number, page: n
   return paged(items.map(r => ({ id: r.id, name: r.name, slug: r.slug, totalSize: Number(r.totalSize) })), total, { page, pageSize, skip })
 }
 
-async function queryReleasesByStatus(statuses: string[], search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
+const queryReleasesByStatus = async (statuses: string[], search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
   const where: any = { matchStatus: { in: statuses } }
   if (search) { where.title = { contains: search, mode: 'insensitive' } }
 
@@ -342,7 +342,7 @@ async function queryReleasesByStatus(statuses: string[], search: string, skip: n
     })), total, { page, pageSize, skip })
 }
 
-async function queryLowBitrate(search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
+const queryLowBitrate = async (search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
   const where: any = { bitrate: { lt: 256, gt: 0 } }
   if (search) { where.title = { contains: search, mode: 'insensitive' } }
 
@@ -368,7 +368,7 @@ async function queryLowBitrate(search: string, skip: number, pageSize: number, p
     })), total, { page, pageSize, skip })
 }
 
-async function querySingleRelease(search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
+const querySingleRelease = async (search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
   const orderColumn = whitelisted({ name: 'x."name"', totalSize: 'x."totalSize"', trackCount: 'x."trackCount"' }, sort, 'x."totalSize"')
   const dir = dirSql(order)
 
@@ -411,7 +411,7 @@ async function querySingleRelease(search: string, skip: number, pageSize: number
     })), total, { page, pageSize, skip })
 }
 
-async function queryShortest(search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
+const queryShortest = async (search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
   const where: any = {}
   if (search) { where.title = { contains: search, mode: 'insensitive' } }
 
@@ -445,7 +445,7 @@ async function queryShortest(search: string, skip: number, pageSize: number, pag
     })), total, { page, pageSize, skip })
 }
 
-async function queryMissingArt(search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
+const queryMissingArt = async (search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
   const where: any = { image: null, imageUrl: null }
   if (search) { where.title = { contains: search, mode: 'insensitive' } }
 
@@ -476,7 +476,7 @@ async function queryMissingArt(search: string, skip: number, pageSize: number, p
     })), total, { page, pageSize, skip })
 }
 
-async function queryReleasesSynced(search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
+const queryReleasesSynced = async (search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
   const where: any = {}
   if (search) { where.title = { contains: search, mode: 'insensitive' } }
 
@@ -514,7 +514,7 @@ async function queryReleasesSynced(search: string, skip: number, pageSize: numbe
 // needs adding there and to releaseTypeBucketSql's CASE.
 const RELEASE_TYPE_BUCKET_IDS = releaseTypeBuckets.map(b => b.id)
 
-async function queryReleaseTypesPivot(search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
+const queryReleaseTypesPivot = async (search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
   // Bucket ids come from a fixed constant list (helpers/constants.ts), never from the request.
   const bucketColumns = Prisma.join(
     RELEASE_TYPE_BUCKET_IDS.map(id => Prisma.sql`COUNT(*) FILTER (WHERE rb.bucket = ${id})::int AS ${Prisma.raw(`"${id}"`)}`),
@@ -569,7 +569,7 @@ async function queryReleaseTypesPivot(search: string, skip: number, pageSize: nu
 // bucket - "Britney Spears' Singles" - reached by clicking a nonzero cell in the pivoted table above.
 // Matches both the given artist and any artist rolled onto it via primaryArtistId (a TypesPage.vue
 // row is already the *primary* artist, so its duplicates' own releases belong on this list too).
-async function queryReleaseTypeDetail(bucket: string, artistSlug: string, search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
+const queryReleaseTypeDetail = async (bucket: string, artistSlug: string, search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') => {
   const artist = await db().artist.findUnique({ where: { slug: artistSlug }, select: { id: true } })
   if (!artist) {
     throw createError({ statusCode: 404, statusMessage: 'Artist not found' })

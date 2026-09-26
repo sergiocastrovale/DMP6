@@ -39,7 +39,7 @@ let songkongStalledLogged = false
  * completions into ENRICHING (send them straight to READY instead) rather than let them each sit the
  * full max-wait window before self-promoting unenriched, one at a time.
  */
-async function songkongBacklogStalled(): Promise<boolean> {
+const songkongBacklogStalled = async (): Promise<boolean> => {
   const rows = await prisma.downloadedRelease.findMany({ where: { status: 'ENRICHING' }, select: { updatedAt: true } })
   const stalled = isSongkongStalled({ enrichingRows: rows, lastDrainedAt: lastSongkongDrainAt })
   if (stalled && !songkongStalledLogged) {
@@ -225,7 +225,7 @@ const reconcileWorker = createWorker({ name: 'reconcile', run: async () => {
 // same finalize path every tick. Route it through the normal attempts-cap machinery instead, keeping
 // stagingPath intact (the folder is good — never purge it here) so it surfaces in Failed instead of
 // vanishing from view.
-async function settleFinished(id: string, stagingPath: string, error: string | null): Promise<void> {
+const settleFinished = async (id: string, stagingPath: string, error: string | null): Promise<void> => {
   await prisma.downloadedRelease.update({ where: { id }, data: { stagingPath, error } })
   try {
     await moveToReady(id)
@@ -246,12 +246,12 @@ async function settleFinished(id: string, stagingPath: string, error: string | n
 
 // Increment the attempt counter; after maxAttempts give up permanently (ABANDONED). Also lowers
 // priority (floor 0) so a repeatedly-failing download sinks behind fresher candidates on retry.
-async function failAttempt(
+const failAttempt = async (
   row: { id: string; attempts: number; priority?: number },
   maxAttempts: number,
   error: string,
   stagingPath?: string,
-) {
+) => {
   const attempts = (row.attempts ?? 0) + 1
   await prisma.downloadedRelease.update({
     where: { id: row.id },
@@ -271,10 +271,10 @@ async function failAttempt(
  * the max-wait window (drainer down / SongKong stuck), we promote unenriched rather than strand the
  * download. File-based + idempotent, so it survives restarts. Returns rows finalized to READY.
  */
-async function drainEnriching(
+const drainEnriching = async (
   rows: Array<{ id: string; title: string; stagingPath: string | null; updatedAt: Date; attempts: number; priority: number }>,
   maxAttempts: number,
-): Promise<number> {
+): Promise<number> => {
   const dirs = songkongDirs()
   const maxWaitMs = songkongMaxWaitMin() * 60_000
   let done = 0

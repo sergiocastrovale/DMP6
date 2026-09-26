@@ -125,7 +125,7 @@ export default defineEventHandler(async (event) => {
   })
 })
 
-async function proxyToRemote(event: any, remoteServerUrl: string, mode: string) {
+const proxyToRemote = async (event: any, remoteServerUrl: string, mode: string) => {
   const cookie = getRequestHeader(event, 'cookie') || ''
   const remoteUrl = `${remoteServerUrl}/api/labs/mosaic/generate`
 

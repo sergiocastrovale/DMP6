@@ -4,9 +4,9 @@
 // the current page's artist ids.
 import type { ReleaseStatsResult } from '~/types/artist'
 
-export function withReleaseCounts<T extends { id: string }>(
+export const withReleaseCounts = <T extends { id: string }>(
   items: T[],
   counts: Map<string, number>,
-): (T & ReleaseStatsResult)[] {
+): (T & ReleaseStatsResult)[] => {
   return items.map(item => ({ ...item, releaseCount: counts.get(item.id) ?? 0 }))
 }

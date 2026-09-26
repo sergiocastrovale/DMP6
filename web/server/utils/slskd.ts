@@ -12,7 +12,7 @@ const SLSKD_TIMEOUT_MS = 20_000
 let configCache: (SlskdConfig & { cachedAt: number }) | null = null
 const CACHE_TTL = 60_000
 
-async function getSlskdConfig(): Promise<SlskdConfig | null> {
+const getSlskdConfig = async (): Promise<SlskdConfig | null> => {
   if (configCache && Date.now() - configCache.cachedAt < CACHE_TTL) {
     return { url: configCache.url, apiKey: configCache.apiKey }
   }
@@ -24,11 +24,11 @@ async function getSlskdConfig(): Promise<SlskdConfig | null> {
   return { url: configCache.url, apiKey: configCache.apiKey }
 }
 
-export function clearSlskdConfigCache() {
+export const clearSlskdConfigCache = () => {
   configCache = null
 }
 
-async function slskdFetch(path: string, options: RequestInit = {}): Promise<Response> {
+const slskdFetch = async (path: string, options: RequestInit = {}): Promise<Response> => {
   const config = await getSlskdConfig()
   if (!config) {throw createError({ statusCode: 503, message: 'slskd not configured' })}
 
@@ -54,7 +54,7 @@ async function slskdFetch(path: string, options: RequestInit = {}): Promise<Resp
   return response
 }
 
-export async function checkSlskdConnection(): Promise<{ ok: boolean; error?: string }> {
+export const checkSlskdConnection = async (): Promise<{ ok: boolean; error?: string }> => {
   try {
     const config = await getSlskdConfig()
     if (!config) {return { ok: false, error: 'slskd URL or API key not configured' }}
@@ -70,7 +70,7 @@ export async function checkSlskdConnection(): Promise<{ ok: boolean; error?: str
   }
 }
 
-export async function slskdSearch(query: string, timeout = 60000): Promise<string> {
+export const slskdSearch = async (query: string, timeout = 60000): Promise<string> => {
   const response = await slskdFetch('/searches', {
     method: 'POST',
     body: JSON.stringify({
@@ -86,27 +86,27 @@ export async function slskdSearch(query: string, timeout = 60000): Promise<strin
   return data.id
 }
 
-export async function getSlskdSearchResults(searchId: string): Promise<SlskdSearchResponse[]> {
+export const getSlskdSearchResults = async (searchId: string): Promise<SlskdSearchResponse[]> => {
   const response = await slskdFetch(`/searches/${searchId}/responses`)
   if (response.status === 404) {return []}
   return await response.json()
 }
 
-export async function deleteSlskdSearch(searchId: string): Promise<void> {
+export const deleteSlskdSearch = async (searchId: string): Promise<void> => {
   await slskdFetch(`/searches/${searchId}`, { method: 'DELETE' }).catch(() => {})
 }
 
-export async function startSlskdDownload(
+export const startSlskdDownload = async (
   username: string,
   files: { filename: string; size: number }[],
-): Promise<void> {
+): Promise<void> => {
   await slskdFetch(`/transfers/downloads/${encodeURIComponent(username)}`, {
     method: 'POST',
     body: JSON.stringify(files),
   })
 }
 
-export async function getSlskdActiveDownloads(signal?: AbortSignal): Promise<SlskdTransfer[]> {
+export const getSlskdActiveDownloads = async (signal?: AbortSignal): Promise<SlskdTransfer[]> => {
   const response = await slskdFetch('/transfers/downloads', { signal })
   const data = await response.json()
 
@@ -132,7 +132,7 @@ export async function getSlskdActiveDownloads(signal?: AbortSignal): Promise<Sls
   return transfers
 }
 
-export async function cancelSlskdDownload(username: string, id: string): Promise<void> {
+export const cancelSlskdDownload = async (username: string, id: string): Promise<void> => {
   await slskdFetch(
     `/transfers/downloads/${encodeURIComponent(username)}/${encodeURIComponent(id)}?remove=true`,
     { method: 'DELETE' },
@@ -142,27 +142,27 @@ export async function cancelSlskdDownload(username: string, id: string): Promise
 // slskd compound transfer states start with the overall phase, e.g.
 // "Completed, Succeeded" / "Completed, Errored" / "Completed, Cancelled" / "Completed, TimedOut"
 // / "Completed, Rejected". "Succeeded" is the only happy outcome.
-export function isSlskdTerminal(state: string): boolean {
+export const isSlskdTerminal = (state: string): boolean => {
   return state.startsWith('Completed')
 }
 
-export function isSlskdSucceeded(state: string): boolean {
+export const isSlskdSucceeded = (state: string): boolean => {
   return state.includes('Succeeded')
 }
 
-export function isSlskdFailed(state: string): boolean {
+export const isSlskdFailed = (state: string): boolean => {
   return isSlskdTerminal(state) && !isSlskdSucceeded(state)
 }
 
 // Audio file extensions for filtering search results
 const AUDIO_EXTENSIONS = new Set(['flac', 'mp3', 'ogg', 'aac', 'wma', 'opus', 'wav', 'ape', 'alac', 'm4a'])
 
-export function isAudioFile(filename: string): boolean {
+export const isAudioFile = (filename: string): boolean => {
   const ext = filename.split('.').pop()?.toLowerCase() || ''
   return AUDIO_EXTENSIONS.has(ext)
 }
 
-export function detectFormat(filename: string): string {
+export const detectFormat = (filename: string): string => {
   const ext = filename.split('.').pop()?.toLowerCase() || ''
   if (ext === 'flac') {return 'FLAC'}
   if (ext === 'mp3') {return 'MP3'}
@@ -171,14 +171,14 @@ export function detectFormat(filename: string): string {
   return ext.toUpperCase()
 }
 
-export function scoreSlskdResult(
+export const scoreSlskdResult = (
   format: string,
   avgBitrate: number,
   fileCount: number,
   uploadSpeed: number,
   queueLength: number,
   hasFreeSlot: boolean,
-): number {
+): number => {
   // Format weight
   let score: number
   if (format === 'FLAC') {score = 100}
@@ -219,7 +219,7 @@ export function scoreSlskdResult(
  * Artist/Album folder and normalize to MP3-320. Assumes the transfer is already finished —
  * does NOT wait. Used by the reconciler, which gates on slskd transfer state itself.
  */
-export async function relocateDownloadedFiles(args: SlskdMoveArgs, signal?: AbortSignal): Promise<SlskdMoveResult> {
+export const relocateDownloadedFiles = async (args: SlskdMoveArgs, signal?: AbortSignal): Promise<SlskdMoveResult> => {
   const log = (msg: string) => monitorLog('notice', `slskd move: ${msg}`)
   // slskd writes all downloads flat under one shared root (no per-transfer subfolder to scope a scan
   // to — see docs/downloader/downloads_slskd.md), so two concurrent downloads can share a same-named track. Match
@@ -310,12 +310,12 @@ export const stripSlskdSuffix = (name: string): string => {
 // every transfer flat under one shared root with no per-transfer subfolder (see
 // docs/downloader/downloads_slskd.md). A size of 0/unknown falls back to name-only matching (legacy rows / sizes
 // slskd didn't report).
-async function findFilesByBasename(
+const findFilesByBasename = async (
   root: string,
   names: Map<string, number>,
   maxDepth: number,
   signal?: AbortSignal,
-): Promise<string[]> {
+): Promise<string[]> => {
   const results: string[] = []
   // Match on the suffix-stripped basename so slskd collision tokens don't defeat the lookup.
   const wanted = new Map([...names].map(([name, size]) => [stripSlskdSuffix(name), size]))
@@ -324,7 +324,7 @@ async function findFilesByBasename(
   // (may still exist on disk from before RuTracker was removed).
   const skipNames = new Set(['_ready', '.dmp-songkong', '_torrents'])
 
-  async function walk(dir: string, depth: number) {
+  const walk = async (dir: string, depth: number) => {
     signal?.throwIfAborted()
     if (depth > maxDepth) {return}
     let entries: { name: string; isFile: boolean; isDir: boolean }[]
@@ -359,7 +359,7 @@ async function findFilesByBasename(
  * now-empty directories they sat in. Called when a download is given up on: in dmp's no-resume
  * model those bytes can never be reused and only clutter the downloads root.
  */
-export async function purgeDownloadedSourceFiles(downloadsPath: string, files: { filename: string; size: number }[]): Promise<number> {
+export const purgeDownloadedSourceFiles = async (downloadsPath: string, files: { filename: string; size: number }[]): Promise<number> => {
   const expected = new Map<string, number>()
   for (const f of files) {expected.set(basename(f.filename.replace(/\\/g, '/')), f.size)}
   if (expected.size === 0) { return 0 }
@@ -384,7 +384,7 @@ export async function purgeDownloadedSourceFiles(downloadsPath: string, files: {
   return removed
 }
 
-async function removeEmptyDirsUp(startDir: string, stopAt: string): Promise<void> {
+const removeEmptyDirsUp = async (startDir: string, stopAt: string): Promise<void> => {
   const normalizedStop = stopAt.replace(/[/\\]+$/, '')
   let current = startDir
   while (current && current !== normalizedStop && current.startsWith(normalizedStop + sep)) {

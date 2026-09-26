@@ -59,7 +59,7 @@ export default defineNitroPlugin(() => {
   // rejecting here would otherwise be an unhandled promise rejection, which crashes the Node process
   // (and the monitor loop with it) on a single DB blip. Every step still logs its own error too, so
   // partial failures are visible without needing to unwind the stack trace.
-  async function tick() {
+  const tick = async () => {
     if (Date.now() - lastPruneAt > PRUNE_INTERVAL_MS) {
       lastPruneAt = Date.now()
       prisma.monitorEvent.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - EVENT_RETENTION_MS) } } })

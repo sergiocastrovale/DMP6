@@ -7,7 +7,7 @@ import type { Acquisition } from '~/types/download'
 // Downloads are Soulseek-only. Settings.downloadsEnabled is the single on/off switch; null falls
 // back to DOWNLOADS_ENABLED (default true unless explicitly "false"), matching MONITOR_ENABLED's
 // env-default-then-DB-override pattern (server/utils/monitorSettings.ts).
-export async function isDownloadsEnabled(): Promise<boolean> {
+export const isDownloadsEnabled = async (): Promise<boolean> => {
   const envEnabled = process.env.DOWNLOADS_ENABLED !== 'false'
   const settings = await getSettingsRow().catch(() => null)
   return settings?.downloadsEnabled ?? envEnabled
@@ -17,7 +17,7 @@ export async function isDownloadsEnabled(): Promise<boolean> {
 // (autoDownload.ts) requires `year IS NOT NULL` to lay a release out as `YYYY - title`, so these are
 // silently skipped forever — surfaced here so they're at least visible instead of invisible.
 // See docs/downloader_issues.md #15.
-export async function countNoYearMissing(): Promise<number> {
+export const countNoYearMissing = async (): Promise<number> => {
   const rows = await prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`
     SELECT count(DISTINCT mr.id)::bigint AS count
     FROM "MusicBrainzRelease" mr
@@ -34,7 +34,7 @@ export async function countNoYearMissing(): Promise<number> {
 const NO_YEAR_TTL_MS = 5 * 60_000
 let noYearCache: { value: number, at: number } | null = null
 
-export async function cachedNoYearMissing(now: number = Date.now()): Promise<number> {
+export const cachedNoYearMissing = async (now: number = Date.now()): Promise<number> => {
   if (noYearCache && now - noYearCache.at < NO_YEAR_TTL_MS) {
     return noYearCache.value
   }
@@ -48,7 +48,7 @@ export const _resetNoYearCacheForTest = (): void => {
 }
 
 // Snapshot of why acquisition is (or isn't) running, for the /downloads idle banner.
-export async function getAcquisitionStatus(): Promise<Acquisition> {
+export const getAcquisitionStatus = async (): Promise<Acquisition> => {
   const enabled = await isDownloadsEnabled()
   const noYearMissing = await cachedNoYearMissing()
   const environment = await checkDownloadEnvironment()

@@ -24,7 +24,7 @@ const run = (command: string, args: string[]): Promise<string> =>
     })
   })
 
-export async function tmuxAvailable(): Promise<boolean> {
+export const tmuxAvailable = async (): Promise<boolean> => {
   try {
     await run('tmux', ['-V'])
     return true
@@ -37,7 +37,7 @@ export async function tmuxAvailable(): Promise<boolean> {
 // The tmux session is created with the wrapper script as its command, so it disappears the moment
 // that script exits (cleanly, crashed, or killed). A live session is therefore the only proof a run
 // is still going - a sentinel-less log on its own only proves the *last* run didn't write one.
-export async function tmuxSessionAlive(session: string): Promise<boolean> {
+export const tmuxSessionAlive = async (session: string): Promise<boolean> => {
   try {
     await run('tmux', ['has-session', '-t', session])
     return true
@@ -49,14 +49,14 @@ export async function tmuxSessionAlive(session: string): Promise<boolean> {
 
 // Starts a detached session running `scriptFile`. `scriptFile` is a path this server wrote itself (never user
 // input) and is passed as an argv element, not through a shell.
-export async function startTmuxSession(session: string, scriptFile: string): Promise<void> {
+export const startTmuxSession = async (session: string, scriptFile: string): Promise<void> => {
   await run('tmux', ['new-session', '-d', '-s', session, scriptFile])
 }
 
 // Force Unlock's whole point is a nuclear "get me unstuck" override - it must free the session name,
 // not just the DB lock row, or the very next run with that name 409s right back (the bug this exists
 // to fix). Best-effort: a session that already died leaves nothing to kill.
-export async function killTmuxSession(session: string): Promise<void> {
+export const killTmuxSession = async (session: string): Promise<void> => {
   try {
     await run('tmux', ['kill-session', '-t', session])
   }
@@ -65,7 +65,7 @@ export async function killTmuxSession(session: string): Promise<void> {
 
 // Every live tmux session name, or [] when tmux isn't running/has no sessions (tmux exits non-zero in
 // both cases - neither is an error worth surfacing, just "nothing to report").
-export async function listTmuxSessions(): Promise<string[]> {
+export const listTmuxSessions = async (): Promise<string[]> => {
   try {
     const out = await run('tmux', ['list-sessions', '-F', '#{session_name}'])
     return out.split('\n').map(l => l.trim()).filter(Boolean)
@@ -82,7 +82,7 @@ export interface LogTail {
 }
 
 // Reads only the end of a log. `null` when the file doesn't exist (or can't be read).
-export async function readLogTail(file: string, bytes: number = LOG_TAIL_BYTES): Promise<LogTail | null> {
+export const readLogTail = async (file: string, bytes: number = LOG_TAIL_BYTES): Promise<LogTail | null> => {
   let handle
   try {
     handle = await open(file, 'r')
@@ -103,7 +103,7 @@ export async function readLogTail(file: string, bytes: number = LOG_TAIL_BYTES):
 }
 
 // Whether the session's previous log shows a run that never wrote its DMP_EXIT sentinel.
-export async function hasUnfinishedLog(session: string): Promise<boolean> {
+export const hasUnfinishedLog = async (session: string): Promise<boolean> => {
   const log = await readLogTail(terminalLogPath(session))
   return hasUnfinishedRun(log ? log.tail : null)
 }
@@ -117,7 +117,7 @@ export interface ReconnectableSession {
 // guess. Self-cleaning by construction: buildScript's EXIT trap (terminalCommand.ts) already kills
 // its own tmux session once it writes the DMP_EXIT sentinel, so a finished run just stops appearing
 // here on its own - no separate cleanup path, no persisted state, no migration.
-export async function findReconnectableSessions(): Promise<ReconnectableSession[]> {
+export const findReconnectableSessions = async (): Promise<ReconnectableSession[]> => {
   const sessions: ReconnectableSession[] = []
   for (const name of await listTmuxSessions()) {
     if (!SESSION_NAME_RE.test(name)) {continue}

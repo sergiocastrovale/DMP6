@@ -10,7 +10,7 @@ import { getSettingsRow } from '~/server/utils/settings'
 
 export const DEFAULT_DOWNLOAD_DIR_TEMPLATE = '{artist}/{year} - {album}'
 
-export async function resolveDownloadSettings(): Promise<ResolvedDownloadSettings> {
+export const resolveDownloadSettings = async (): Promise<ResolvedDownloadSettings> => {
   const settings = await getSettingsRow()
 
   const parsedBitrate = settings?.downloadMinBitrate
@@ -41,12 +41,12 @@ export async function resolveDownloadSettings(): Promise<ResolvedDownloadSetting
   }
 }
 
-export function resolveDownloadDir(
+export const resolveDownloadDir = (
   template: string,
   artist: string,
   album: string,
   year: number | null | undefined,
-): string {
+): string => {
   const sanitize = sanitizePathSegment
 
   // Replace placeholders. If {year} is missing, collapse surrounding separators.

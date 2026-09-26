@@ -5,7 +5,7 @@ import { getCachedSettings } from '~/server/utils/settingsCache'
 
 let _imageDir: string | null = null
 
-function getImageDir(): string {
+const getImageDir = (): string => {
   if (!_imageDir) {
     _imageDir = useRuntimeConfig().imageDir || './public/img'
   }
@@ -36,7 +36,7 @@ const freshEntry = (filePath: string): { exists: boolean, at: number } | undefin
 
 // Synchronous fallback for a path nobody primed. Lists prime first (primeImageExistence), so on the hot paths this
 // only ever answers from the cache; a lone lookup (a single release card) costs one stat.
-function cachedExists(filePath: string): boolean {
+const cachedExists = (filePath: string): boolean => {
   const entry = freshEntry(filePath)
   if (entry) {return entry.exists}
   const exists = existsSync(filePath)
@@ -65,7 +65,7 @@ export const primeImageExistence = async (
   }))
 }
 
-export function localImageExists(type: 'artists' | 'releases', filename: string): boolean {
+export const localImageExists = (type: 'artists' | 'releases', filename: string): boolean => {
   if (!filename) {return false}
   if (filename.includes('..') || filename.includes('/')) {return false}
   return cachedExists(imagePath(type, filename))
@@ -74,7 +74,7 @@ export function localImageExists(type: 'artists' | 'releases', filename: string)
 // A file written after its `existsSync === false` result was cached (e.g. `./artist-photos --id`
 // just downloaded it) would otherwise read as missing for up to CACHE_TTL - drop the entry so the
 // very next verifyImage() call re-stats disk instead of trusting the stale negative.
-export function forgetImageExists(type: 'artists' | 'releases', filename: string | null | undefined): void {
+export const forgetImageExists = (type: 'artists' | 'releases', filename: string | null | undefined): void => {
   if (!filename) {return}
   existsCache.delete(imagePath(type, filename))
 }
@@ -83,11 +83,11 @@ export function forgetImageExists(type: 'artists' | 'releases', filename: string
  * Returns the image filename only if the file exists on disk (for local storage),
  * or returns it as-is when not in local mode.
  */
-export function verifyImage(
+export const verifyImage = (
   image: string | null | undefined,
   imageUrl: string | null | undefined,
   type: 'artists' | 'releases',
-): { image: string | null; imageUrl: string | null } {
+): { image: string | null; imageUrl: string | null } => {
   const storage = getCachedSettings().imageStorage
 
   const validUrl = imageUrl || null

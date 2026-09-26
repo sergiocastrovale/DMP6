@@ -7,7 +7,7 @@ import { sampleIds } from '~/server/utils/randomSample'
  * heap pages, which is all `TABLESAMPLE BERNOULLI ... LIMIT` ever returned. Returns fewer only when the
  * library itself has fewer.
  */
-export async function fetchRandomTrackRows(prisma: PrismaClient, count: number): Promise<RandomTrackRow[]> {
+export const fetchRandomTrackRows = async (prisma: PrismaClient, count: number): Promise<RandomTrackRow[]> => {
   const ids = await sampleIds(prisma, 'LocalReleaseTrack', count)
   if (ids.length === 0) {
     return []
