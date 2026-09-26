@@ -58,6 +58,27 @@ AES-256-GCM (`web/server/utils/secretBox.ts`). It is deliberately not `SESSION_S
   Settings (and each user reconnects Last.fm). There is no rotation tool - back the key up with your other secrets.
 - **Turning it off:** removing the variable does not decrypt anything; the encrypted values become unreadable as above.
 
+### Least-privilege database role for the web app (`WEB_DATABASE_URL`)
+
+Until it is set, the web app, the Rust scripts, migrations and backups all connect as the same Postgres role (`dmp`, a
+superuser), so an injection through any web query would have full control of the cluster. `scripts/sql/create_web_role.sql`
+creates `dmp_web`: no superuser/createdb/createrole, DML on the `public` tables and sequences only (`_prisma_migrations`
+excluded, later migrations' tables covered by default privileges), `CONNECTION LIMIT 40`, and a role-level
+`statement_timeout` of 60s and `idle_in_transaction_session_timeout` of 60s (the heavy endpoints set a tighter limit of
+their own with `withStatementTimeout`; 60s is generous on purpose so a bulk merge is not killed mid-way).
+
+1. As the owner role, once: `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -v web_password='<long random password>' -f scripts/sql/create_web_role.sql`
+2. In the NAS `.env`: `WEB_DATABASE_URL=postgresql://dmp_web:<password>@<same host>:5432/<same db>?connection_limit=20&pool_timeout=10`
+   (the pool settings for the web app belong here, not on `DATABASE_URL`), then redeploy. The compose file passes it to the
+   `dmp` container.
+
+`DATABASE_URL` stays the owner: `prisma migrate deploy` (the deploy script's one-off container), the Rust scripts (tmux runs
+inherit the container environment) and `./backup` keep the rights they need. `server/utils/prisma.ts` is the only place
+that reads `WEB_DATABASE_URL`. What it does **not** cover: the container still holds `DATABASE_URL`, so code execution in
+the web process (as opposed to SQL injection) can still reach the owner credentials. Roll back by unsetting the variable.
+Every e2e run boots the app as this role (`e2e/with-test-db.ts`), and `test/integration/webRole.test.ts` replays the SQL
+file and checks what the role can and cannot do, so a new query the role does not allow fails CI instead of production.
+
 For first-time NAS setup (storage, SSH key, NAS `.env`) see [docs/truenas.md](truenas.md).
 
 ## Docker services

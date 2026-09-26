@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 // Explicit extension: this file runs under Node's own ESM resolver (type-stripped), not a bundler,
 // so extensionless specifiers do not resolve.
-import { migrateSchema, seedTestData } from '../test/setup/db.ts'
+import { createWebRole, migrateSchema, seedTestData } from '../test/setup/db.ts'
 
 // Gives the e2e suite its own database before handing off to Playwright.
 //
@@ -41,6 +41,10 @@ const run = async (): Promise<number> => {
     // permission specs assert against.
     await seedTestData()
   }
+
+  // The app under test connects as the least-privilege `dmp_web` role (scripts/sql/create_web_role.sql), exactly as
+  // production does once WEB_DATABASE_URL is set. The specs' own Prisma clients keep DATABASE_URL to seed and inspect.
+  process.env.WEB_DATABASE_URL = await createWebRole(process.env.DATABASE_URL!)
 
   // The Playwright config reads DATABASE_URL at load time and forwards it to the app server, so it
   // has to be set in this process before the child starts.

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { waitForHydration } from './helpers/fixtures'
 
 // The accent theme (Settings → Themes) is a localStorage-only preference that re-colours the app by
 // redefining the amber ramp on <html> (assets/css/themes.css). These specs check the three things
@@ -9,6 +10,9 @@ import type { Page } from '@playwright/test'
 const gotoThemes = async (page: Page) => {
   await page.goto('/settings/themes')
   await expect(page.getByRole('heading', { name: 'Theme', exact: true })).toBeVisible()
+  // A click before Nuxt hydrates is dropped (the swatches are plain buttons until then), which under parallel load left the
+  // theme unchanged.
+  await waitForHydration(page)
 }
 
 const accentColour = (page: Page) =>

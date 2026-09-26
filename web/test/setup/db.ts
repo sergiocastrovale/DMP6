@@ -1,4 +1,6 @@
 import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { PrismaClient } from '@prisma/client'
 // Extensioned: e2e/with-test-db.ts loads this under Node's own ESM resolver (type-stripped),
 // where extensionless specifiers do not resolve. Vitest resolves it either way.
@@ -68,4 +70,40 @@ export const resetDb = async (): Promise<void> => {
   if (toTruncate.length === 0) {return}
   const quoted = toTruncate.map(t => `"${t}"`).join(', ')
   await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${quoted} RESTART IDENTITY CASCADE`)
+}
+
+export const WEB_ROLE_PASSWORD = 'web-role-test-password'
+
+// scripts/sql/create_web_role.sql is run by hand on the NAS; its contract (one statement per line-ending semicolon, no
+// procedural blocks, the `:'web_password'` psql variable) is what lets the tests replay it statement by statement.
+export const webRoleStatements = (password: string = WEB_ROLE_PASSWORD): string[] => {
+  const sql = readFileSync(join(process.cwd(), '..', 'scripts', 'sql', 'create_web_role.sql'), 'utf8')
+  return sql
+    .split('\n')
+    .filter(line => !line.trim().startsWith('--'))
+    .join('\n')
+    .split(/;\s*(?:\n|$)/)
+    .map(statement => statement.trim().replace(/:'web_password'/g, `'${password}'`))
+    .filter(Boolean)
+}
+
+// (Re)creates the least-privilege `dmp_web` role the way an operator would, and returns a connection string for it.
+// Every e2e run boots the app as this role, so a query the app needs but the role does not allow fails a spec here
+// instead of in production.
+export const createWebRole = async (databaseUrl: string): Promise<string> => {
+  const admin = new PrismaClient({ datasourceUrl: databaseUrl })
+  try {
+    await admin.$executeRawUnsafe('DROP OWNED BY dmp_web').catch(() => {})
+    await admin.$executeRawUnsafe('DROP ROLE IF EXISTS dmp_web')
+    for (const statement of webRoleStatements()) {
+      await admin.$executeRawUnsafe(statement)
+    }
+  }
+  finally {
+    await admin.$disconnect()
+  }
+  const url = new URL(databaseUrl)
+  url.username = 'dmp_web'
+  url.password = WEB_ROLE_PASSWORD
+  return url.toString()
 }
