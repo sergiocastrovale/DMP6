@@ -2,6 +2,7 @@ import type { PlaySource } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
 import { bumpUserCache } from '~/server/utils/cache'
 import { recordPlay } from '~/server/utils/userPlays'
+import { scrobbleInBackground } from '~/server/utils/scrobble'
 
 export interface PlayEventProgress {
   listenedSeconds: number
@@ -44,8 +45,8 @@ export interface PlayEventPatchBody {
 //     with no counter bump, which a replay could never repair (counted is already true).
 export async function applyPlayEventPatch(userId: number, id: string, patch: PlayEventPatchBody) {
   const flipped = await prisma.$transaction(async (tx) => {
-    const [existing] = await tx.$queryRaw<{ trackId: string, listenedSeconds: number, counted: boolean }[]>`
-      SELECT "trackId", "listenedSeconds", counted FROM "PlayEvent"
+    const [existing] = await tx.$queryRaw<{ trackId: string, listenedSeconds: number, counted: boolean, startedAt: Date }[]>`
+      SELECT "trackId", "listenedSeconds", counted, "startedAt" FROM "PlayEvent"
       WHERE id = ${id} AND "userId" = ${userId}
       FOR UPDATE`
     if (!existing) {
@@ -66,11 +67,13 @@ export async function applyPlayEventPatch(userId: number, id: string, patch: Pla
     if (justCounted) {
       await recordPlay(userId, existing.trackId, new Date(), tx)
     }
-    return justCounted
+    return justCounted ? { trackId: existing.trackId, startedAt: existing.startedAt } : null
   })
 
   if (flipped) {
     await bumpUserCache(userId)
+    // Once per counted listen: the flip is the only place a play becomes counted, and it happens exactly once.
+    scrobbleInBackground(flipped.trackId, flipped.startedAt.getTime())
   }
   return { ok: true }
 }
@@ -103,4 +106,5 @@ export async function recordExternalPlay(userId: number, trackId: string, source
     await recordPlay(userId, trackId, now, tx)
   })
   await bumpUserCache(userId)
+  scrobbleInBackground(trackId, now.getTime())
 }

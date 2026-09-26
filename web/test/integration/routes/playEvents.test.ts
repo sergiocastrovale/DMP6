@@ -1,7 +1,10 @@
-import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getTestPrisma, resetDb } from '../../../test/setup/db'
 import { makeUser, makeLocalTrack } from '../../../test/factories'
-import { applyPlayEventPatch } from '../../../server/utils/playEvents'
+import { applyPlayEventPatch, recordExternalPlay } from '../../../server/utils/playEvents'
+
+const scrobble = vi.hoisted(() => ({ scrobbleInBackground: vi.fn() }))
+vi.mock('../../../server/utils/scrobble', () => scrobble)
 
 // The counted false->true transition is guarded (server/utils/playEvents.ts) so it only ever runs
 // recordPlay once per event, even racing - exercised against real Postgres because that guarantee is
@@ -11,6 +14,7 @@ const prisma = getTestPrisma()
 describe('play events (real Postgres)', () => {
   beforeEach(async () => {
     await resetDb()
+    scrobble.scrobbleInBackground.mockClear()
   })
 
   afterAll(async () => {
@@ -123,5 +127,45 @@ describe('play events (real Postgres)', () => {
 
     expect(await prisma.playEvent.count({ where: { id: event.id } })).toBe(0)
     expect(await prisma.localReleaseTrackPlay.count({ where: { userId: alice.id } })).toBe(0)
+  })
+
+  it('scrobbles to Last.fm exactly once per counted listen, with the listen\'s own start time', async () => {
+    const alice = await makeUser(prisma)
+    const track = await makeLocalTrack(prisma)
+    const startedAt = new Date('2026-09-26T10:00:00Z')
+    const event = await prisma.playEvent.create({ data: { userId: alice.id, trackId: track.id, source: 'QUEUE', startedAt } })
+
+    await applyPlayEventPatch(alice.id, event.id, { listenedSeconds: 10 })
+    expect(scrobble.scrobbleInBackground).not.toHaveBeenCalled()
+
+    await applyPlayEventPatch(alice.id, event.id, { listenedSeconds: 120, counted: true })
+    await applyPlayEventPatch(alice.id, event.id, { listenedSeconds: 130, counted: true })
+    await applyPlayEventPatch(alice.id, event.id, { listenedSeconds: 140, ended: true })
+
+    expect(scrobble.scrobbleInBackground).toHaveBeenCalledTimes(1)
+    expect(scrobble.scrobbleInBackground).toHaveBeenCalledWith(track.id, startedAt.getTime())
+  })
+
+  it('two concurrent counted patches still scrobble once', async () => {
+    const alice = await makeUser(prisma)
+    const track = await makeLocalTrack(prisma)
+    const event = await prisma.playEvent.create({ data: { userId: alice.id, trackId: track.id, source: 'QUEUE' } })
+
+    await Promise.all([
+      applyPlayEventPatch(alice.id, event.id, { listenedSeconds: 120, counted: true }),
+      applyPlayEventPatch(alice.id, event.id, { listenedSeconds: 121, counted: true }),
+    ])
+
+    expect(scrobble.scrobbleInBackground).toHaveBeenCalledTimes(1)
+  })
+
+  it('a listen a Subsonic client reports is scrobbled too', async () => {
+    const alice = await makeUser(prisma)
+    const track = await makeLocalTrack(prisma, { duration: 200 })
+
+    await recordExternalPlay(alice.id, track.id)
+
+    expect(scrobble.scrobbleInBackground).toHaveBeenCalledTimes(1)
+    expect(scrobble.scrobbleInBackground).toHaveBeenCalledWith(track.id, expect.any(Number))
   })
 })

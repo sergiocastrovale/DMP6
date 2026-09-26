@@ -1,43 +1,15 @@
-import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
-import { getCachedSettings } from '~/server/utils/settingsCache'
-import { callLastFm, describeLastfmProblem, isLastfmConfigured } from '~/server/utils/lastfm'
-import { monitorLog } from '~/server/utils/monitorLog'
 import { readBodyOf } from '~/server/utils/requestValidation'
 import { scrobbleBodySchema } from '~/server/schemas/scrobble'
+import { scrobbleTrack } from '~/server/utils/scrobble'
 
+// DEPRECATED: a listen is scrobbled by the server the moment it is counted (server/utils/playEvents.ts), so the web
+// client no longer posts here. Kept for one release for cached older clients; removed by the dead-code pass (T76).
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'play.view')
 
   const { trackId, timestamp } = await readBodyOf(event, scrobbleBodySchema)
+  const sent = await scrobbleTrack(trackId, timestamp)
 
-  const settings = await getCachedSettings()
-  if (!settings || !isLastfmConfigured(settings)) {
-    return { ok: true, skipped: true }
-  }
-
-  const track = await prisma.localReleaseTrack.findUnique({
-    where: { id: trackId },
-    select: { title: true, artist: true, album: true, duration: true, trackNumber: true },
-  })
-  if (!track || !track.title || !track.artist) {
-    return { ok: true, skipped: true }
-  }
-
-  const params: Record<string, string> = {
-    'artist[0]': track.artist,
-    'track[0]': track.title,
-    'timestamp[0]': String(Math.floor(timestamp / 1000)),
-  }
-  if (track.album) {params['album[0]'] = track.album}
-  if (track.duration) {params['duration[0]'] = String(track.duration)}
-  if (track.trackNumber) {params['trackNumber[0]'] = String(track.trackNumber)}
-
-  const result = await callLastFm('track.scrobble', params, settings)
-  const problem = describeLastfmProblem(result)
-  if (problem) {
-    monitorLog('warn', `scrobble "${track.artist} - ${track.title}": ${problem}`)
-  }
-
-  return { ok: true }
+  return sent ? { ok: true } : { ok: true, skipped: true }
 })

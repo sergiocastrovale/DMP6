@@ -4,7 +4,7 @@ import type { PlayerTrack, ShuffleMode, ExploreParams, PersistedPlayerState, Med
 import { toPlayerTrack } from '~/helpers/playerTrack'
 import { apiErrorMessage } from '~/helpers/apiError'
 import { MAX_CONSECUTIVE_PLAYBACK_ERRORS } from '~/helpers/constants'
-import { EXPLORER_SESSION_HISTORY_CAP, nextIndexWrap, playbackErrorAction, pushCapped, QUEUE_PERSIST_CAP, shouldScrobble, shuffleArray, sliceForPersist, unshiftCapped } from '~/helpers/playerLogic'
+import { EXPLORER_SESSION_HISTORY_CAP, nextIndexWrap, playbackErrorAction, pushCapped, QUEUE_PERSIST_CAP, shuffleArray, sliceForPersist, unshiftCapped } from '~/helpers/playerLogic'
 
 export const usePlayerStore = defineStore('player', () => { 
   const currentTrack = ref<PlayerTrack | null>(null)
@@ -30,8 +30,6 @@ export const usePlayerStore = defineStore('player', () => {
   const currentPlaylistSlug = ref<string | null>(null)
 
   let audio: HTMLAudioElement | null = null
-  let scrobbleStartTime = 0
-  let scrobbled = false
   let consecutivePlaybackErrors = 0
 
   const { resolve } = useImageUrl()
@@ -58,17 +56,6 @@ export const usePlayerStore = defineStore('player', () => {
     }
   }
 
-  function checkScrobble() {
-    if (!currentTrack.value) {return}
-    if (!shouldScrobble({ duration: duration.value, currentTime: currentTime.value })) {return}
-    if (scrobbled) {return}
-    scrobbled = true
-    $fetch('/api/scrobble/scrobble', {
-      method: 'POST',
-      body: { trackId: currentTrack.value.id, timestamp: scrobbleStartTime },
-    }).catch(() => {})
-  }
-
   // A file that is missing on disk or will not decode must not stop a queue or radio session dead: log it as a
   // skip, tell the user, and move on - unless several in a row fail, which means something bigger is wrong.
   function onPlaybackError(code: number | undefined) {
@@ -91,7 +78,6 @@ export const usePlayerStore = defineStore('player', () => {
       audio.addEventListener('timeupdate', () => {
         currentTime.value = audio!.currentTime
         if (audio!.currentTime > 0) {consecutivePlaybackErrors = 0}
-        checkScrobble()
         playEvents.onTimeUpdate(audio!.currentTime, duration.value)
         media.updatePosition()
       })
@@ -134,8 +120,6 @@ export const usePlayerStore = defineStore('player', () => {
 
     a.src = `/api/audio/${track.id}`
     a.load()
-    scrobbled = false
-    scrobbleStartTime = Date.now()
     media.resetPositionThrottle()
     // shuffleMode/currentPlaylistSlug are already set by the caller (pickExplorerTrack/setExplorerTrack
     // set 'explorer', next()'s catalogue branch is already in 'catalogue', playPlaylist sets the slug
@@ -455,10 +439,6 @@ export const usePlayerStore = defineStore('player', () => {
             isVisible.value = true
             media.setMetadata(trackMeta(track))
             media.setPlaybackState('paused')
-            // playTrack() never ran for this restore, so scrobbleStartTime is still its 0
-            // default - checkScrobble() would send timestamp:0, which the API rejects as falsy.
-            scrobbleStartTime = Date.now()
-            scrobbled = false
             // Restore position but don't auto-play - no PlayEvent is reopened for a restored
             // position either (composables/usePlayEventTracker.ts); one starts fresh on next play().
             if (state.currentTime && state.currentTime > 0) {

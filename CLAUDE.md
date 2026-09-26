@@ -178,7 +178,7 @@ NAS: `sudo docker exec dmp cat /app/data/logs/errors.log`
 
 **Settings**: `/api/settings` (GET masked/PUT), `GET /settings/public`
 
-**Scrobble**: `/api/scrobble/connect`, `/callback`, `POST /now-playing`, `/scrobble`
+**Scrobble**: `/api/scrobble/connect`, `/callback`, `POST /now-playing`. The Last.fm scrobble itself is server-side: `applyPlayEventPatch`'s counted flip (and `recordExternalPlay`, i.e. Subsonic clients) calls `server/utils/scrobble.ts` once per counted listen, with the global Last.fm session. `POST /scrobble` is deprecated (removed in T76)
 
 **Labs**: `GET /labs/map/countries` (24h cache), `/labs/map/artists`, `/network/graph`, `/decades/stats`, `/api/labs/mosaic/*`
 
