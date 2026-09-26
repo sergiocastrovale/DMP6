@@ -1,29 +1,10 @@
 import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
-import type { RandomTrackRow as RawTrack } from '~/types/track'
+import { fetchRandomTrackRows } from '~/server/utils/randomBatch'
 
 export default defineEventHandler(async () => {
-  // TABLESAMPLE BERNOULLI: O(1) random selection regardless of table size
-  let rows = await prisma.$queryRaw<RawTrack[]>`
-    SELECT id, title, artist, album, duration, "localReleaseId"
-    FROM "LocalReleaseTrack"
-    TABLESAMPLE BERNOULLI(0.01)
-    LIMIT 1
-  `
-
-  // Fallback to larger sample if empty (rare with 2.5M rows)
-  if (rows.length === 0) {
-    rows = await prisma.$queryRaw<RawTrack[]>`
-      SELECT id, title, artist, album, duration, "localReleaseId"
-      FROM "LocalReleaseTrack"
-      TABLESAMPLE BERNOULLI(1)
-      LIMIT 1
-    `
-  }
-
-  if (rows.length === 0) {return null}
-
-  const raw = rows[0]!
+  const [raw] = await fetchRandomTrackRows(prisma, 1)
+  if (!raw) {return null}
 
   // Fetch release image data - single PK lookup, instant
   const release = raw.localReleaseId

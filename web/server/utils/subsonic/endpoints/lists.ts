@@ -1,19 +1,17 @@
 import type { H3Event } from 'h3'
-import type { Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
 import { releasePlayTotals, trackPlaysByIds } from '~/server/utils/userPlays'
 import { favoriteReleaseDates, favoriteTrackDates } from '~/server/utils/favorites'
 import { subsonicAlbumWhere } from '~/server/utils/subsonic/scope'
 import { ALBUM_SELECT, SONG_SELECT, hydrateAlbumsByIds, hydrateSongsByIds, type AlbumRow } from '~/server/utils/subsonic/select'
-import { clamp, shuffleInPlace } from '~/server/utils/subsonic/util'
+import { clamp } from '~/server/utils/subsonic/util'
+import { sampleIds } from '~/server/utils/randomSample'
 import { toAlbum, toSong } from '~/server/utils/subsonic/mappers'
 import type { XmlObject } from '~/server/utils/subsonic/xml'
 import type { HandlerContext } from '~/server/utils/subsonic/types'
 
 const MAX_LIST_SIZE = 500
-// Candidate pool for `random` - sampled and shuffled in JS rather than `ORDER BY random()` over
-// the whole table (O(n log n) per call at library scale, see shuffleInPlace's own comment).
-const RANDOM_POOL = 2000
 
 const hydrateAlbumsInOrder = async (ids: string[]): Promise<AlbumRow[]> => hydrateAlbumsByIds(ids)
 
@@ -119,8 +117,12 @@ export const getAlbumList2 = async (_event: H3Event, ctx: HandlerContext): Promi
 
     case 'random':
     default: {
-      const pool = await prisma.localRelease.findMany({ where: subsonicAlbumWhere, select: { id: true }, take: RANDOM_POOL })
-      const ids = shuffleInPlace(pool.map(r => r.id)).slice(offset, offset + size)
+      // Sampled across the whole library (randomSample.ts). `offset` is ignored: every call is a fresh draw,
+      // which is what clients expect of `random` - paging through a random list is meaningless.
+      const ids = await sampleIds(
+        prisma, 'LocalRelease', size,
+        Prisma.sql`EXISTS (SELECT 1 FROM "LocalReleaseTrack" t WHERE t."localReleaseId" = "LocalRelease".id)`,
+      )
       albums = await hydrateAlbumsInOrder(ids)
       break
     }
@@ -141,17 +143,12 @@ export const getRandomSongs = async (_event: H3Event, ctx: HandlerContext): Prom
   const fromYear = ctx.params.int('fromYear')
   const toYear = ctx.params.int('toYear')
 
-  const where: Prisma.LocalReleaseTrackWhereInput = {}
-  if (genre) {where.genre = genre}
-  if (fromYear !== undefined || toYear !== undefined) {
-    where.year = {
-      ...(fromYear !== undefined ? { gte: fromYear } : {}),
-      ...(toYear !== undefined ? { lte: toYear } : {}),
-    }
-  }
+  const conditions: Prisma.Sql[] = [Prisma.sql`TRUE`]
+  if (genre) {conditions.push(Prisma.sql`"LocalReleaseTrack".genre = ${genre}`)}
+  if (fromYear !== undefined) {conditions.push(Prisma.sql`"LocalReleaseTrack".year >= ${fromYear}`)}
+  if (toYear !== undefined) {conditions.push(Prisma.sql`"LocalReleaseTrack".year <= ${toYear}`)}
 
-  const pool = await prisma.localReleaseTrack.findMany({ where, select: { id: true }, take: RANDOM_POOL })
-  const ids = shuffleInPlace(pool.map(t => t.id)).slice(0, size)
+  const ids = await sampleIds(prisma, 'LocalReleaseTrack', size, Prisma.join(conditions, ' AND '))
   const songs = await hydrateSongsByIds(ids)
 
   const [plays, starred] = await Promise.all([
