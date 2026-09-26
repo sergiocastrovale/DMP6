@@ -1,5 +1,3 @@
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
 import { mkdir, readdir, rename, unlink, rm, rmdir, access } from 'node:fs/promises'
 import { join, basename, dirname, relative, sep } from 'node:path'
 import { Prisma } from '@prisma/client'
@@ -8,13 +6,11 @@ import type { MergeRow } from '~/types/download'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { getSlskdActiveDownloads, cancelSlskdDownload } from '~/server/utils/slskd'
-import { runExclusive } from '~/server/utils/scriptLock'
+import { runScript } from '~/server/utils/runScript'
 import { monitorLog } from '~/server/utils/monitorLog'
 import { setMergeProgress, clearMergeProgress } from '~/server/utils/mergeProgress'
 import { songkongDirs } from '~/server/utils/songkongSettings'
 import { streamCopyFile } from '~/server/utils/safeMove'
-
-const execFileAsync = promisify(execFile)
 
 // Cancelling/rejecting an ENRICHING row leaves its SongKong spool/done markers behind - the host
 // drainer (songkong-drain.sh) treats a stale spool entry as "retry next tick" by design, so a
@@ -34,10 +30,7 @@ function musicDir(): string {
  * never hits the binaries' exclusive DB lock (which hard-exits on contention).
  */
 async function runReconciler(name: 'index' | 'sync', args: string[]): Promise<void> {
-  const root = process.env.PROJECT_ROOT || process.cwd()
-  const scriptsDir = process.env.SCRIPTS_DIR || root
-  const binary = join(scriptsDir, name)
-  await runExclusive(() => execFileAsync(binary, args, { cwd: root, maxBuffer: 1024 * 1024 * 64 }))
+  await runScript(name, args, { exclusive: true })
 }
 
 async function moveDir(src: string, dest: string): Promise<void> {

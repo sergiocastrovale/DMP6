@@ -11,9 +11,16 @@ vi.mock('~/server/utils/slskd', () => ({
   cancelSlskdDownload: vi.fn().mockResolvedValue(undefined),
 }))
 
+// The Rust binaries are stood in for at the runScript boundary. `execFileMock` keeps the (name, args, opts, cb)
+// shape the cases below were written against, so each one still decides what a "run" of index/sync does.
 const execFileMock = vi.fn()
-vi.mock('node:child_process', () => ({
-  execFile: (...args: unknown[]) => execFileMock(...args),
+vi.mock('~/server/utils/runScript', () => ({
+  runScript: (name: string, args: string[]) => new Promise((resolve, reject) => {
+    execFileMock(name, args, {}, (error: Error | null) => {
+      if (error) {reject(Object.assign(error, { tail: [] }))}
+      else {resolve({ code: 0, tail: [] })}
+    })
+  }),
 }))
 
 const prisma = getTestPrisma()

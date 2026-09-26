@@ -1,11 +1,8 @@
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
 import type { AutoScanSettings } from '~/types/scan'
 import { prisma } from '~/server/utils/prisma'
 import { runExclusive } from '~/server/utils/scriptLock'
+import { runScript } from '~/server/utils/runScript'
 import { monitorLog } from '~/server/utils/monitorLog'
-
-const execFileAsync = promisify(execFile)
 
 // Floor on the configurable interval. An unattended index+sync over a full library is expensive; a
 // misconfigured "every 0 hours" would keep the Rust binaries' exclusive DB lock permanently held and
@@ -51,14 +48,11 @@ export const shouldRunAutoScan = (
   return elapsedMs >= Math.max(MIN_AUTO_SCAN_INTERVAL_HOURS, settings.intervalHours) * 60 * 60 * 1000
 }
 
-const runScript = async (name: 'index' | 'sync' | 'tidy'): Promise<void> => {
-  const scriptsDir = process.env.SCRIPTS_DIR || process.env.PROJECT_ROOT || '.'
-  const { stdout, stderr } = await execFileAsync(`${scriptsDir}/${name}`, [], {
-    cwd: process.env.PROJECT_ROOT || scriptsDir,
-    maxBuffer: 64 * 1024 * 1024,
-  })
-  const tail = (stdout || stderr || '').trim().split('\n').slice(-1)[0] ?? ''
-  monitorLog('notice', `auto-scan: ${name} finished — ${tail}`)
+const runStep = async (name: 'index' | 'sync' | 'tidy'): Promise<void> => {
+  // Already inside runAutoScan's runExclusive, hence no `exclusive`. Streamed: a full index+sync over 2M files
+  // prints far more than execFile's old 64 MB maxBuffer, which killed the scan mid-run.
+  const { tail } = await runScript(name)
+  monitorLog('notice', `auto-scan: ${name} finished — ${tail[tail.length - 1]?.trim() ?? ''}`)
 }
 
 /**
@@ -71,9 +65,9 @@ export const runAutoScan = async (): Promise<void> => {
   await runExclusive(async () => {
     monitorLog('notice', 'auto-scan: starting index + sync + tidy')
     try {
-      await runScript('index')
-      await runScript('sync')
-      await runScript('tidy')
+      await runStep('index')
+      await runStep('sync')
+      await runStep('tidy')
     }
     catch (e: any) {
       monitorLog('error', `auto-scan failed: ${e?.message ?? e}`)

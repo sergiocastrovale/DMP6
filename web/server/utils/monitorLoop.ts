@@ -1,5 +1,3 @@
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
 import { mkdir, writeFile, rm, access } from 'node:fs/promises'
 import { join, basename } from 'node:path'
 import { prisma } from '~/server/utils/prisma'
@@ -8,7 +6,7 @@ import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { resolveSongkongEnabled, songkongDirs, songkongMaxWaitMin, isSongkongStalled, SONGKONG_STALE_AFTER_MIN } from '~/server/utils/songkongSettings'
 import { transformToLibraryLayout } from '~/server/utils/layout'
 import { moveToReady, mergeManyDownloadedReleases } from '~/server/utils/promote'
-import { runExclusive } from '~/server/utils/scriptLock'
+import { runScript, type ScriptError } from '~/server/utils/runScript'
 import { isDownloadsPaused } from '~/server/utils/pauseState'
 import { monitorLog } from '~/server/utils/monitorLog'
 import {
@@ -19,8 +17,6 @@ import {
   relocateDownloadedFiles,
   purgeDownloadedSourceFiles,
 } from '~/server/utils/slskd'
-const execFileAsync = promisify(execFile)
-
 const log = (msg: string) => monitorLog('notice', msg)
 const logWarn = (msg: string) => monitorLog('warn', msg)
 const logErr = (msg: string) => monitorLog('error', msg)
@@ -359,22 +355,17 @@ export async function runGapsCycle(): Promise<void> {
     })
     if (batch.length === 0) {return}
 
-    const root = process.env.PROJECT_ROOT || process.cwd()
-    const binary = join(process.env.SCRIPTS_DIR || root, 'sync')
     try {
       // Serialized against merges/other script runs so it never hits the binaries' exclusive lock.
-      await runExclusive(() => execFileAsync(
-        binary, ['--catalogue-gaps', '--only', batch.map(a => a.name).join(';'), '--exact'],
-        { cwd: root, maxBuffer: 1024 * 1024 * 64 },
-      ))
+      await runScript('sync', ['--catalogue-gaps', '--only', batch.map(a => a.name).join(';'), '--exact'], { exclusive: true })
     }
     catch (e: any) {
-      const stderr = String(e?.stderr || '').trim()
-      const detail = `${String(e?.message || e).split('\n')[0]}${stderr ? ` — ${stderr.split('\n')[0]}` : ''}`
+      const output = String((e as ScriptError).tail?.join('\n') ?? '')
+      const detail = `${String(e?.message || e).split('\n')[0]}`
       // Lock contention = another script (a merge here, or a manual ./index/./sync run outside this
       // process) held the Rust DB lock. Nothing was actually checked, so DON'T stamp — leave these
       // artists at the front of the round-robin so the very next tick retries them once the lock frees.
-      const lockHeld = /lock held|Cannot start/i.test(`${e?.message || ''} ${stderr}`)
+      const lockHeld = /lock held|Cannot start/i.test(`${e?.message || ''} ${output}`)
       if (lockHeld) {
         logWarn(`gaps batch skipped (lock busy), will retry: ${detail}`)
         return

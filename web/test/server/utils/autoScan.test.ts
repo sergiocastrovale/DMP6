@@ -11,11 +11,17 @@ vi.mock('~/server/utils/prisma', () => ({
 vi.mock('~/server/utils/scriptLock', () => ({ runExclusive: (fn: () => Promise<unknown>) => fn() }))
 vi.mock('~/server/utils/monitorLog', () => ({ monitorLog: vi.fn() }))
 
+// runScript is the boundary to the Rust binaries; a run is faked through a callback-style mock so each case can
+// decide what index/sync/tidy "do".
 const execFileMock = vi.fn()
-vi.mock('node:child_process', () => {
-  const execFile = (...args: unknown[]) => execFileMock(...args)
-  return { execFile, default: { execFile } }
-})
+vi.mock('~/server/utils/runScript', () => ({
+  runScript: (name: string) => new Promise((resolve, reject) => {
+    execFileMock(name, [], {}, (error: Error | null, stdout: string) => {
+      if (error) {reject(error)}
+      else {resolve({ code: 0, tail: stdout ? [stdout] : [] })}
+    })
+  }),
+}))
 
 const {
   MIN_AUTO_SCAN_INTERVAL_HOURS, shouldRunAutoScan, resolveAutoScanSettings, runAutoScan,
@@ -96,9 +102,7 @@ describe('runAutoScan', () => {
 
     await runAutoScan()
 
-    expect(calls[0]).toContain('/index')
-    expect(calls[1]).toContain('/sync')
-    expect(calls[2]).toContain('/tidy')
+    expect(calls).toEqual(['index', 'sync', 'tidy'])
     expect(prismaMocks.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'main' } }))
   })
 
