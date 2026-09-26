@@ -114,6 +114,19 @@ describe('useBrowseStore', () => {
     expect(store.artists.map((a: any) => a.slug)).toEqual(['a', 'b'])
   })
 
+  it('a failed append does not advance the page, so the retry asks for the same one', async () => {
+    fetchMock.mockResolvedValueOnce(response({ items: [{ slug: 'a' }], hasMore: true }))
+    const store = useBrowseStore()
+    await store.fetchArtists()
+    fetchMock.mockRejectedValueOnce(new Error('boom'))
+    await expect(store.loadMore()).rejects.toThrow('boom')
+    expect(store.page).toBe(1)
+    fetchMock.mockResolvedValueOnce(response({ items: [{ slug: 'b' }], hasMore: false }))
+    await store.loadMore()
+    expect(fetchMock.mock.calls.at(-1)?.[1].params.page).toBe(2)
+    expect(store.page).toBe(2)
+  })
+
   it('loadMore is a no-op when hasMore is false', async () => {
     const store = useBrowseStore()
     store.hasMore = false

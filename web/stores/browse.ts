@@ -42,8 +42,10 @@ export const useBrowseStore = defineStore('browse', () => {
     }
 
     try {
+      // The page only advances once its rows have landed: an aborted or failed append must be retried, not skipped.
+      const requestedPage = append ? page.value + 1 : 1
       const params: Record<string, string | number | string[]> = {
-        page: append ? page.value : 1,
+        page: requestedPage,
         pageSize: pageSize.value,
         sort: sortBy.value,
         order: sortDir.value,
@@ -70,8 +72,8 @@ export const useBrowseStore = defineStore('browse', () => {
       }
       else {
         artists.value = data.items
-        page.value = 1
       }
+      page.value = requestedPage
       total.value = data.total
       mainCount.value = data.mainCount
       hasMore.value = data.hasMore
@@ -95,7 +97,6 @@ export const useBrowseStore = defineStore('browse', () => {
     // request and pushes a stale-offset page onto the still-unfiltered list, so the filter/sort
     // change appears to do nothing until picked again.
     if (!hasMore.value || loadingMore.value || loading.value) {return}
-    page.value++
     await fetchArtists(true)
   }
 
