@@ -1,18 +1,15 @@
 import { execSync } from 'child_process'
 import { prisma } from '~/server/utils/prisma'
 import { isOwnScanProcess } from '~/server/utils/scanLock'
-
-const SESSION_NAME_RE = /^[a-zA-Z0-9_-]{1,32}$/
+import { requireTerminalAccess } from '~/server/utils/terminalGuard'
+import { isValidSessionName } from '~/server/utils/terminalCommand'
 
 export default defineEventHandler(async (event) => {
-  if (!event.context.user) {
-    throw createError({ statusCode: 401, message: 'Unauthorized' })
-  }
-
-  const { session } = await readBody<{ session: string }>(event)
-  if (!session || !SESSION_NAME_RE.test(session)) {
+  const session = (await readBody<{ session?: string }>(event))?.session
+  if (!isValidSessionName(session)) {
     throw createError({ statusCode: 400, message: 'Invalid session' })
   }
+  await requireTerminalAccess(event, 'stop', session)
 
   // For lock-holding commands (index/sync/refresh): SIGTERM lets the Rust signal handler run,
   // release the DB lock, then exit cleanly. Only signal/clear the lock when the recorded PID is

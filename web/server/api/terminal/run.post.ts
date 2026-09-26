@@ -15,6 +15,7 @@ import {
   withWebFlag,
 } from '~/server/utils/terminalCommand'
 import { tmuxAvailable, tmuxSessionAlive } from '~/server/utils/tmuxSessions'
+import { terminalRunMetaPath } from '~/server/utils/terminalAccess'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody<{
@@ -107,6 +108,8 @@ export default defineEventHandler(async (event) => {
   const script = buildScript(workDir, fullCmd, logFile, session)
   fs.writeFileSync(scriptFile, script, { mode: 0o755 })
   fs.writeFileSync(logFile, '')
+  // What `stop` needs to gate on: a MANAGER must not be able to stop an ADMIN-only run.
+  fs.writeFileSync(terminalRunMetaPath(session), JSON.stringify({ command, args: body.args ?? [] }))
 
   try {
     execSync(`tmux kill-session -t ${session} 2>/dev/null || true`)

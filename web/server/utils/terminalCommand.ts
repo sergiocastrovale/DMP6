@@ -64,7 +64,7 @@ export const WEB_MODE_COMMANDS = new Set(['./index', './sync', './tidy', './refr
 export const isAllowedCommand = (command: string): boolean =>
   (ALLOWED_COMMANDS as readonly string[]).includes(command)
 
-export const isValidSessionName = (session: string | undefined | null): boolean =>
+export const isValidSessionName = (session: string | undefined | null): session is string =>
   typeof session === 'string' && SESSION_NAME_RE.test(session)
 
 export const permissionForCommand = (command: string): PermissionKey | 'ADMIN' | undefined =>

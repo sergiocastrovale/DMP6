@@ -1,10 +1,9 @@
 import { prisma } from '~/server/utils/prisma'
 import { findReconnectableSessions, killTmuxSession } from '~/server/utils/tmuxSessions'
+import { requireTerminalAccess } from '~/server/utils/terminalGuard'
 
 export default defineEventHandler(async (event) => {
-  if (!event.context.user) {
-    throw createError({ statusCode: 401, message: 'Unauthorized' })
-  }
+  await requireTerminalAccess(event, 'unlock')
 
   await prisma.statistics.update({
     where: { id: 'main' },

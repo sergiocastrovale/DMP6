@@ -3,6 +3,7 @@ import { LockOpen } from 'lucide-vue-next'
 
 const emit = defineEmits<{ unlocked: [] }>()
 
+const { isAdmin } = useAuth()
 const unlocking = ref(false)
 
 const forceUnlock = async () => {
@@ -22,6 +23,7 @@ const forceUnlock = async () => {
 
 <template>
   <UiButton
+    v-if="isAdmin"
     variant="quiet"
     size="sm"
     :icon="LockOpen"

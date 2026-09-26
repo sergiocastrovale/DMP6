@@ -9,7 +9,8 @@ import { ORPHAN_POLL_MS } from '~/helpers/constants'
 // store reconnects, the existing UI just reacts.
 export default defineNuxtPlugin(() => {
   const terminal = useTerminalStore()
-  const { user } = useAuth()
+  const { user, hasPerm } = useAuth()
+  const canViewSessions = hasPerm('sync.view')
 
   let pollInterval: ReturnType<typeof setInterval> | null = null
 
@@ -28,8 +29,9 @@ export default defineNuxtPlugin(() => {
     }
   }
 
-  watch(() => !!user.value, (loggedIn) => {
-    if (loggedIn) {start()}
+  // /api/terminal/sessions is gated on sync.view - a VIEWER's tab must not poll it just to collect 403s.
+  watch(() => !!user.value && canViewSessions.value, (allowed) => {
+    if (allowed) {start()}
     else {stop()}
   }, { immediate: true })
 })

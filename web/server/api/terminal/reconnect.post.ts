@@ -1,16 +1,13 @@
 import { spawn, execSync } from 'child_process'
 import fs from 'fs'
-import { parseExitLine, stripAnsi } from '~/server/utils/terminalCommand'
-
-const SESSION_NAME_RE = /^[a-zA-Z0-9_-]{1,32}$/
+import { isValidSessionName, parseExitLine, stripAnsi } from '~/server/utils/terminalCommand'
+import { requireTerminalAccess } from '~/server/utils/terminalGuard'
 
 export default defineEventHandler(async (event) => {
-  if (!event.context.user) {
-    throw createError({ statusCode: 401, message: 'Unauthorized' })
-  }
+  await requireTerminalAccess(event, 'view')
 
-  const { session } = await readBody<{ session: string }>(event)
-  if (!session || !SESSION_NAME_RE.test(session)) {
+  const session = (await readBody<{ session?: string }>(event))?.session
+  if (!isValidSessionName(session)) {
     throw createError({ statusCode: 400, message: 'Invalid session' })
   }
 
