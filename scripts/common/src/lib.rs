@@ -7,6 +7,7 @@ pub mod consensus;
 pub mod db;
 pub mod error_log;
 pub mod filters;
+pub mod homonyms;
 pub mod images;
 pub mod lock;
 pub mod mb;

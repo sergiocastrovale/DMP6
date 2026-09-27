@@ -1,4 +1,3 @@
-use chrono::Utc;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::{ConnectOptions, Executor, PgPool};
 use std::collections::HashMap;
@@ -47,28 +46,28 @@ pub async fn create_pool_or_exit(database_url: &str, app_name: &str) -> PgPool {
     }
 }
 
+/// The artist row for a bare name, following the homonym rules (`crate::homonyms`): the name's only artist, a
+/// new row, or - when several artists share the name - its unidentified member. Reconciles the name's group
+/// straight away, since callers of this form do not batch.
 pub async fn ensure_artist(pool: &PgPool, name: &str) -> Result<String, sqlx::Error> {
-    use crate::slug::make_slug;
-    let artist_slug = make_slug(name);
-    if artist_slug.is_empty() {
-        return Ok(String::new());
-    }
-    let id = cuid2::create_id();
-    let now = Utc::now().naive_utc();
-    let row: (String,) = sqlx::query_as(
-        r#"INSERT INTO "Artist" (id, name, slug, "totalTracks", "totalFileSize", "createdAt", "updatedAt")
-           VALUES ($1, $2, $3, 0, 0, $4, $4)
-           ON CONFLICT (slug) DO UPDATE SET "updatedAt" = EXCLUDED."updatedAt"
-           RETURNING id"#,
+    use crate::homonyms::{ensure_artist_identity, reconcile_touched, IdSource, IdentityRequest, IdentityState};
+    let mut state = IdentityState::new();
+    let id = ensure_artist_identity(
+        pool,
+        &mut state,
+        &IdentityRequest { name, mbid: None, source: IdSource::Search, release_title: None, credit: false },
     )
-    .bind(&id)
-    .bind(name)
-    .bind(&artist_slug)
-    .bind(now)
-    .fetch_one(pool)
     .await?;
-
-    Ok(row.0)
+    reconcile_touched(pool, &mut state).await?;
+    if id.is_empty() {
+        return Ok(id);
+    }
+    // A reconcile may have connected the row to a survivor; hand back the row that is shown.
+    let primary: Option<String> = sqlx::query_scalar(r#"SELECT COALESCE("primaryArtistId", id) FROM "Artist" WHERE id = $1"#)
+        .bind(&id)
+        .fetch_optional(pool)
+        .await?;
+    Ok(primary.unwrap_or(id))
 }
 
 pub async fn ensure_artist_cached(
