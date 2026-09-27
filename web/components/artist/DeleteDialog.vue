@@ -4,6 +4,7 @@ import { useTerminalStore } from '~/stores/terminal'
 import { useToastStore } from '~/stores/toast'
 
 const props = defineProps<{
+  artistId: string
   artistName: string
 }>()
 
@@ -28,7 +29,9 @@ const note = computed(() =>
 
 const remove = async () => {
   open.value = false
-  const args = [props.artistName, '--y', ...(removeFiles.value ? ['--files'] : [])]
+  // --id, not the name: two artists can share a name (docs/sync_decisions.md "Two artists, one
+  // name"), where ./delete would otherwise refuse as ambiguous.
+  const args = ['--id', props.artistId, '--y', ...(removeFiles.value ? ['--files'] : [])]
   await terminal.run('./delete', args, 'dmp-delete')
   if (terminal.exitCode === 0) {
     toast.success(`${props.artistName} deleted`)

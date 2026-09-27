@@ -43,7 +43,7 @@ afterEach(() => {
 
 const mount = async () => {
   wrapper = await mountSuspended(DeleteDialog, {
-    props: { modelValue: true, artistName: 'Boards of Canada' },
+    props: { modelValue: true, artistId: 'clboc00000000000000000001', artistName: 'Boards of Canada' },
   })
   return wrapper
 }
@@ -67,7 +67,7 @@ describe('artist/DeleteDialog.vue', () => {
   it('deletes the catalogue only by default', async () => {
     await mount()
     await clickText('Remove from catalogue')
-    expect(runMock).toHaveBeenCalledWith('./delete', ['Boards of Canada', '--y'], 'dmp-delete')
+    expect(runMock).toHaveBeenCalledWith('./delete', ['--id', 'clboc00000000000000000001', '--y'], 'dmp-delete')
   })
 
   it('adds --files only once the opt-in is switched on', async () => {
@@ -75,7 +75,7 @@ describe('artist/DeleteDialog.vue', () => {
     await document.body.querySelector('[role="switch"]')!.dispatchEvent(new Event('click'))
     await nextTick()
     await clickText('Delete artist and files')
-    expect(runMock).toHaveBeenCalledWith('./delete', ['Boards of Canada', '--y', '--files'], 'dmp-delete')
+    expect(runMock).toHaveBeenCalledWith('./delete', ['--id', 'clboc00000000000000000001', '--y', '--files'], 'dmp-delete')
   })
 
   it('leaves the artist page for /browse once the run succeeds', async () => {

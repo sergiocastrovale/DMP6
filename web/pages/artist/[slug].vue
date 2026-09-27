@@ -54,7 +54,7 @@ watch(() => artist.value?.name ?? chooser.value?.name, (name) => {
         <div class="flex shrink-0 items-center gap-2">
           <ArtistButtonMonitor v-if="canMonitor" :monitored="artist.monitored" :busy="monitorBusy" @toggle="toggleMonitor" />
           <ArtistScanActions v-if="canScan" :artist-id="artist.id" :artist-name="artist.name" :folders="artistFolders" />
-          <ArtistButtonRemove v-if="isAdmin" :artist-name="artist.name" />
+          <ArtistButtonRemove v-if="isAdmin" :artist-id="artist.id" :artist-name="artist.name" />
         </div>
       </ArtistHeader>
 
@@ -69,7 +69,7 @@ watch(() => artist.value?.name ?? chooser.value?.name, (name) => {
       >
         <ArtistButtonMonitor v-if="canMonitor" :monitored="artist.monitored" :busy="monitorBusy" @toggle="toggleMonitor" />
         <ArtistScanActions v-if="canScan" :artist-id="artist.id" :artist-name="artist.name" :folders="artistFolders" />
-        <ArtistButtonRemove v-if="isAdmin" :artist-name="artist.name" />
+        <ArtistButtonRemove v-if="isAdmin" :artist-id="artist.id" :artist-name="artist.name" />
       </ArtistMobileHeader>
 
       <ArtistReleases

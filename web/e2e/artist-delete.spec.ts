@@ -89,7 +89,7 @@ test.describe('artist removal', () => {
     await page.getByRole('button', { name: 'Remove from catalogue' }).click()
 
     await expect.poll(() => runs).toEqual([
-      { command: './delete', args: [artistName, '--y'] },
+      { command: './delete', args: ['--id', artistId, '--y'] },
     ])
     await page.waitForURL('/browse')
   })
@@ -101,7 +101,7 @@ test.describe('artist removal', () => {
     await page.getByRole('button', { name: 'Delete artist and files' }).click()
 
     await expect.poll(() => runs).toEqual([
-      { command: './delete', args: [artistName, '--y', '--files'] },
+      { command: './delete', args: ['--id', artistId, '--y', '--files'] },
     ])
   })
 })

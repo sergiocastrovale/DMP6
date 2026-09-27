@@ -8,13 +8,13 @@ describe('artist/ButtonRemove.vue', () => {
   afterEach(() => { document.body.innerHTML = '' })
 
   it('renders a Remove button', async () => {
-    const wrapper = await mountSuspended(ButtonRemove, { props: { artistName: 'Air Supply' } })
+    const wrapper = await mountSuspended(ButtonRemove, { props: { artistId: 'clairsupply000000000001', artistName: 'Air Supply' } })
     expect(wrapper.text()).toContain('Remove')
   })
 
   it('opens the delete dialog on click', async () => {
     // DeleteDialog renders through Dialog.vue's <Teleport to="body">, outside the wrapper's subtree.
-    const wrapper = await mountSuspended(ButtonRemove, { props: { artistName: 'Air Supply' } })
+    const wrapper = await mountSuspended(ButtonRemove, { props: { artistId: 'clairsupply000000000001', artistName: 'Air Supply' } })
 
     expect(document.body.textContent).not.toContain('Remove artist')
     await wrapper.get('button').trigger('click')

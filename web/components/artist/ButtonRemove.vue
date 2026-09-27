@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Trash2 } from 'lucide-vue-next'
 
-defineProps<{ artistName: string }>()
+defineProps<{ artistId: string, artistName: string }>()
 
 const open = ref(false)
 </script>
@@ -16,5 +16,5 @@ const open = ref(false)
   >
     Remove
   </UiButton>
-  <ArtistDeleteDialog v-model="open" :artist-name="artistName" />
+  <ArtistDeleteDialog v-model="open" :artist-id="artistId" :artist-name="artistName" />
 </template>
