@@ -554,6 +554,19 @@ pub(crate) async fn process_artist(
         .ok();
     }
 
+    // Identifying an artist or connecting it can reshape its name's homonym group: an unidentified member now has an
+    // id (its slug moves to the id suffix) or has joined the artist it turned out to be (common::homonyms).
+    if let Ok(bases) = common::homonyms::bases_of(&pool, std::slice::from_ref(&artist.id)).await {
+        match common::homonyms::reconcile_bases(&pool, &bases).await {
+            Ok(outcome) => {
+                for (_, old, new) in &outcome.renamed {
+                    r.nested().ok(&format!("Artist page moved: /artist/{old} -> /artist/{new}"));
+                }
+            }
+            Err(e) => r.warn(&format!("Homonym reconcile failed: {}", e)),
+        }
+    }
+
     let (artist_genre_ids, country_code): (Vec<String>, Option<String>) = if is_duplicate {
         let genres = get_artist_genre_ids(&pool, primary_artist_id.as_ref().unwrap()).await;
         (genres, None)
@@ -572,6 +585,13 @@ pub(crate) async fn process_artist(
             };
 
         let country_code = detail.country_code().map(|s| s.to_string());
+        // Shown beside the name wherever two artists share it. Display only - never part of the slug.
+        sqlx::query(r#"UPDATE "Artist" SET disambiguation = NULLIF($1, '') WHERE id = $2"#)
+            .bind(detail.disambiguation.as_deref().unwrap_or(""))
+            .bind(&artist.id)
+            .execute(&pool)
+            .await
+            .ok();
 
         // Upsert genres from MB genres + tags
         let mut artist_genre_ids: Vec<String> = Vec::new();

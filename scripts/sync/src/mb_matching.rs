@@ -52,6 +52,83 @@ pub use common::mb::names::{names_are_similar, normalize_name};
 // 6-step artist matching
 // ---------------------------------------------------------------------------
 
+/// Which of several same-named MusicBrainz artists an artist row is, judged by its own albums: each candidate scores
+/// one point per local album whose title is one of the candidate's release groups, with a matching year (±1) as the
+/// tiebreak. Only a clear winner with at least one album in common counts - a tie or no overlap is no answer, and
+/// the row stays unidentified rather than borrowing another artist's catalogue. Pure, for tests.
+///
+/// `local` is (title, year) per owned album; `candidates` is (MB artist id, [(release-group title, year)]).
+pub fn pick_homonym(local: &[(String, Option<i32>)], candidates: &[(String, Vec<(String, Option<i32>)>)]) -> Option<String> {
+    let norm = common::homonyms::normalize_title;
+    let mut scored: Vec<(usize, usize, &String)> = candidates
+        .iter()
+        .map(|(id, groups)| {
+            let mut titles = 0;
+            let mut years = 0;
+            for (title, year) in local {
+                let t = norm(title);
+                if t.is_empty() {
+                    continue;
+                }
+                let hits: Vec<&Option<i32>> = groups.iter().filter(|(g, _)| norm(g) == t).map(|(_, y)| y).collect();
+                if hits.is_empty() {
+                    continue;
+                }
+                titles += 1;
+                if let Some(y) = year {
+                    if hits.iter().any(|gy| gy.is_some_and(|gy| (gy - y).abs() <= 1)) {
+                        years += 1;
+                    }
+                }
+            }
+            (titles, years, id)
+        })
+        .collect();
+    scored.sort_by(|a, b| (b.0, b.1).cmp(&(a.0, a.1)));
+    match scored.as_slice() {
+        [best, ..] if best.0 == 0 => None,
+        [best] => Some(best.2.clone()),
+        [best, second, ..] if (best.0, best.1) > (second.0, second.1) => Some(best.2.clone()),
+        _ => None,
+    }
+}
+
+/// `pick_homonym` fed from the database (the row's owned albums) and MusicBrainz (one release-group browse per
+/// candidate - only ever for a name several artists share).
+async fn choose_homonym(
+    client: &Client,
+    pool: &PgPool,
+    artist_id: &str,
+    candidates: &[MbArtistMatch],
+    limiter: &mut RateLimiter,
+) -> Result<Option<MbArtistMatch>, String> {
+    let local: Vec<(String, Option<i32>)> = sqlx::query_as(
+        r#"SELECT DISTINCT lr.title, lr.year FROM "LocalRelease" lr
+           JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
+           WHERE lra."artistId" = $1"#,
+    )
+    .bind(artist_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    if local.is_empty() {
+        return Ok(None);
+    }
+    let mut scored = Vec::new();
+    for c in candidates {
+        let groups = mb_get_release_groups(client, &c.id, limiter).await?;
+        let groups: Vec<(String, Option<i32>)> = groups
+            .into_iter()
+            .map(|g| {
+                let year = g.first_release_date.as_deref().and_then(|d| d.get(..4)).and_then(|y| y.parse().ok());
+                (g.title, year)
+            })
+            .collect();
+        scored.push((c.id.clone(), groups));
+    }
+    Ok(pick_homonym(&local, &scored).and_then(|id| candidates.iter().find(|c| c.id == id).cloned()))
+}
+
 /// Returns the best MbArtistMatch for the given artist, or None.
 ///
 /// Algorithm:
@@ -162,7 +239,17 @@ pub async fn find_mb_match_with_fallback(
     if let Some(m) = cache_hit(pool, warmed, artist_name).await {
         return Ok(Some(m));
     }
-    if let Some(m) = mb_search_artist_exact(client, artist_name, limiter).await? {
+    let exact = mb_search_artist_exact_all(client, artist_name, limiter).await?;
+    let real: Vec<MbArtistMatch> = exact.into_iter().filter(|m| !is_special_mb_artist(&m.id, &m.name)).collect();
+    // Several artists are exactly this name (docs/sync_decisions.md "Two artists, one name"). The name alone proves
+    // nothing, so only the albums can decide: the candidate whose MusicBrainz catalogue holds this row's albums.
+    let ambiguous = real.len() > 1;
+    if ambiguous {
+        if let Some(m) = choose_homonym(client, pool, artist_id, &real, limiter).await? {
+            return Ok(Some(m));
+        }
+    }
+    else if let Some(m) = real.into_iter().next() {
         return Ok(Some(m));
     }
 
@@ -241,7 +328,9 @@ pub async fn find_mb_match_with_fallback(
     // picks which name to *search*; whatever comes back must still certainly be this row's own
     // artist_name; a tag ("<name> Quintet") pulling in a candidate that is really a different act
     // sharing the tag's words is exactly the leak this gate exists to close.
-    for (tag, _) in &all_tags {
+    // A shared name gets no further by searching other spellings of itself: every one of them is equally
+    // ambiguous. Only the album-title rung below (step 5) carries evidence.
+    for (tag, _) in all_tags.iter().filter(|_| !ambiguous) {
         if tag.eq_ignore_ascii_case(artist_name) {
             continue;
         }
@@ -278,7 +367,7 @@ pub async fn find_mb_match_with_fallback(
     // individual member. Picks up compound tags like "Artist A & Artist B" where neither the
     // combined tag nor a plain-name search for it matches anything in MB.
     let mut seen_parts: HashSet<String> = seen_tags;
-    for (tag, _) in &all_tags {
+    for (tag, _) in all_tags.iter().filter(|_| !ambiguous) {
         let (mains, feats) = split_artists(tag);
         for part in mains.iter().chain(feats.iter()) {
             let key = part.to_lowercase();
@@ -343,6 +432,44 @@ async fn try_release_group_credits(
 
 #[cfg(test)]
 mod tests {
+    fn local(titles: &[(&str, i32)]) -> Vec<(String, Option<i32>)> {
+        titles.iter().map(|(t, y)| (t.to_string(), Some(*y))).collect()
+    }
+
+    fn cand(id: &str, groups: &[(&str, i32)]) -> (String, Vec<(String, Option<i32>)>) {
+        (id.to_string(), groups.iter().map(|(t, y)| (t.to_string(), Some(*y))).collect())
+    }
+
+    #[test]
+    fn the_homonym_whose_catalogue_holds_the_albums_wins() {
+        let l = local(&[("Senso Comum", 2019), ("Logo Se Vê", 2023)]);
+        let c = [cand("pt", &[("Senso comum", 2019), ("Logo se ve", 2023)]), cand("kr", &[])];
+        assert_eq!(pick_homonym(&l, &c).as_deref(), Some("pt"));
+    }
+
+    #[test]
+    fn a_tie_or_no_overlap_is_no_answer() {
+        let l = local(&[("Greatest Hits", 2000)]);
+        let tie = [cand("a", &[("Greatest Hits", 1990)]), cand("b", &[("Greatest Hits", 1985)])];
+        assert_eq!(pick_homonym(&l, &tie), None);
+        let none = [cand("a", &[("Other", 2000)]), cand("b", &[])];
+        assert_eq!(pick_homonym(&l, &none), None);
+    }
+
+    #[test]
+    fn the_year_breaks_a_title_tie() {
+        let l = local(&[("Greatest Hits", 2000)]);
+        let c = [cand("a", &[("Greatest Hits", 1990)]), cand("b", &[("Greatest Hits", 2001)])];
+        assert_eq!(pick_homonym(&l, &c).as_deref(), Some("b"));
+    }
+
+    #[test]
+    fn more_albums_in_common_beats_fewer() {
+        let l = local(&[("One", 2001), ("Two", 2002), ("Three", 2003)]);
+        let c = [cand("a", &[("One", 2001)]), cand("b", &[("Two", 2002), ("Three", 2003)])];
+        assert_eq!(pick_homonym(&l, &c).as_deref(), Some("b"));
+    }
+
     use super::*;
 
     /// The ladder must take a warmed cache hit instead of searching MusicBrainz.

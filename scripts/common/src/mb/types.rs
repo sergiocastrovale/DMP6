@@ -112,6 +112,9 @@ pub struct MbArea {
 pub struct MbArtistDetail {
     pub id: String,
     pub name: String,
+    /// MusicBrainz's comment telling same-named artists apart ("Portuguese band"). Display only.
+    #[serde(default)]
+    pub disambiguation: Option<String>,
     pub area: Option<MbArea>,
     pub relations: Option<Vec<MbRelation>>,
     pub genres: Option<Vec<MbGenre>>,
