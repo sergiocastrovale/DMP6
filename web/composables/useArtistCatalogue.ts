@@ -105,6 +105,16 @@ export const useArtistCatalogue = (releases: Ref<UnifiedRelease[]>, favoriteIds?
   const totalCounts = computed(() => countReleases(releases.value))
   const visibleCounts = computed(() => countReleases(filteredReleases.value))
 
+  // Unfiltered status breakdown (all releases, not just the visible/filtered set) - backs the
+  // second summary line under "Showing X of Y releases" (ArtistShowing).
+  const totalStatusCounts = computed(() => {
+    const counts: Record<string, number> = {}
+    for (const r of releases.value) {
+      counts[r.status] = (counts[r.status] || 0) + 1
+    }
+    return counts
+  })
+
   // Sort excluded, same convention as stores/browse.ts's activeFilterCount - it always has a value.
   const activeFilterCount = computed(() =>
     typeFilters.value.size
@@ -138,6 +148,7 @@ export const useArtistCatalogue = (releases: Ref<UnifiedRelease[]>, favoriteIds?
     groups,
     totalCounts,
     visibleCounts,
+    totalStatusCounts,
     activeFilterCount,
     clearFilters,
   }
