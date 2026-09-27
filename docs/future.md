@@ -20,7 +20,7 @@
 
 ## Bugs
 
-- [ ] 3 identical "Dear Michael: The Motown Collection" cards — diagnosed, not fixed: the album matcher bound three separate 9-12 track albums to one 257-track box. See `docs/sync_decisions.md` §19 item 7.
+- [x] 3 identical "Dear Michael: The Motown Collection" cards — verified fixed 2026-09-27: only 1 folder now bound to the box (`MISSING_TRACKS`, not duplicated as COMPLETE). See `docs/sync_decisions.md` §19 item 7.
 - [ ] Compilations owned by dozens of unrelated artists (a Harold Land compilation on Lana Del Rey's page) — scattered per-track artist tags; index ownership. See `docs/sync_decisions.md` §19 item 8.
 - [ ] 124 "Chronological Classics" bindings whose files agree on the wrong volume — retag the files. List: `docs/specs/spec_tidy_observations_cc_retag.tsv`, background in `docs/sync_decisions.md` §19 item 9.
 
