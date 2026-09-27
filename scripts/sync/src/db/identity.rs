@@ -284,6 +284,20 @@ pub async fn repair_shared_identities(
         .fetch_all(pool)
         .await?;
 
+        // A name several MusicBrainz artists share can never be confirmed by the name cache (it holds no one id for
+        // it), so "nobody confirmed" would wrongly strip every member. Same-named members are the homonym rules' to
+        // settle (common::homonyms: same id -> connected), never this pass's.
+        let normalized: Vec<String> = members.iter().map(|(_, name)| common::mb::names::normalize_name(name)).collect();
+        let ambiguous: bool = sqlx::query_scalar(
+            r#"SELECT EXISTS (SELECT 1 FROM "MbArtistLookup" WHERE normalized = ANY($1::text[]) AND ambiguous)"#,
+        )
+        .bind(&normalized)
+        .fetch_one(pool)
+        .await?;
+        if ambiguous {
+            continue;
+        }
+
         let mut confirmed: Vec<(String, String)> = Vec::new();
         for (id, name) in &members {
             let hit: Option<(String,)> = sqlx::query_as(
