@@ -355,7 +355,14 @@ fn embedded_id_contradicted(
     name: &str,
     claimed_mbid: &str,
 ) -> bool {
-    matches!(memo.get(name), Some(LookupResult::Found { mbid: Some(known) }) if known != claimed_mbid)
+    match memo.get(name) {
+        Some(LookupResult::Found { mbid: Some(known) }) => known != claimed_mbid,
+        // A name several artists share (docs/sync_decisions.md "Two artists, one name"): the cache cannot vouch for
+        // any one id, so a file's id is only believed once MusicBrainz confirms that id really is called this -
+        // otherwise one mistagged file would become yet another artist by the name.
+        Some(LookupResult::Found { mbid: None }) => true,
+        _ => false,
+    }
 }
 
 /// `embedded_pairing`'s result, with every part checked against what the resolver already knows.
@@ -1149,6 +1156,16 @@ mod tests {
         assert!(
             embedded_pairing_checked(&memo, tag, &artists, &mb_ids, JoinKind::CoBilling).is_some()
         );
+    }
+
+    #[test]
+    fn a_shared_name_never_vouches_for_a_files_id_offline() {
+        // Several artists answer to this name, so the cache has no single id to agree with: the id waits for
+        // MusicBrainz (ArtistResolver::confirm_homonym) instead of being believed.
+        let memo = memo(&[("row-name", LookupResult::Found { mbid: None })]);
+        let artists = vec!["row-name".to_string()];
+        let mb_ids = vec!["mbid-any".to_string()];
+        assert!(embedded_pairing_checked(&memo, "row-name", &artists, &mb_ids, JoinKind::CoBilling).is_none());
     }
 
     #[test]

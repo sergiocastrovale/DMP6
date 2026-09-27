@@ -11,13 +11,19 @@ use std::collections::BTreeMap;
 use index::resolve::{resolve_and_apply, ArtistResolver, Decision};
 use sqlx::PgPool;
 
-const PT: &str = "d76eeba7-d35c-4fe8-bffa-ce2885c97765";
-const KR: &str = "9f3423ee-debe-48ec-b78d-281438aaf626";
+/// A per-test MusicBrainz id, so parallel tests never share a stub entry.
+fn mbid(seed: &str) -> String {
+    let h = seed.bytes().fold(0xcbf29ce484222325u128, |h, b| (h ^ b as u128).wrapping_mul(0x100000001b3));
+    let hex = format!("{h:032x}");
+    format!("{}-{}-{}-{}-{}", &hex[..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..32])
+}
 
 struct Ctx {
     pool: PgPool,
     name: String,
     folder: String,
+    pt: String,
+    kr: String,
 }
 
 impl Ctx {
@@ -25,10 +31,20 @@ impl Ctx {
         let db_url = std::env::var("SMOKE_TEST_DATABASE_URL")
             .expect("set SMOKE_TEST_DATABASE_URL to a disposable, migrated Postgres");
         let tag = cuid2::create_id()[..8].to_string();
+        let name = format!("Napa {tag}");
+        let (pt, kr) = (mbid(&format!("pt{tag}")), mbid(&format!("kr{tag}")));
+        // One stub MusicBrainz for the whole binary (its base URL is read once per process); this test's artists are
+        // registered under their own ids, so a file id for a shared name is confirmed without the network.
+        std::env::set_var("MB_BASE_URL", common::testing::shared_url());
+        std::env::set_var("MB_MIN_DELAY_MS", "0");
+        common::testing::shared_add_artist(&pt, &name, Some("PT"), &["Senso Comum", "Logo Se Ve"]);
+        common::testing::shared_add_artist(&kr, &name, Some("KR"), &[]);
         Self {
             pool: common::db::create_pool(&db_url, "test").await.expect("connect"),
-            name: format!("Napa {tag}"),
+            name,
             folder: format!("homonyms-{tag}"),
+            pt,
+            kr,
         }
     }
 
@@ -114,7 +130,6 @@ impl Ctx {
 
     async fn run(&self, releases: &[String]) {
         let mut resolver = ArtistResolver::new(&self.pool, false);
-        resolver.offline = true;
         resolver.warm_cache().await;
         let mut report: Vec<Decision> = Vec::new();
         resolve_and_apply(&self.pool, &mut resolver, Some(releases), &mut report, None).await.expect("resolve");
@@ -154,19 +169,19 @@ impl Ctx {
 async fn a_premerged_artist_splits_by_the_ids_its_files_carry() {
     let c = Ctx::new().await;
     c.mark_ambiguous().await;
-    let senso = c.release("Senso Comum", Some(PT)).await;
-    let logo = c.release("Logo Se Ve", Some(PT)).await;
-    let eleven = c.release("11-11", Some(KR)).await;
+    let senso = c.release("Senso Comum", Some(c.pt.as_str())).await;
+    let logo = c.release("Logo Se Ve", Some(c.pt.as_str())).await;
+    let eleven = c.release("11-11", Some(c.kr.as_str())).await;
     let untagged = c.release("Untagged", None).await;
-    c.premerged_owner(PT, &[&senso, &logo, &eleven, &untagged]).await;
+    c.premerged_owner(&c.pt.clone(), &[&senso, &logo, &eleven, &untagged]).await;
 
     c.run(&[senso, logo, eleven, untagged]).await;
 
     let s = c.state().await;
     let base = c.base();
-    assert_eq!(s["Senso Comum"], (PT.to_string(), format!("{base}-d76eeba7")));
-    assert_eq!(s["Logo Se Ve"], (PT.to_string(), format!("{base}-d76eeba7")));
-    assert_eq!(s["11-11"], (KR.to_string(), format!("{base}-9f3423ee")));
+    assert_eq!(s["Senso Comum"], (c.pt.clone(), format!("{base}-{}", &c.pt[..8])));
+    assert_eq!(s["Logo Se Ve"], (c.pt.clone(), format!("{base}-{}", &c.pt[..8])));
+    assert_eq!(s["11-11"], (c.kr.clone(), format!("{base}-{}", &c.kr[..8])));
     assert_eq!(s["Untagged"].0, "unidentified", "no id and no evidence: never the PT artist by guess");
     assert!(s["Untagged"].1.starts_with(&format!("{base}-")));
     assert!(c.violations().await.is_empty());
@@ -188,9 +203,9 @@ async fn the_order_releases_are_indexed_in_does_not_change_the_result() {
         let c = Ctx::new().await;
         c.mark_ambiguous().await;
         let ids = vec![
-            c.release("Senso Comum", Some(PT)).await,
-            c.release("Logo Se Ve", Some(PT)).await,
-            c.release("11-11", Some(KR)).await,
+            c.release("Senso Comum", Some(c.pt.as_str())).await,
+            c.release("Logo Se Ve", Some(c.pt.as_str())).await,
+            c.release("11-11", Some(c.kr.as_str())).await,
             c.release("Untagged", None).await,
         ];
         for &i in &order {
@@ -204,9 +219,19 @@ async fn the_order_releases_are_indexed_in_does_not_change_the_result() {
             .await
             .into_iter()
             .map(|(t, (m, s))| {
+                // Each run has its own ids; compare by role.
+                let role = |id: &str| if id == c.pt { "PT".to_string() } else if id == c.kr { "KR".to_string() } else { id.to_string() };
                 let suffix = s.strip_prefix(&format!("{base}-")).unwrap_or("BARE").to_string();
-                let suffix = if m == "unidentified" { "artist-id".to_string() } else { suffix };
-                (t, (m, suffix))
+                let suffix = if m == "unidentified" {
+                    "artist-id".to_string()
+                } else if suffix == c.pt[..8] {
+                    "PT8".to_string()
+                } else if suffix == c.kr[..8] {
+                    "KR8".to_string()
+                } else {
+                    suffix
+                };
+                (t, (role(&m), suffix))
             })
             .collect();
         results.push(shape);
@@ -218,9 +243,9 @@ async fn the_order_releases_are_indexed_in_does_not_change_the_result() {
 #[ignore]
 async fn a_lone_artist_keeps_its_bare_slug_and_takes_its_untagged_releases() {
     let c = Ctx::new().await;
-    let tagged = c.release("Senso Comum", Some(PT)).await;
+    let tagged = c.release("Senso Comum", Some(c.pt.as_str())).await;
     let untagged = c.release("Untagged", None).await;
-    c.premerged_owner(PT, &[&tagged, &untagged]).await;
+    c.premerged_owner(&c.pt.clone(), &[&tagged, &untagged]).await;
     c.run(&[tagged, untagged]).await;
     let s = c.state().await;
     assert_eq!(s["Senso Comum"].1, c.base());

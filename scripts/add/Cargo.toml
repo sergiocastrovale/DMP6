@@ -19,3 +19,6 @@ dotenvy = { workspace = true }
 serde_json = { workspace = true }
 cuid2 = { workspace = true }
 aws-sdk-s3 = { workspace = true }
+
+[dev-dependencies]
+common = { path = "../common", features = ["testing"] }

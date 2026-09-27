@@ -18,6 +18,8 @@ use std::sync::atomic::Ordering;
 
 /// Library-wide repair split out of `./sync` (docs/scripts/tidy.md, docs/specs/spec_tidy_script.md).
 /// Every caller chains `./tidy` after `./sync` - sync itself never calls it.
+mod split_homonyms;
+
 #[derive(Parser, Debug)]
 #[command(name = "tidy")]
 struct TidyArgs {
@@ -50,6 +52,18 @@ struct TidyArgs {
     /// improvement to the scorer's own rules to releases that were scored before it existed.
     #[arg(long)]
     rescore_only: bool,
+    /// One-off repair for artists merged under one name before homonyms were told apart: re-derive who owns every
+    /// release of each artist whose files name a different MusicBrainz artist than the row does, splitting same-named
+    /// artists into their own rows and pages (docs/sync_decisions.md "Two artists, one name"). Runs instead of the
+    /// normal tidy. Follow it with ./sync --overwrite and ./tidy on the ids it writes to --emit-artist-ids.
+    #[arg(long)]
+    split_homonyms: bool,
+    /// With --split-homonyms: list what would be re-derived, change nothing.
+    #[arg(long, requires = "split_homonyms")]
+    dry_run: bool,
+    /// With --split-homonyms: write the id of every artist in an affected name group to this file, one per line.
+    #[arg(long, requires = "split_homonyms")]
+    emit_artist_ids: Option<String>,
 }
 
 #[derive(Default)]
@@ -117,6 +131,12 @@ async fn main() {
     };
 
     let running = common::app::spawn_shutdown_handlers(&pool, "tidy", "phase", 1);
+
+    if args.split_homonyms {
+        let code = split_homonyms::run(&pool, &reporter, args.dry_run, args.emit_artist_ids.as_deref()).await;
+        release_lock(&pool, "tidy", std::process::id()).await;
+        std::process::exit(code);
+    }
 
     reporter.header("DMP Tidy");
     let start = Utc::now().naive_utc();
@@ -504,6 +524,41 @@ async fn main() {
             "Recomputed completeness ({} artist(s))",
             recomputed
         ));
+    }
+
+    // ---- Phase 8b: homonym groups (safety net, pure SQL) ----
+    // Every flow reconciles the names it touches (common::homonyms); this catches anything they missed in scope, and
+    // reports whatever still breaks the invariant library-wide.
+    if !args.rescore_only {
+        let bases: Vec<String> = if is_global {
+            sqlx::query_scalar(r#"SELECT DISTINCT "baseSlug" FROM "Artist" WHERE "baseSlug" IS NOT NULL"#)
+                .fetch_all(&pool)
+                .await
+                .unwrap_or_default()
+        } else {
+            common::homonyms::bases_of(&pool, &scope_ids).await.unwrap_or_default()
+        };
+        match common::homonyms::reconcile_bases(&pool, &bases).await {
+            Ok(outcome) => {
+                for (_, old, new) in &outcome.renamed {
+                    reporter.ok(&format!("Artist page moved: /artist/{old} -> /artist/{new}"));
+                }
+                if !outcome.moved.is_empty() {
+                    reporter.ok(&format!("{} release(s) moved to the artist their files or catalogue name", outcome.moved.len()));
+                }
+            }
+            Err(e) => {
+                let msg = format!("homonym reconcile failed: {}", e);
+                reporter.warn(&msg);
+                common::error_log::log_warn(&msg);
+                had_error = true;
+            }
+        }
+        if let Ok(v) = common::homonyms::violations(&pool).await {
+            if !v.is_empty() {
+                reporter.warn(&format!("{} artist name(s) break the homonym rules - see /issues", v.len()));
+            }
+        }
     }
 
     // ---- Phase 9: statistics ----

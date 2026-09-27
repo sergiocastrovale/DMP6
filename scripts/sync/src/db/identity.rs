@@ -207,6 +207,8 @@ pub async fn repair_contradicted_identities(
            FROM "Artist" a
            JOIN "MbArtistLookup" l ON l.name = a.name
            WHERE l.mbid IS NOT NULL
+             -- A name several artists share stands for no one id, so it contradicts nobody (common::homonyms).
+             AND NOT l.ambiguous
              AND l.mbid <> a."musicbrainzId"
              AND a."musicbrainzId" IS NOT NULL
              AND a."musicbrainzId" <> ''

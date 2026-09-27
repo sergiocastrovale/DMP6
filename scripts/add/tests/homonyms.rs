@@ -6,83 +6,11 @@
 //! Safety: the binary is started from an empty temp directory with DATABASE_URL set explicitly, so it cannot find
 //! web/.env (whose DATABASE_URL is production) - dotenvy never overrides a variable that is already set.
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Arc;
 
 use sqlx::PgPool;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
-
-/// A MusicBrainz stand-in: artist details, exact-name search, and release-group browses, from fixed data.
-#[derive(Clone, Default)]
-struct Mb {
-    /// id -> (name, country)
-    artists: HashMap<String, (String, Option<String>)>,
-    /// id -> release-group titles
-    groups: HashMap<String, Vec<String>>,
-}
-
-impl Mb {
-    fn respond(&self, target: &str) -> String {
-        let path = target.split('?').next().unwrap_or("");
-        let query = target.split_once('?').map(|(_, q)| q).unwrap_or("");
-        if path.ends_with("/artist/") {
-            let artists: Vec<serde_json::Value> = self
-                .artists
-                .iter()
-                .map(|(id, (name, _))| serde_json::json!({ "id": id, "name": name, "score": 100 }))
-                .collect();
-            return serde_json::json!({ "artists": artists, "count": artists.len() }).to_string();
-        }
-        if let Some(id) = path.strip_prefix("/ws/2/artist/") {
-            if let Some((name, country)) = self.artists.get(id) {
-                let area = country.as_ref().map(|c| serde_json::json!({ "iso-3166-1-codes": [c] }));
-                return serde_json::json!({ "id": id, "name": name, "area": area, "relations": [], "genres": [], "tags": [] }).to_string();
-            }
-        }
-        if path.ends_with("/release-group") {
-            let artist = query.split('&').find_map(|kv| kv.strip_prefix("artist=")).unwrap_or("");
-            let offset: usize = query.split('&').find_map(|kv| kv.strip_prefix("offset=")).and_then(|o| o.parse().ok()).unwrap_or(0);
-            let all = self.groups.get(artist).cloned().unwrap_or_default();
-            let page: Vec<serde_json::Value> = all
-                .iter()
-                .skip(offset)
-                .enumerate()
-                .map(|(i, t)| serde_json::json!({ "id": format!("rg-{artist}-{i}"), "title": t, "primary-type": "Album", "first-release-date": "2020" }))
-                .collect();
-            return serde_json::json!({ "release-groups": page, "release-group-count": all.len() }).to_string();
-        }
-        serde_json::json!({ "releases": [], "release-count": 0, "release-groups": [], "release-group-count": 0, "artists": [] }).to_string()
-    }
-
-    async fn serve(self) -> String {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let mb = Arc::new(self);
-        tokio::spawn(async move {
-            loop {
-                let Ok((mut socket, _)) = listener.accept().await else { return };
-                let mb = mb.clone();
-                tokio::spawn(async move {
-                    let mut buf = vec![0u8; 8192];
-                    let n = socket.read(&mut buf).await.unwrap_or(0);
-                    let request = String::from_utf8_lossy(&buf[..n]);
-                    let target = request.split_whitespace().nth(1).unwrap_or("/").to_string();
-                    let body = mb.respond(&target);
-                    let response = format!(
-                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                        body.len(),
-                        body
-                    );
-                    socket.write_all(response.as_bytes()).await.ok();
-                });
-            }
-        });
-        format!("http://{addr}/ws/2")
-    }
-}
+use common::testing::MbStub;
 
 struct Run {
     code: i32,
@@ -181,7 +109,7 @@ async fn a_different_artist_with_the_same_name_is_added_beside_the_existing_one(
     let music = tempdir("add-music");
     std::fs::create_dir(music.join(&name)).unwrap();
 
-    let mut mb = Mb::default();
+    let mut mb = MbStub::default();
     mb.artists.insert(pt.clone(), (name.clone(), Some("PT".into())));
     mb.artists.insert(cl.clone(), (name.clone(), Some("CL".into())));
     mb.groups.insert(cl.clone(), vec!["Tensión".into()]);
@@ -209,7 +137,7 @@ async fn the_same_artist_is_still_refused() {
     let name = format!("Napa {}", &cuid2::create_id()[..6]);
     let pt = uuid(&format!("pt{name}"));
     artist(&pool, &name, Some(&pt)).await;
-    let mut mb = Mb::default();
+    let mut mb = MbStub::default();
     mb.artists.insert(pt.clone(), (name.clone(), Some("PT".into())));
     let run = run_add(&url, &mb.serve().await, &tempdir("add-music"), &pt);
     assert_eq!(run.code, 3, "{}", run.output);
@@ -225,7 +153,7 @@ async fn an_unidentified_artist_whose_albums_are_this_artists_is_linked_not_dupl
     let existing = artist(&pool, &name, None).await;
     own(&pool, &existing, "Tension").await;
 
-    let mut mb = Mb::default();
+    let mut mb = MbStub::default();
     mb.artists.insert(pt.clone(), (name.clone(), Some("PT".into())));
     mb.artists.insert(cl.clone(), (name.clone(), Some("CL".into())));
     mb.groups.insert(pt.clone(), vec!["Senso Comum".into()]);
@@ -247,7 +175,7 @@ async fn an_unidentified_artist_that_matches_nothing_stays_beside_the_new_one() 
     let existing = artist(&pool, &name, None).await;
     own(&pool, &existing, "Nothing Like It").await;
 
-    let mut mb = Mb::default();
+    let mut mb = MbStub::default();
     mb.artists.insert(cl.clone(), (name.clone(), Some("CL".into())));
     mb.groups.insert(cl.clone(), vec!["Tensión".into()]);
     let run = run_add(&url, &mb.serve().await, &tempdir("add-music"), &cl);

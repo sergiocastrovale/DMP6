@@ -396,7 +396,9 @@ fn home_of(release: &OwnedRelease, members: &[(String, Option<String>)]) -> Home
 }
 
 async fn owned_releases(tx: &mut Transaction<'_, Postgres>, member_ids: &[String]) -> Result<Vec<OwnedRelease>, sqlx::Error> {
-    let rows: Vec<(String, String, String, Vec<String>, String, Option<String>)> = sqlx::query_as(
+    // (link id, release id, owner, ids its files carry, title, bound MB release)
+    type Row = (String, String, String, Vec<String>, String, Option<String>);
+    let rows: Vec<Row> = sqlx::query_as(
         r#"SELECT lra.id, lr.id, lra."artistId",
                   ARRAY(SELECT DISTINCT x FROM "LocalReleaseTrack" t,
                           unnest(COALESCE(t."mbAlbumArtistIds", '{}') || COALESCE(t."mbArtistIds", '{}')
@@ -604,7 +606,9 @@ fn connections(rows: &[GroupRow]) -> Vec<(String, String)> {
 }
 
 async fn load_group(tx: &mut Transaction<'_, Postgres>, base: &str) -> Result<Vec<GroupRow>, sqlx::Error> {
-    let rows: Vec<(String, String, String, Option<String>, Option<String>, i64)> = sqlx::query_as(
+    // (id, name, slug, MB id, primary, owned releases)
+    type Row = (String, String, String, Option<String>, Option<String>, i64);
+    let rows: Vec<Row> = sqlx::query_as(
         r#"SELECT a.id, a.name, a.slug, NULLIF(a."musicbrainzId", ''), a."primaryArtistId",
                   (SELECT count(*) FROM "LocalReleaseArtist" l WHERE l."artistId" = a.id)
            FROM "Artist" a WHERE a."baseSlug" = $1 ORDER BY a.id

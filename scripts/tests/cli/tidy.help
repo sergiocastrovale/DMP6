@@ -1,15 +1,29 @@
-Library-wide repair split out of `./sync` (docs/scripts/tidy.md, docs/specs/spec_tidy_script.md). Every caller chains `./tidy` after `./sync` - sync itself never calls it
-
 Usage: tidy [OPTIONS]
 
 Options:
-      --all                      Ignore the lastTidiedAt watermark - process every synced artist
-  -o, --only <ONLY>              Only tidy these artists (semicolon-separated)
-      --exact                    Exact match for --only (no prefix matching)
-  -f, --from <FROM>              
-  -t, --to <TO>                  
-      --artist-ids <ARTIST_IDS>  Read artist IDs from file (one per line, used by refresh) - bypasses the watermark and --only/--from/--to
-      --verbose                  
-      --web                      Emit PROGRESS:{json} lines and plain output for the web terminal
-      --rescore-only             Re-score bound releases - including ones already `MISSING_TRACKS` - against the release on file, and do nothing else: no box pass, no cleanup, no identity repair, no MusicBrainz calls, and no watermark stamp (the box pass did not run, so the artists are not "tidied"). For applying an improvement to the scorer's own rules to releases that were scored before it existed
-  -h, --help                     Print help
+      --all
+          Ignore the lastTidiedAt watermark - process every synced artist
+  -o, --only <ONLY>
+          Only tidy these artists (semicolon-separated)
+      --exact
+          Exact match for --only (no prefix matching)
+  -f, --from <FROM>
+          
+  -t, --to <TO>
+          
+      --artist-ids <ARTIST_IDS>
+          Read artist IDs from file (one per line, used by refresh) - bypasses the watermark and --only/--from/--to
+      --verbose
+          
+      --web
+          Emit PROGRESS:{json} lines and plain output for the web terminal
+      --rescore-only
+          Re-score bound releases - including ones already `MISSING_TRACKS` - against the release on file, and do nothing else: no box pass, no cleanup, no identity repair, no MusicBrainz calls, and no watermark stamp (the box pass did not run, so the artists are not "tidied"). For applying an improvement to the scorer's own rules to releases that were scored before it existed
+      --split-homonyms
+          One-off repair for artists merged under one name before homonyms were told apart: re-derive who owns every release of each artist whose files name a different MusicBrainz artist than the row does, splitting same-named artists into their own rows and pages (docs/sync_decisions.md "Two artists, one name"). Runs instead of the normal tidy. Follow it with ./sync --overwrite and ./tidy on the ids it writes to --emit-artist-ids
+      --dry-run
+          With --split-homonyms: list what would be re-derived, change nothing
+      --emit-artist-ids <EMIT_ARTIST_IDS>
+          With --split-homonyms: write the id of every artist in an affected name group to this file, one per line
+  -h, --help
+          Print help

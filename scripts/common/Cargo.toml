@@ -6,6 +6,10 @@ edition = "2021"
 [lib]
 path = "src/lib.rs"
 
+[features]
+# Test support for the other crates' integration tests (common::testing).
+testing = []
+
 [dependencies]
 sqlx = { workspace = true }
 tokio = { workspace = true }

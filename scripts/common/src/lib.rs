@@ -19,5 +19,7 @@ pub mod secrets;
 pub mod slug;
 pub mod statistics;
 pub mod tags;
+#[cfg(feature = "testing")]
+pub mod testing;
 pub mod totals;
 pub mod types;
