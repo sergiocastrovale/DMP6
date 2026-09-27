@@ -21,8 +21,8 @@
 ## Bugs
 
 - [x] 3 identical "Dear Michael: The Motown Collection" cards — verified fixed 2026-09-27: only 1 folder now bound to the box (`MISSING_TRACKS`, not duplicated as COMPLETE). See `docs/sync_decisions.md` §19 item 7.
-- [ ] Compilations owned by dozens of unrelated artists (a Harold Land compilation on Lana Del Rey's page) — scattered per-track artist tags; index ownership. See `docs/sync_decisions.md` §19 item 8.
-- [ ] 124 "Chronological Classics" bindings whose files agree on the wrong volume — retag the files. List: `docs/specs/spec_tidy_observations_cc_retag.tsv`, background in `docs/sync_decisions.md` §19 item 9.
+- [ ] Compilations owned by dozens of unrelated artists (a Harold Land compilation on Lana Del Rey's page) — scattered per-track artist tags; index ownership. See `docs/sync_decisions.md` §19 item 8. **Reverified 2026-09-27, still broken**: Lana Del Rey + Christina Perri still each co-own 7-13 Harold Land compilation folders; some compilations top 100+ owning artists (`Face the Beat: Session 6` = 152). No majority-owner/index-ownership code exists yet (grepped `scripts/index`, `scripts/common` — nothing). Real fix still pending.
+- [ ] 124 "Chronological Classics" bindings whose files agree on the wrong volume — retag the files. List: `docs/specs/spec_tidy_observations_cc_retag.tsv`, background in `docs/sync_decisions.md` §19 item 9. **Reverified 2026-09-27, still broken**: 122/127 folders in the tsv still exist unchanged in prod DB, still bound to the wrong CC volume. Retagging never happened.
 
 ## UI
 
