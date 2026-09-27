@@ -125,9 +125,22 @@ async fn a_merged_artist_is_split_by_its_files_ids_and_a_mistagged_file_is_not()
     mb.artists.insert(other.clone(), ("Somebody Else".into(), None));
     let mb_url = mb.serve().await;
 
+    // A collaboration release carrying the partner's id is not a homonym and must not be a candidate.
+    let collab = format!("Collab {}", &cuid2::create_id()[..6]);
+    let collab_id = cuid2::create_id();
+    sqlx::query(r#"INSERT INTO "Artist" (id, name, slug, "totalTracks", "totalFileSize", "createdAt", "updatedAt") VALUES ($1, $2, $3, 0, 0, now(), now())"#)
+        .bind(&collab_id)
+        .bind(&collab)
+        .bind(common::slug::make_slug(&collab))
+        .execute(&pool)
+        .await
+        .unwrap();
+    release(&pool, &collab_id, &format!("{collab} & Partner"), "Together", Some(&uuid(&format!("partner{collab}")))).await;
+
     let (code, out) = run_tidy(&url, &mb_url, &["--split-homonyms", "--dry-run"]);
     assert_eq!(code, 0, "{out}");
     assert!(out.contains(&name), "the dry run lists the merged artist: {out}");
+    assert!(!out.contains(&collab), "a collaboration is not a homonym: {out}");
     let unchanged: String = sqlx::query_scalar(r#"SELECT slug FROM "Artist" WHERE id = $1"#).bind(&merged).fetch_one(&pool).await.unwrap();
     assert_eq!(unchanged, base, "a dry run changes nothing");
 

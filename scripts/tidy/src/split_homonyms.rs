@@ -12,33 +12,40 @@ use common::progress::Reporter;
 use index::resolve::{resolve_and_apply, ArtistResolver, Decision};
 use sqlx::PgPool;
 
-/// Artists owning at least one release whose tracks carry exactly one album-artist id that is not the row's own.
+/// The homonym signature: files whose album-artist tag *is this artist's own name* but whose single album-artist id is
+/// not the row's. Two shapes count - the row has an id and some of its files name another one, or the row has none and
+/// its files name two or more. A file naming a co-owner or a collaboration ("A & B", the partner's id) is not a
+/// homonym, and a row with no id whose files all name one artist only needs identifying, which sync does; neither is
+/// a candidate. Measured on the live library: 223 artists (the looser "any other id" test matched 5,450).
+const HOMONYM_TRACKS: &str = r#"
+    FROM "Artist" a
+    JOIN "LocalReleaseArtist" l ON l."artistId" = a.id
+    JOIN "LocalReleaseTrack" t ON t."localReleaseId" = l."localReleaseId"
+    WHERE a."primaryArtistId" IS NULL
+      AND cardinality(COALESCE(t."mbAlbumArtistIds", '{}')) = 1
+      AND t."mbAlbumArtistIds"[1] ~ '^[0-9a-f-]{36}$'
+      AND t."mbAlbumArtistIds"[1] <> '89ad4ac3-39f7-470e-963a-56509c546377'
+      AND lower(btrim(t."albumArtist")) = lower(btrim(a.name))"#;
+
 async fn candidates(pool: &PgPool) -> Result<Vec<(String, String, Option<String>)>, sqlx::Error> {
-    sqlx::query_as(
-        r#"SELECT DISTINCT a.id, a.name, NULLIF(a."musicbrainzId", '')
-           FROM "Artist" a
-           JOIN "LocalReleaseArtist" l ON l."artistId" = a.id
-           JOIN "LocalReleaseTrack" t ON t."localReleaseId" = l."localReleaseId"
-           WHERE a."primaryArtistId" IS NULL
-             AND cardinality(COALESCE(t."mbAlbumArtistIds", '{}')) = 1
-             AND t."mbAlbumArtistIds"[1] ~ '^[0-9a-f-]{36}$'
-             AND t."mbAlbumArtistIds"[1] <> '89ad4ac3-39f7-470e-963a-56509c546377'
-             AND t."mbAlbumArtistIds"[1] IS DISTINCT FROM NULLIF(a."musicbrainzId", '')
-           ORDER BY a.name"#,
-    )
+    sqlx::query_as(&format!(
+        r#"SELECT a.id, a.name, NULLIF(a."musicbrainzId", '') {HOMONYM_TRACKS}
+           GROUP BY a.id, a.name, a."musicbrainzId"
+           HAVING (NULLIF(a."musicbrainzId", '') IS NOT NULL
+                   AND bool_or(t."mbAlbumArtistIds"[1] IS DISTINCT FROM NULLIF(a."musicbrainzId", '')))
+               OR count(DISTINCT t."mbAlbumArtistIds"[1]) > 1
+           ORDER BY a.name"#
+    ))
     .fetch_all(pool)
     .await
 }
 
-/// Per candidate: each album-artist id its releases carry, with how many releases carry it.
+/// Per candidate: each id its own-name files carry, with how many releases carry it.
 async fn ids_by_release_count(pool: &PgPool, artist_id: &str) -> Result<Vec<(String, i64)>, sqlx::Error> {
-    sqlx::query_as(
-        r#"SELECT t."mbAlbumArtistIds"[1], count(DISTINCT t."localReleaseId")
-           FROM "LocalReleaseArtist" l
-           JOIN "LocalReleaseTrack" t ON t."localReleaseId" = l."localReleaseId"
-           WHERE l."artistId" = $1 AND cardinality(COALESCE(t."mbAlbumArtistIds", '{}')) = 1
-           GROUP BY 1 ORDER BY 2 DESC"#,
-    )
+    sqlx::query_as(&format!(
+        r#"SELECT t."mbAlbumArtistIds"[1], count(DISTINCT t."localReleaseId") {HOMONYM_TRACKS} AND a.id = $1
+           GROUP BY 1 ORDER BY 2 DESC"#
+    ))
     .bind(artist_id)
     .fetch_all(pool)
     .await
@@ -54,7 +61,7 @@ pub async fn run(pool: &PgPool, reporter: &Reporter, dry_run: bool, emit_ids: Op
             return 1;
         }
     };
-    reporter.info(&format!("{} artist(s) own releases whose files name a different MusicBrainz artist", found.len()));
+    reporter.info(&format!("{} artist(s) own releases whose files, under their own name, name a different MusicBrainz artist", found.len()));
     for (id, name, mbid) in &found {
         let ids = ids_by_release_count(pool, id).await.unwrap_or_default();
         let listed: Vec<String> = ids
