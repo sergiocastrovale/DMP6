@@ -26,8 +26,12 @@ pub enum AddDecision {
 pub fn decide(members: &[Member], identified: Option<Option<String>>, adding: &str) -> AddDecision {
     let unidentified = members.iter().find(|m| m.mbid.is_none());
     match (unidentified, identified) {
-        (Some(u), Some(Some(id))) if id == adding => AddDecision::LinkExisting { artist_id: u.id.clone() },
-        (Some(u), Some(Some(id))) => AddDecision::Create { identify: Some((u.id.clone(), id)) },
+        (Some(u), Some(Some(id))) if id == adding => AddDecision::LinkExisting {
+            artist_id: u.id.clone(),
+        },
+        (Some(u), Some(Some(id))) => AddDecision::Create {
+            identify: Some((u.id.clone(), id)),
+        },
         _ => AddDecision::Create { identify: None },
     }
 }
@@ -38,7 +42,12 @@ pub fn folder_for(name_folder: &str, mbid: &str, bare_taken: bool) -> String {
     if !bare_taken {
         return name_folder.to_string();
     }
-    let token: String = mbid.chars().filter(|c| c.is_ascii_alphanumeric()).take(8).collect::<String>().to_lowercase();
+    let token: String = mbid
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .take(8)
+        .collect::<String>()
+        .to_lowercase();
     format!("{} ({})", name_folder, token)
 }
 
@@ -47,19 +56,27 @@ mod tests {
     use super::*;
 
     fn m(id: &str, mbid: Option<&str>) -> Member {
-        Member { id: id.into(), mbid: mbid.map(Into::into) }
+        Member {
+            id: id.into(),
+            mbid: mbid.map(Into::into),
+        }
     }
 
     #[test]
     fn an_identified_namesake_never_blocks_the_add() {
-        assert_eq!(decide(&[m("pt", Some("PT"))], None, "CL"), AddDecision::Create { identify: None });
+        assert_eq!(
+            decide(&[m("pt", Some("PT"))], None, "CL"),
+            AddDecision::Create { identify: None }
+        );
     }
 
     #[test]
     fn the_unidentified_member_that_is_this_artist_is_linked_instead_of_duplicated() {
         assert_eq!(
             decide(&[m("u", None)], Some(Some("CL".into())), "CL"),
-            AddDecision::LinkExisting { artist_id: "u".into() }
+            AddDecision::LinkExisting {
+                artist_id: "u".into()
+            }
         );
     }
 
@@ -67,18 +84,29 @@ mod tests {
     fn the_unidentified_member_that_is_someone_else_is_identified_and_the_add_goes_ahead() {
         assert_eq!(
             decide(&[m("u", None)], Some(Some("PT".into())), "CL"),
-            AddDecision::Create { identify: Some(("u".into(), "PT".into())) }
+            AddDecision::Create {
+                identify: Some(("u".into(), "PT".into()))
+            }
         );
     }
 
     #[test]
     fn an_unidentifiable_member_stays_as_it_is() {
-        assert_eq!(decide(&[m("u", None), m("pt", Some("PT"))], Some(None), "CL"), AddDecision::Create { identify: None });
+        assert_eq!(
+            decide(&[m("u", None), m("pt", Some("PT"))], Some(None), "CL"),
+            AddDecision::Create { identify: None }
+        );
     }
 
     #[test]
     fn a_taken_folder_gets_the_id_token() {
-        assert_eq!(folder_for("Napa", "9f3423ee-debe-48ec-b78d-281438aaf626", true), "Napa (9f3423ee)");
-        assert_eq!(folder_for("Napa", "9f3423ee-debe-48ec-b78d-281438aaf626", false), "Napa");
+        assert_eq!(
+            folder_for("Napa", "9f3423ee-debe-48ec-b78d-281438aaf626", true),
+            "Napa (9f3423ee)"
+        );
+        assert_eq!(
+            folder_for("Napa", "9f3423ee-debe-48ec-b78d-281438aaf626", false),
+            "Napa"
+        );
     }
 }

@@ -26,8 +26,27 @@ fn mp3(path: &Path, album_artist: &str, mbid: &str) -> bool {
     }
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let ok = Command::new("ffmpeg")
-        .args(["-y", "-loglevel", "error", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "1", "-c:a", "libmp3lame"])
-        .args(["-metadata", "title=Tension", "-metadata", &format!("album_artist={album_artist}"), "-metadata", "album=11-11"])
+        .args([
+            "-y",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "anullsrc=r=44100:cl=mono",
+            "-t",
+            "1",
+            "-c:a",
+            "libmp3lame",
+        ])
+        .args([
+            "-metadata",
+            "title=Tension",
+            "-metadata",
+            &format!("album_artist={album_artist}"),
+            "-metadata",
+            "album=11-11",
+        ])
         .args(["-metadata", &format!("MusicBrainz Album Artist Id={mbid}")])
         .arg(path)
         .status()
@@ -39,13 +58,17 @@ fn mp3(path: &Path, album_artist: &str, mbid: &str) -> bool {
 
 fn album_artist_id(path: &Path) -> Option<String> {
     let tagged = Probe::open(path).unwrap().read().unwrap();
-    tagged.primary_tag().and_then(|t| t.get_string(ItemKey::MusicBrainzReleaseArtistId).map(str::to_string))
+    tagged.primary_tag().and_then(|t| {
+        t.get_string(ItemKey::MusicBrainzReleaseArtistId)
+            .map(str::to_string)
+    })
 }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn the_chosen_artists_id_is_written_into_every_file_and_the_folder_re_indexed() {
-    let url = std::env::var("SMOKE_TEST_DATABASE_URL").expect("set SMOKE_TEST_DATABASE_URL to a disposable, migrated Postgres");
+    let url = std::env::var("SMOKE_TEST_DATABASE_URL")
+        .expect("set SMOKE_TEST_DATABASE_URL to a disposable, migrated Postgres");
     let pool = sqlx::PgPool::connect(&url).await.unwrap();
     let music = tempdir("fix-music");
     let wrong = "9f3423ee-debe-48ec-b78d-281438aaf626";
@@ -56,7 +79,11 @@ async fn the_chosen_artists_id_is_written_into_every_file_and_the_folder_re_inde
     if !mp3(&file, &format!("Napa {tag}"), wrong) {
         return;
     }
-    assert_eq!(album_artist_id(&file).as_deref(), Some(wrong), "fixture carries the wrong id");
+    assert_eq!(
+        album_artist_id(&file).as_deref(),
+        Some(wrong),
+        "fixture carries the wrong id"
+    );
 
     let release = cuid2::create_id();
     sqlx::query(r#"INSERT INTO "LocalRelease" (id, title, "groupKey", "folderPath", "createdAt", "updatedAt") VALUES ($1, '11-11', $2, $3, now(), now())"#)
@@ -86,9 +113,16 @@ async fn the_chosen_artists_id_is_written_into_every_file_and_the_folder_re_inde
         .env("MB_BASE_URL", "http://127.0.0.1:9/ws/2")
         .output()
         .unwrap();
-    let log = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+    let log = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
     assert!(out.status.success(), "{log}");
     assert_eq!(album_artist_id(&file).as_deref(), Some(right), "{log}");
     assert!(log.contains("Re-indexing affected folders"), "{log}");
-    assert!(log.contains(&folder), "the release's own folder is re-indexed: {log}");
+    assert!(
+        log.contains(&folder),
+        "the release's own folder is re-indexed: {log}"
+    );
 }

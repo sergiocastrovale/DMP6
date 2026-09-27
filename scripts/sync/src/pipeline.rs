@@ -560,7 +560,9 @@ pub(crate) async fn process_artist(
         match common::homonyms::reconcile_bases(&pool, &bases).await {
             Ok(outcome) => {
                 for (_, old, new) in &outcome.renamed {
-                    r.nested().ok(&format!("Artist page moved: /artist/{old} -> /artist/{new}"));
+                    r.nested().ok(&format!(
+                        "Artist page moved: /artist/{old} -> /artist/{new}"
+                    ));
                 }
             }
             Err(e) => r.warn(&format!("Homonym reconcile failed: {}", e)),

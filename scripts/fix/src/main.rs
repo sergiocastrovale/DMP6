@@ -81,14 +81,20 @@ async fn main() {
     }
     reporter.blank();
 
-    if !args.corrupted && !args.orphans && !args.duplicates && !args.missing && !args.assign_artist {
+    if !args.corrupted && !args.orphans && !args.duplicates && !args.missing && !args.assign_artist
+    {
         reporter.failed(
             "Specify at least one fix type: --corrupted, --orphans, --duplicates, --missing, --assign-artist",
         );
         std::process::exit(1);
     }
-    let assign_mbid = args.mbid.as_deref().and_then(common::filters::sanitize_mb_id);
-    if args.assign_artist && (assign_mbid.is_none() || (args.release.is_none() && args.folder.is_none())) {
+    let assign_mbid = args
+        .mbid
+        .as_deref()
+        .and_then(common::filters::sanitize_mb_id);
+    if args.assign_artist
+        && (assign_mbid.is_none() || (args.release.is_none() && args.folder.is_none()))
+    {
         reporter.failed("--assign-artist needs a valid --mbid and one of --release or --folder");
         std::process::exit(1);
     }
@@ -214,9 +220,20 @@ async fn main() {
                 (None, Some(f)) => assign::Target::Folder(f),
                 (None, None) => unreachable!("checked above"),
             };
-            match assign::assign(&pool, &music_dir, target, assign_mbid.as_deref().unwrap_or_default(), args.dry_run, &reporter).await {
+            match assign::assign(
+                &pool,
+                &music_dir,
+                target,
+                assign_mbid.as_deref().unwrap_or_default(),
+                args.dry_run,
+                &reporter,
+            )
+            .await
+            {
                 Ok((ok, fail, folders)) => {
-                    reporter.nested().ok(&format!("{} file(s) written, {} failed", ok, fail));
+                    reporter
+                        .nested()
+                        .ok(&format!("{} file(s) written, {} failed", ok, fail));
                     if ok > 0 && !args.dry_run {
                         had_file_writes = true;
                     }

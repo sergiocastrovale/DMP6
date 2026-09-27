@@ -9,7 +9,8 @@ use std::process::Command;
 use sqlx::PgPool;
 
 async fn pool() -> PgPool {
-    let url = std::env::var("SMOKE_TEST_DATABASE_URL").expect("set SMOKE_TEST_DATABASE_URL to a disposable, migrated Postgres");
+    let url = std::env::var("SMOKE_TEST_DATABASE_URL")
+        .expect("set SMOKE_TEST_DATABASE_URL to a disposable, migrated Postgres");
     PgPool::connect(&url).await.expect("connect")
 }
 
@@ -29,7 +30,14 @@ fn run_delete(db_url: &str, args: &[&str]) -> (i32, String) {
         .env("DATABASE_URL", db_url)
         .output()
         .expect("run delete");
-    (out.status.code().unwrap_or(-1), format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr)))
+    (
+        out.status.code().unwrap_or(-1),
+        format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        ),
+    )
 }
 
 async fn artist(pool: &PgPool, name: &str) -> String {
@@ -74,12 +82,18 @@ async fn a_shared_name_refuses_by_name_but_id_targets_exactly_one() {
 
     let (code, out) = run_delete(&url, &[&name, "--dry-run"]);
     assert_eq!(code, 1, "{out}");
-    assert!(out.contains("ambiguous") || out.contains("2 artists match"), "{out}");
+    assert!(
+        out.contains("ambiguous") || out.contains("2 artists match"),
+        "{out}"
+    );
 
     let (code, out) = run_delete(&url, &["--id", &a, "--dry-run"]);
     assert_eq!(code, 0, "{out}");
     assert!(out.contains("Artists to delete"), "{out}");
-    assert!(!out.contains(&b), "must never touch the other same-named row: {out}");
+    assert!(
+        !out.contains(&b),
+        "must never touch the other same-named row: {out}"
+    );
 
     let (code, out) = run_delete(&url, &["--id", "nonexistent-id", "--dry-run"]);
     assert_eq!(code, 1, "{out}");

@@ -16,7 +16,7 @@ use sqlx::PgPool;
 /// not the row's. Two shapes count - the row has an id and some of its files name another one, or the row has none and
 /// its files name two or more. A file naming a co-owner or a collaboration ("A & B", the partner's id) is not a
 /// homonym, and a row with no id whose files all name one artist only needs identifying, which sync does; neither is
-/// a candidate. Measured on the live library: 223 artists (the looser "any other id" test matched 5,450).
+/// a candidate. The looser "any other id" test overmatches badly by comparison, so this signature stays strict.
 const HOMONYM_TRACKS: &str = r#"
     FROM "Artist" a
     JOIN "LocalReleaseArtist" l ON l."artistId" = a.id
@@ -41,7 +41,10 @@ async fn candidates(pool: &PgPool) -> Result<Vec<(String, String, Option<String>
 }
 
 /// Per candidate: each id its own-name files carry, with how many releases carry it.
-async fn ids_by_release_count(pool: &PgPool, artist_id: &str) -> Result<Vec<(String, i64)>, sqlx::Error> {
+async fn ids_by_release_count(
+    pool: &PgPool,
+    artist_id: &str,
+) -> Result<Vec<(String, i64)>, sqlx::Error> {
     sqlx::query_as(&format!(
         r#"SELECT t."mbAlbumArtistIds"[1], count(DISTINCT t."localReleaseId") {HOMONYM_TRACKS} AND a.id = $1
            GROUP BY 1 ORDER BY 2 DESC"#
@@ -52,7 +55,13 @@ async fn ids_by_release_count(pool: &PgPool, artist_id: &str) -> Result<Vec<(Str
 }
 
 /// Returns the process exit code.
-pub async fn run(pool: &PgPool, config: &common::config::Config, reporter: &Reporter, dry_run: bool, emit_ids: Option<&str>) -> i32 {
+pub async fn run(
+    pool: &PgPool,
+    config: &common::config::Config,
+    reporter: &Reporter,
+    dry_run: bool,
+    emit_ids: Option<&str>,
+) -> i32 {
     reporter.section("Homonym split");
     let found = match candidates(pool).await {
         Ok(c) => c,
@@ -66,9 +75,27 @@ pub async fn run(pool: &PgPool, config: &common::config::Config, reporter: &Repo
         let ids = ids_by_release_count(pool, id).await.unwrap_or_default();
         let listed: Vec<String> = ids
             .iter()
-            .map(|(m, n)| format!("{}{} x{}", &m[..8.min(m.len())], if Some(m) == mbid.as_ref() { " (row)" } else { "" }, n))
+            .map(|(m, n)| {
+                format!(
+                    "{}{} x{}",
+                    &m[..8.min(m.len())],
+                    if Some(m) == mbid.as_ref() {
+                        " (row)"
+                    } else {
+                        ""
+                    },
+                    n
+                )
+            })
             .collect();
-        reporter.nested().info(&format!("{} [{}]: {}", name, mbid.as_deref().map(|m| &m[..8.min(m.len())]).unwrap_or("no id"), listed.join(", ")));
+        reporter.nested().info(&format!(
+            "{} [{}]: {}",
+            name,
+            mbid.as_deref()
+                .map(|m| &m[..8.min(m.len())])
+                .unwrap_or("no id"),
+            listed.join(", ")
+        ));
     }
     if found.is_empty() {
         reporter.done("Nothing to split.");
@@ -81,7 +108,9 @@ pub async fn run(pool: &PgPool, config: &common::config::Config, reporter: &Repo
     }
 
     let ids: Vec<String> = found.iter().map(|(id, _, _)| id.clone()).collect();
-    let bases_before = common::homonyms::bases_of(pool, &ids).await.unwrap_or_default();
+    let bases_before = common::homonyms::bases_of(pool, &ids)
+        .await
+        .unwrap_or_default();
     let releases: Vec<String> = match sqlx::query_scalar(r#"SELECT DISTINCT "localReleaseId" FROM "LocalReleaseArtist" WHERE "artistId" = ANY($1::text[])"#)
         .bind(&ids)
         .fetch_all(pool)
@@ -93,12 +122,23 @@ pub async fn run(pool: &PgPool, config: &common::config::Config, reporter: &Repo
             return 1;
         }
     };
-    reporter.step(&format!("Re-deriving the owners of {} release(s)...", releases.len()));
+    reporter.step(&format!(
+        "Re-deriving the owners of {} release(s)...",
+        releases.len()
+    ));
 
     let mut resolver = ArtistResolver::new(pool, false);
     resolver.warm_cache().await;
     let mut report: Vec<Decision> = Vec::new();
-    if let Err(e) = resolve_and_apply(pool, &mut resolver, Some(&releases), &mut report, Some(reporter)).await {
+    if let Err(e) = resolve_and_apply(
+        pool,
+        &mut resolver,
+        Some(&releases),
+        &mut report,
+        Some(reporter),
+    )
+    .await
+    {
         reporter.err(&format!("Resolve pass failed: {}", e));
         return 1;
     }
@@ -109,14 +149,17 @@ pub async fn run(pool: &PgPool, config: &common::config::Config, reporter: &Repo
     }
     // Artists the re-derivation left owning nothing (an unidentified member whose releases all found their artist)
     // would only be an empty card on the chooser: the index's own orphan sweep removes them and reconciles again.
-    let members: Vec<String> = sqlx::query_scalar(r#"SELECT id FROM "Artist" WHERE "baseSlug" = ANY($1::text[])"#)
-        .bind(&bases_before)
-        .fetch_all(pool)
-        .await
-        .unwrap_or_default();
+    let members: Vec<String> =
+        sqlx::query_scalar(r#"SELECT id FROM "Artist" WHERE "baseSlug" = ANY($1::text[])"#)
+            .bind(&bases_before)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
     let swept = index::deletion::delete_orphan_artists(pool, config, Some(&members)).await;
     if swept > 0 {
-        reporter.nested().ok(&format!("{} emptied artist(s) removed", swept));
+        reporter
+            .nested()
+            .ok(&format!("{} emptied artist(s) removed", swept));
     }
 
     let groups: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
@@ -135,7 +178,11 @@ pub async fn run(pool: &PgPool, config: &common::config::Config, reporter: &Repo
     }
     reporter.blank();
     for base in &split {
-        let pages: Vec<String> = groups.iter().filter(|(b, _, _, _)| b == base).map(|(_, _, slug, _)| format!("/artist/{slug}")).collect();
+        let pages: Vec<String> = groups
+            .iter()
+            .filter(|(b, _, _, _)| b == base)
+            .map(|(_, _, slug, _)| format!("/artist/{slug}"))
+            .collect();
         reporter.ok(&format!("{}: {}", base, pages.join(", ")));
     }
     let affected: Vec<String> = groups.iter().map(|(_, id, _, _)| id.clone()).collect();
@@ -155,6 +202,10 @@ pub async fn run(pool: &PgPool, config: &common::config::Config, reporter: &Repo
         }
         Err(e) => reporter.warn(&format!("Invariant check failed: {}", e)),
     }
-    reporter.done(&format!("{} name(s) now split into separate artists, {} artist(s) to re-sync", split.len(), affected.len()));
+    reporter.done(&format!(
+        "{} name(s) now split into separate artists, {} artist(s) to re-sync",
+        split.len(),
+        affected.len()
+    ));
     0
 }

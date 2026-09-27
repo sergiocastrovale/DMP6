@@ -15,6 +15,9 @@
 use std::collections::{HashMap, HashSet};
 
 use common::artists::is_special_artist_name;
+use common::homonyms::{
+    ensure_artist_identity, reconcile_touched, IdSource, IdentityRequest, IdentityState,
+};
 use common::mb::api::{mb_lookup_artist, mb_search_artist_exact_all, RateLimiter};
 use common::mb::names::mb_artist_exact;
 use common::mb::names::normalize_name;
@@ -22,7 +25,6 @@ use common::mb::resolve::{
     cap_co_owners, resolve_with, JoinKind, LookupResult, Resolution, ResolveSource, ResolvedArtist,
 };
 use common::progress::Reporter;
-use common::homonyms::{ensure_artist_identity, reconcile_touched, IdSource, IdentityRequest, IdentityState};
 use common::slug::make_slug;
 use reqwest::Client;
 use sqlx::PgPool;
@@ -212,9 +214,15 @@ impl<'a> ArtistResolver<'a> {
     /// calls `claimed` exactly `name`, the name is recorded as ambiguous and the file's id is believed.
     pub async fn confirm_homonym(&mut self, name: &str, claimed: &str) -> bool {
         let confirmed = self.verify_id(name, claimed).await;
-        if confirmed && !matches!(self.memo.get(name), Some(LookupResult::Found { mbid: None })) {
+        if confirmed
+            && !matches!(
+                self.memo.get(name),
+                Some(LookupResult::Found { mbid: None })
+            )
+        {
             let ambiguous = LookupResult::Found { mbid: None };
-            self.persist_lookup(name, &ambiguous, Some(name.to_string())).await;
+            self.persist_lookup(name, &ambiguous, Some(name.to_string()))
+                .await;
             self.memo.insert(name.to_string(), ambiguous);
         }
         confirmed
@@ -486,11 +494,21 @@ pub async fn ensure_resolved_artist(
     release_title: Option<&str>,
     credit: bool,
 ) -> Result<String, sqlx::Error> {
-    let mbid = if artist.verified { artist.mbid.as_deref() } else { None };
+    let mbid = if artist.verified {
+        artist.mbid.as_deref()
+    } else {
+        None
+    };
     ensure_artist_identity(
         pool,
         identities,
-        &IdentityRequest { name: &artist.name, mbid, source, release_title, credit },
+        &IdentityRequest {
+            name: &artist.name,
+            mbid,
+            source,
+            release_title,
+            credit,
+        },
     )
     .await
 }
@@ -519,12 +537,16 @@ async fn checked_file_pairing(
         let settled = matches!(resolver.memo.get(tag), Some(LookupResult::Found { mbid: Some(known) }) if known == id);
         let believed = settled
             || match resolver.memo.get(tag) {
-                Some(LookupResult::Found { mbid: Some(_) }) => resolver.confirm_homonym(tag, id).await,
+                Some(LookupResult::Found { mbid: Some(_) }) => {
+                    resolver.confirm_homonym(tag, id).await
+                }
                 // MusicBrainz already said no artist is exactly this string (aliases included), so no id is either.
                 Some(LookupResult::NotFound) => false,
                 _ => resolver.verify_id(tag, id).await,
             };
-        return believed.then(|| embedded_pairing(tag, &[tag.to_string()], mb_ids, join)).flatten();
+        return believed
+            .then(|| embedded_pairing(tag, &[tag.to_string()], mb_ids, join))
+            .flatten();
     }
     if let Some(parts) = embedded_pairing_checked(&resolver.memo, tag, artists, mb_ids, join) {
         return Some(parts);
@@ -532,7 +554,9 @@ async fn checked_file_pairing(
     let parts = embedded_pairing(tag, artists, mb_ids, join)?;
     for part in &parts {
         if let Some(mbid) = &part.mbid {
-            if embedded_id_contradicted(&resolver.memo, &part.name, mbid) && !resolver.confirm_homonym(&part.name, mbid).await {
+            if embedded_id_contradicted(&resolver.memo, &part.name, mbid)
+                && !resolver.confirm_homonym(&part.name, mbid).await
+            {
                 return None;
             }
         }
@@ -720,8 +744,14 @@ pub async fn resolve_and_apply(
             // Only the album-artist frame's id can stand alone: a track-artist tag on a compilation names the track's
             // artist, and its frames are always paired.
             let lone_id = multi.is_empty() && matches!(tag, OwnerTag::AlbumArtist(_));
-            let from_files = checked_file_pairing(resolver, owner, multi, mb_ids, JoinKind::CoBilling, lone_id).await;
-            let source = if from_files.is_some() { IdSource::Proven } else { IdSource::Search };
+            let from_files =
+                checked_file_pairing(resolver, owner, multi, mb_ids, JoinKind::CoBilling, lone_id)
+                    .await;
+            let source = if from_files.is_some() {
+                IdSource::Proven
+            } else {
+                IdSource::Search
+            };
             let owner_parts: Option<Vec<ResolvedArtist>> = match from_files {
                 Some(mut parts) => {
                     resolver.stats.from_embedded += 1;
@@ -777,7 +807,15 @@ pub async fn resolve_and_apply(
                             .cloned()
                             .unwrap_or_default()
                     } else {
-                        ensure_resolved_artist(pool, &mut identities, &part, source, title, !is_owner).await?
+                        ensure_resolved_artist(
+                            pool,
+                            &mut identities,
+                            &part,
+                            source,
+                            title,
+                            !is_owner,
+                        )
+                        .await?
                     };
                     if id.is_empty() {
                         continue;
@@ -802,7 +840,11 @@ pub async fn resolve_and_apply(
             false,
         )
         .await;
-        let credit_source = if embedded.is_some() { IdSource::Proven } else { IdSource::Search };
+        let credit_source = if embedded.is_some() {
+            IdSource::Proven
+        } else {
+            IdSource::Search
+        };
         let parts: Vec<ResolvedArtist> = match embedded {
             Some(p) => {
                 resolver.stats.from_embedded += 1;
@@ -844,7 +886,8 @@ pub async fn resolve_and_apply(
                     .cloned()
                     .unwrap_or_default()
             } else {
-                ensure_resolved_artist(pool, &mut identities, &part, credit_source, None, true).await?
+                ensure_resolved_artist(pool, &mut identities, &part, credit_source, None, true)
+                    .await?
             };
             if id.is_empty() {
                 continue;
@@ -1006,7 +1049,9 @@ pub async fn resolve_and_apply(
     if let Some(reporter) = progress {
         reporter.clear_transient();
         for (_, old, new) in &outcome.renamed {
-            reporter.ok(&format!("Artist page moved: /artist/{old} -> /artist/{new}"));
+            reporter.ok(&format!(
+                "Artist page moved: /artist/{old} -> /artist/{new}"
+            ));
         }
     }
 
@@ -1192,7 +1237,14 @@ mod tests {
         let memo = memo(&[("row-name", LookupResult::Found { mbid: None })]);
         let artists = vec!["row-name".to_string()];
         let mb_ids = vec!["mbid-any".to_string()];
-        assert!(embedded_pairing_checked(&memo, "row-name", &artists, &mb_ids, JoinKind::CoBilling).is_none());
+        assert!(embedded_pairing_checked(
+            &memo,
+            "row-name",
+            &artists,
+            &mb_ids,
+            JoinKind::CoBilling
+        )
+        .is_none());
     }
 
     #[test]

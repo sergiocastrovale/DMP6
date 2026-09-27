@@ -133,7 +133,14 @@ async fn main() {
     let running = common::app::spawn_shutdown_handlers(&pool, "tidy", "phase", 1);
 
     if args.split_homonyms {
-        let code = split_homonyms::run(&pool, &config, &reporter, args.dry_run, args.emit_artist_ids.as_deref()).await;
+        let code = split_homonyms::run(
+            &pool,
+            &config,
+            &reporter,
+            args.dry_run,
+            args.emit_artist_ids.as_deref(),
+        )
+        .await;
         release_lock(&pool, "tidy", std::process::id()).await;
         std::process::exit(code);
     }
@@ -531,12 +538,16 @@ async fn main() {
     // reports whatever still breaks the invariant library-wide.
     if !args.rescore_only {
         let bases: Vec<String> = if is_global {
-            sqlx::query_scalar(r#"SELECT DISTINCT "baseSlug" FROM "Artist" WHERE "baseSlug" IS NOT NULL"#)
-                .fetch_all(&pool)
+            sqlx::query_scalar(
+                r#"SELECT DISTINCT "baseSlug" FROM "Artist" WHERE "baseSlug" IS NOT NULL"#,
+            )
+            .fetch_all(&pool)
+            .await
+            .unwrap_or_default()
+        } else {
+            common::homonyms::bases_of(&pool, &scope_ids)
                 .await
                 .unwrap_or_default()
-        } else {
-            common::homonyms::bases_of(&pool, &scope_ids).await.unwrap_or_default()
         };
         // A member of a shared name that owns nothing and is credited nowhere is only an empty card on the chooser page:
         // the index's orphan sweep (which spares ./add's manuallyAdded artists) removes it and reconciles its name.
@@ -548,17 +559,23 @@ async fn main() {
         .fetch_all(&pool)
         .await
         .unwrap_or_default();
-        let swept = index::deletion::delete_orphan_artists(&pool, &config, Some(&shared_members)).await;
+        let swept =
+            index::deletion::delete_orphan_artists(&pool, &config, Some(&shared_members)).await;
         if swept > 0 {
             reporter.ok(&format!("{} empty artist(s) sharing a name removed", swept));
         }
         match common::homonyms::reconcile_bases(&pool, &bases).await {
             Ok(outcome) => {
                 for (_, old, new) in &outcome.renamed {
-                    reporter.ok(&format!("Artist page moved: /artist/{old} -> /artist/{new}"));
+                    reporter.ok(&format!(
+                        "Artist page moved: /artist/{old} -> /artist/{new}"
+                    ));
                 }
                 if !outcome.moved.is_empty() {
-                    reporter.ok(&format!("{} release(s) moved to the artist their files or catalogue name", outcome.moved.len()));
+                    reporter.ok(&format!(
+                        "{} release(s) moved to the artist their files or catalogue name",
+                        outcome.moved.len()
+                    ));
                 }
             }
             Err(e) => {
@@ -570,7 +587,10 @@ async fn main() {
         }
         if let Ok(v) = common::homonyms::violations(&pool).await {
             if !v.is_empty() {
-                reporter.warn(&format!("{} artist name(s) break the homonym rules - see /issues", v.len()));
+                reporter.warn(&format!(
+                    "{} artist name(s) break the homonym rules - see /issues",
+                    v.len()
+                ));
             }
         }
     }

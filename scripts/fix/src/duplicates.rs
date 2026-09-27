@@ -130,7 +130,8 @@ async fn merge(
 
     // Everything below is one atomic merge - a crash mid-way must not leave B half-merged (double
     // work on re-run) or drop B's genres/URLs/play count/in-flight downloads on the floor.
-    let merge_bases = common::homonyms::bases_of(pool, &[artist_a.to_string(), artist_b.to_string()]).await?;
+    let merge_bases =
+        common::homonyms::bases_of(pool, &[artist_a.to_string(), artist_b.to_string()]).await?;
     let mut tx = pool.begin().await?;
 
     sqlx::query(

@@ -15,7 +15,10 @@ const TAG_BYTES: usize = 16;
 /// The plaintext of a stored settings value, or None when it is encrypted and cannot be opened (no key configured,
 /// wrong key, damaged). Callers treat None as "not set" and fall back to their env value.
 pub fn decrypt_secret(stored: &str) -> Option<String> {
-    decrypt_with(stored, std::env::var("SETTINGS_ENCRYPTION_KEY").ok().as_deref())
+    decrypt_with(
+        stored,
+        std::env::var("SETTINGS_ENCRYPTION_KEY").ok().as_deref(),
+    )
 }
 
 fn decrypt_with(stored: &str, key: Option<&str>) -> Option<String> {
@@ -46,7 +49,10 @@ mod tests {
 
     #[test]
     fn opens_a_value_the_web_app_encrypted() {
-        assert_eq!(decrypt_with(VECTOR, Some(KEY)).as_deref(), Some("fanart-secret-value"));
+        assert_eq!(
+            decrypt_with(VECTOR, Some(KEY)).as_deref(),
+            Some("fanart-secret-value")
+        );
     }
 
     #[test]
@@ -59,7 +65,10 @@ mod tests {
     fn an_encrypted_value_needs_the_right_key() {
         assert_eq!(decrypt_with(VECTOR, None), None);
         assert_eq!(decrypt_with(VECTOR, Some("")), None);
-        assert_eq!(decrypt_with(VECTOR, Some("some-other-key-some-other-key-xxxx")), None);
+        assert_eq!(
+            decrypt_with(VECTOR, Some("some-other-key-some-other-key-xxxx")),
+            None
+        );
     }
 
     #[test]

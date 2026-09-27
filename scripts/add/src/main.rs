@@ -156,16 +156,35 @@ async fn main() {
     let identified: Option<Option<String>> = match members.iter().find(|m| m.mbid.is_none()) {
         None => None,
         Some(u) => {
-            reporter.step(&format!("Checking whether the {} already in the library is this artist...", name));
-            let mut candidates = mb_api::mb_search_artist_exact_all(&http_client, &name, &mut limiter)
-                .await
-                .unwrap_or_default();
+            reporter.step(&format!(
+                "Checking whether the {} already in the library is this artist...",
+                name
+            ));
+            let mut candidates =
+                mb_api::mb_search_artist_exact_all(&http_client, &name, &mut limiter)
+                    .await
+                    .unwrap_or_default();
             if !candidates.iter().any(|c| c.id == mb_id) {
-                candidates.push(mb_api::mb_lookup_artist(&http_client, &mb_id, &mut limiter).await.unwrap_or(
-                    dmp_sync::mb_types::MbArtistMatch { id: mb_id.clone(), name: name.clone(), score: Some(100), aliases: None },
-                ));
+                candidates.push(
+                    mb_api::mb_lookup_artist(&http_client, &mb_id, &mut limiter)
+                        .await
+                        .unwrap_or(dmp_sync::mb_types::MbArtistMatch {
+                            id: mb_id.clone(),
+                            name: name.clone(),
+                            score: Some(100),
+                            aliases: None,
+                        }),
+                );
             }
-            match dmp_sync::mb_matching::choose_homonym(&http_client, &pool, &u.id, &candidates, &mut limiter).await {
+            match dmp_sync::mb_matching::choose_homonym(
+                &http_client,
+                &pool,
+                &u.id,
+                &candidates,
+                &mut limiter,
+            )
+            .await
+            {
                 Ok(pick) => Some(pick.map(|m| m.id)),
                 Err(e) => {
                     reporter.warn(&format!("Could not check the existing artist: {}", e));
@@ -177,7 +196,10 @@ async fn main() {
     let decision = homonym::decide(&members, identified, &mb_id);
 
     if let homonym::AddDecision::LinkExisting { artist_id } = &decision {
-        reporter.ok(&format!("Your existing {} is this artist - linking it instead of adding a second one", name));
+        reporter.ok(&format!(
+            "Your existing {} is this artist - linking it instead of adding a second one",
+            name
+        ));
         if args.dry_run {
             reporter.done("Dry run - nothing changed.");
             release_lock(&pool, "add", std::process::id()).await;
@@ -201,22 +223,42 @@ async fn main() {
         if let Err(e) = common::homonyms::reconcile_group(&pool, &base_slug).await {
             reporter.warn(&format!("Homonym reconcile failed: {}", e));
         }
-        run_gaps(&pool, &http_client, &mut limiter, &reporter, &running, artist_id, &name, args.verbose).await;
+        run_gaps(
+            &pool,
+            &http_client,
+            &mut limiter,
+            &reporter,
+            &running,
+            artist_id,
+            &name,
+            args.verbose,
+        )
+        .await;
         return;
     }
-    if let homonym::AddDecision::Create { identify: Some((unidentified, its_id)) } = &decision {
-        reporter.nested().info(&format!("The {} already in the library is another artist ({}) - keeping both", name, its_id));
+    if let homonym::AddDecision::Create {
+        identify: Some((unidentified, its_id)),
+    } = &decision
+    {
+        reporter.nested().info(&format!(
+            "The {} already in the library is another artist ({}) - keeping both",
+            name, its_id
+        ));
         if !args.dry_run {
-            sqlx::query(r#"UPDATE "Artist" SET "musicbrainzId" = $1, "updatedAt" = NOW() WHERE id = $2"#)
-                .bind(its_id)
-                .bind(unidentified)
-                .execute(&pool)
-                .await
-                .ok();
+            sqlx::query(
+                r#"UPDATE "Artist" SET "musicbrainzId" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+            )
+            .bind(its_id)
+            .bind(unidentified)
+            .execute(&pool)
+            .await
+            .ok();
         }
-    }
-    else if !members.is_empty() {
-        reporter.nested().info(&format!("Another artist named {} is already in the library - both keep their own page", name));
+    } else if !members.is_empty() {
+        reporter.nested().info(&format!(
+            "Another artist named {} is already in the library - both keep their own page",
+            name
+        ));
     }
 
     // A shared name: the folder carries the same id token as the slug so the two never share a directory.
@@ -271,7 +313,11 @@ async fn main() {
     let artist_id = cuid2::create_id();
     // Alone under its name it takes the bare slug; otherwise a provisional one that the reconcile below replaces with
     // the group's id-suffixed form (and moves the existing members off the bare slug).
-    let provisional_slug = if members.is_empty() { base_slug.clone() } else { format!("__homonym-{}", artist_id) };
+    let provisional_slug = if members.is_empty() {
+        base_slug.clone()
+    } else {
+        format!("__homonym-{}", artist_id)
+    };
     if let Err(e) = db::insert_artist(
         &pool,
         &artist_id,
@@ -302,7 +348,9 @@ async fn main() {
     match common::homonyms::reconcile_group(&pool, &base_slug).await {
         Ok(outcome) => {
             for (_, old, new) in outcome.renamed.iter().filter(|(id, _, _)| *id != artist_id) {
-                reporter.nested().ok(&format!("Artist page moved: /artist/{old} -> /artist/{new}"));
+                reporter.nested().ok(&format!(
+                    "Artist page moved: /artist/{old} -> /artist/{new}"
+                ));
             }
         }
         Err(e) => reporter.warn(&format!("Homonym reconcile failed: {}", e)),
@@ -328,7 +376,17 @@ async fn main() {
     }
 
     reporter.blank();
-    run_gaps(&pool, &http_client, &mut limiter, &reporter, &running, &artist_id, &name, args.verbose).await;
+    run_gaps(
+        &pool,
+        &http_client,
+        &mut limiter,
+        &reporter,
+        &running,
+        &artist_id,
+        &name,
+        args.verbose,
+    )
+    .await;
 }
 
 /// The catalogue-gaps pass for one artist, so its page shows its MISSING releases immediately. Exits non-zero when
@@ -378,18 +436,27 @@ async fn run_gaps(
                 .await
                 .ok();
             reporter.blank();
-            reporter.done(&format!("Added {} - {} release(s) in catalogue", name, gaps));
+            reporter.done(&format!(
+                "Added {} - {} release(s) in catalogue",
+                name, gaps
+            ));
             release_lock(pool, "add", std::process::id()).await;
         }
         Ok(_) => {
-            reporter.warn(&format!("Catalogue fetch failed for {} (artist was still created)", name));
+            reporter.warn(&format!(
+                "Catalogue fetch failed for {} (artist was still created)",
+                name
+            ));
             release_lock(pool, "add", std::process::id()).await;
             std::process::exit(1);
         }
         Err(e) => {
             // Artist + folder already exist and are valid - a failed catalogue fetch is retried by the
             // artist page's own sync, not rolled back here.
-            reporter.warn(&format!("Catalogue fetch failed: {} (artist was still created)", e));
+            reporter.warn(&format!(
+                "Catalogue fetch failed: {} (artist was still created)",
+                e
+            ));
             release_lock(pool, "add", std::process::id()).await;
             std::process::exit(1);
         }

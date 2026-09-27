@@ -852,7 +852,9 @@ async fn main() {
     match common::homonyms::reconcile_touched(&pool, &mut identities).await {
         Ok(outcome) => {
             for (_, old, new) in &outcome.renamed {
-                reporter.ok(&format!("Artist page moved: /artist/{old} -> /artist/{new}"));
+                reporter.ok(&format!(
+                    "Artist page moved: /artist/{old} -> /artist/{new}"
+                ));
             }
         }
         Err(e) => reporter.warn(&format!("Homonym reconcile failed: {}", e)),

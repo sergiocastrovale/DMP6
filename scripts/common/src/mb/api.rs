@@ -628,7 +628,10 @@ pub async fn mb_search_artist_exact(
     name: &str,
     limiter: &mut RateLimiter,
 ) -> Result<Option<MbArtistMatch>, String> {
-    Ok(mb_search_artist_exact_all(client, name, limiter).await?.into_iter().next())
+    Ok(mb_search_artist_exact_all(client, name, limiter)
+        .await?
+        .into_iter()
+        .next())
 }
 
 /// Every artist `name` exactly is, best first - more than one means a homonym (docs/sync_decisions.md "Two artists,

@@ -8,7 +8,8 @@
 use sqlx::PgPool;
 
 async fn pool() -> PgPool {
-    let url = std::env::var("SMOKE_TEST_DATABASE_URL").expect("set SMOKE_TEST_DATABASE_URL to a disposable, migrated Postgres");
+    let url = std::env::var("SMOKE_TEST_DATABASE_URL")
+        .expect("set SMOKE_TEST_DATABASE_URL to a disposable, migrated Postgres");
     PgPool::connect(&url).await.expect("connect")
 }
 
@@ -29,7 +30,11 @@ async fn artist(pool: &PgPool, name: &str, mbid: &str) -> String {
 }
 
 async fn mbid_of(pool: &PgPool, id: &str) -> Option<String> {
-    sqlx::query_scalar(r#"SELECT "musicbrainzId" FROM "Artist" WHERE id = $1"#).bind(id).fetch_one(pool).await.unwrap()
+    sqlx::query_scalar(r#"SELECT "musicbrainzId" FROM "Artist" WHERE id = $1"#)
+        .bind(id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
 }
 
 #[tokio::test]
@@ -49,7 +54,9 @@ async fn a_shared_id_under_an_ambiguous_name_is_left_alone() {
         .await
         .unwrap();
 
-    dmp_sync::db::repair_shared_identities(&pool, false).await.unwrap();
+    dmp_sync::db::repair_shared_identities(&pool, false)
+        .await
+        .unwrap();
 
     assert_eq!(mbid_of(&pool, &a).await.as_deref(), Some(id.as_str()));
     assert_eq!(mbid_of(&pool, &b).await.as_deref(), Some(id.as_str()));
@@ -64,8 +71,14 @@ async fn an_unconfirmed_shared_id_is_still_cleared_when_no_name_is_ambiguous() {
     let a = artist(&pool, &format!("T-SQUARE {tag}"), &id).await;
     let b = artist(&pool, &format!("THE SQUARE {tag}"), &id).await;
 
-    dmp_sync::db::repair_shared_identities(&pool, false).await.unwrap();
+    dmp_sync::db::repair_shared_identities(&pool, false)
+        .await
+        .unwrap();
 
-    assert_eq!(mbid_of(&pool, &a).await, None, "the existing rule, unchanged");
+    assert_eq!(
+        mbid_of(&pool, &a).await,
+        None,
+        "the existing rule, unchanged"
+    );
     assert_eq!(mbid_of(&pool, &b).await, None);
 }

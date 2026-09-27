@@ -550,10 +550,15 @@ pub(crate) async fn process_folder(
                         }
                         .filter(|id| matches!(lookup_memo.get(owner_tag), Some(LookupResult::Found { mbid: Some(known) }) if known == id));
                         for (owner_name, owner_mbid) in owners {
-                            let (mbid, source) = match (&own_id, owners_is_whole(&owner_name, owner_tag)) {
-                                (Some(id), true) => (Some(id.as_str()), common::homonyms::IdSource::Proven),
-                                _ => (owner_mbid.as_deref(), common::homonyms::IdSource::Search),
-                            };
+                            let (mbid, source) =
+                                match (&own_id, owners_is_whole(&owner_name, owner_tag)) {
+                                    (Some(id), true) => {
+                                        (Some(id.as_str()), common::homonyms::IdSource::Proven)
+                                    }
+                                    _ => {
+                                        (owner_mbid.as_deref(), common::homonyms::IdSource::Search)
+                                    }
+                                };
                             let Ok(aa_id) = common::homonyms::ensure_artist_identity(
                                 &pool,
                                 identities,

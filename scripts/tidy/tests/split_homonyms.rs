@@ -7,8 +7,8 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-use sqlx::PgPool;
 use common::testing::MbStub;
+use sqlx::PgPool;
 
 fn tempdir(prefix: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("{prefix}-{}", cuid2::create_id()));
@@ -17,19 +17,32 @@ fn tempdir(prefix: &str) -> PathBuf {
 }
 
 async fn pool() -> (PgPool, String) {
-    let url = std::env::var("SMOKE_TEST_DATABASE_URL").expect("set SMOKE_TEST_DATABASE_URL to a disposable, migrated Postgres");
+    let url = std::env::var("SMOKE_TEST_DATABASE_URL")
+        .expect("set SMOKE_TEST_DATABASE_URL to a disposable, migrated Postgres");
     (PgPool::connect(&url).await.expect("connect"), url)
 }
 
 fn uuid(seed: &str) -> String {
-    let h: String = format!("{:x}", md5_like(seed)).chars().chain(std::iter::repeat('0')).take(32).collect();
-    format!("{}-{}-{}-{}-{}", &h[..8], &h[8..12], &h[12..16], &h[16..20], &h[20..32])
+    let h: String = format!("{:x}", md5_like(seed))
+        .chars()
+        .chain(std::iter::repeat('0'))
+        .take(32)
+        .collect();
+    format!(
+        "{}-{}-{}-{}-{}",
+        &h[..8],
+        &h[8..12],
+        &h[12..16],
+        &h[16..20],
+        &h[20..32]
+    )
 }
 
 fn md5_like(seed: &str) -> u128 {
-    seed.bytes().fold(0xcbf29ce484222325u128, |h, b| (h ^ b as u128).wrapping_mul(0x100000001b3))
+    seed.bytes().fold(0xcbf29ce484222325u128, |h, b| {
+        (h ^ b as u128).wrapping_mul(0x100000001b3)
+    })
 }
-
 
 fn run_tidy(db_url: &str, mb_url: &str, args: &[&str]) -> (i32, String) {
     let cwd = tempdir("tidy-cwd");
@@ -43,11 +56,24 @@ fn run_tidy(db_url: &str, mb_url: &str, args: &[&str]) -> (i32, String) {
         .env("IMAGE_DIR", cwd.join("img"))
         .output()
         .expect("run tidy");
-    (out.status.code().unwrap_or(-1), format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr)))
+    (
+        out.status.code().unwrap_or(-1),
+        format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        ),
+    )
 }
 
 /// A release in `folder` owned by `owner`, whose one track names `mbid` as its album artist (or nothing).
-async fn release(pool: &PgPool, owner: &str, name: &str, title: &str, mbid: Option<&str>) -> String {
+async fn release(
+    pool: &PgPool,
+    owner: &str,
+    name: &str,
+    title: &str,
+    mbid: Option<&str>,
+) -> String {
     let id = cuid2::create_id();
     sqlx::query(r#"INSERT INTO "LocalRelease" (id, title, "groupKey", "folderPath", "createdAt", "updatedAt") VALUES ($1, $2, $3, $3, now(), now())"#)
         .bind(&id)
@@ -119,10 +145,13 @@ async fn a_merged_artist_is_split_by_its_files_ids_and_a_mistagged_file_is_not()
     let mistag = release(&pool, &merged, &name, "Mistagged", Some(&other)).await;
 
     let mut mb = MbStub::default();
-    mb.artists.insert(pt.clone(), (name.clone(), Some("PT".into())));
-    mb.artists.insert(kr.clone(), (name.clone(), Some("KR".into())));
+    mb.artists
+        .insert(pt.clone(), (name.clone(), Some("PT".into())));
+    mb.artists
+        .insert(kr.clone(), (name.clone(), Some("KR".into())));
     // MusicBrainz calls `other` something else entirely: that file is mistagged, not a third Napa.
-    mb.artists.insert(other.clone(), ("Somebody Else".into(), None));
+    mb.artists
+        .insert(other.clone(), ("Somebody Else".into(), None));
     let mb_url = mb.serve().await;
 
     // A collaboration release carrying the partner's id is not a homonym and must not be a candidate.
@@ -135,17 +164,42 @@ async fn a_merged_artist_is_split_by_its_files_ids_and_a_mistagged_file_is_not()
         .execute(&pool)
         .await
         .unwrap();
-    release(&pool, &collab_id, &format!("{collab} & Partner"), "Together", Some(&uuid(&format!("partner{collab}")))).await;
+    release(
+        &pool,
+        &collab_id,
+        &format!("{collab} & Partner"),
+        "Together",
+        Some(&uuid(&format!("partner{collab}"))),
+    )
+    .await;
 
     let (code, out) = run_tidy(&url, &mb_url, &["--split-homonyms", "--dry-run"]);
     assert_eq!(code, 0, "{out}");
-    assert!(out.contains(&name), "the dry run lists the merged artist: {out}");
-    assert!(!out.contains(&collab), "a collaboration is not a homonym: {out}");
-    let unchanged: String = sqlx::query_scalar(r#"SELECT slug FROM "Artist" WHERE id = $1"#).bind(&merged).fetch_one(&pool).await.unwrap();
+    assert!(
+        out.contains(&name),
+        "the dry run lists the merged artist: {out}"
+    );
+    assert!(
+        !out.contains(&collab),
+        "a collaboration is not a homonym: {out}"
+    );
+    let unchanged: String = sqlx::query_scalar(r#"SELECT slug FROM "Artist" WHERE id = $1"#)
+        .bind(&merged)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(unchanged, base, "a dry run changes nothing");
 
     let ids_file = tempdir("tidy-ids").join("ids.txt");
-    let (code, out) = run_tidy(&url, &mb_url, &["--split-homonyms", "--emit-artist-ids", ids_file.to_str().unwrap()]);
+    let (code, out) = run_tidy(
+        &url,
+        &mb_url,
+        &[
+            "--split-homonyms",
+            "--emit-artist-ids",
+            ids_file.to_str().unwrap(),
+        ],
+    );
     assert_eq!(code, 0, "{out}");
 
     let owner = |release: String| {
@@ -160,13 +214,26 @@ async fn a_merged_artist_is_split_by_its_files_ids_and_a_mistagged_file_is_not()
             .unwrap()
         }
     };
-    assert_eq!(owner(senso).await, (Some(pt.clone()), format!("{base}-{}", &pt[..8])));
-    assert_eq!(owner(eleven).await, (Some(kr.clone()), format!("{base}-{}", &kr[..8])));
+    assert_eq!(
+        owner(senso).await,
+        (Some(pt.clone()), format!("{base}-{}", &pt[..8]))
+    );
+    assert_eq!(
+        owner(eleven).await,
+        (Some(kr.clone()), format!("{base}-{}", &kr[..8]))
+    );
     let (mistag_id, _) = owner(mistag).await;
-    assert_ne!(mistag_id.as_deref(), Some(other.as_str()), "a mistagged file never makes an artist of its wrong id");
+    assert_ne!(
+        mistag_id.as_deref(),
+        Some(other.as_str()),
+        "a mistagged file never makes an artist of its wrong id"
+    );
 
     let written = std::fs::read_to_string(&ids_file).unwrap();
-    assert!(written.lines().any(|l| l == merged), "the ids file lists the group for the follow-up sync");
+    assert!(
+        written.lines().any(|l| l == merged),
+        "the ids file lists the group for the follow-up sync"
+    );
     let empty: i64 = sqlx::query_scalar(
         r#"SELECT count(*) FROM "Artist" a WHERE a."baseSlug" = $1
              AND NOT EXISTS (SELECT 1 FROM "LocalReleaseArtist" l WHERE l."artistId" = a.id)
@@ -177,6 +244,11 @@ async fn a_merged_artist_is_split_by_its_files_ids_and_a_mistagged_file_is_not()
     .await
     .unwrap();
     assert_eq!(empty, 0, "no artist left owning nothing under the name");
-    let violations: Vec<(String, String)> = common::homonyms::violations(&pool).await.unwrap().into_iter().filter(|(b, _)| *b == base).collect();
+    let violations: Vec<(String, String)> = common::homonyms::violations(&pool)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|(b, _)| *b == base)
+        .collect();
     assert!(violations.is_empty(), "{violations:?}");
 }

@@ -10,7 +10,8 @@ use std::process::Command;
 use sqlx::PgPool;
 
 async fn pool() -> PgPool {
-    let url = std::env::var("SMOKE_TEST_DATABASE_URL").expect("set SMOKE_TEST_DATABASE_URL to a disposable, migrated Postgres");
+    let url = std::env::var("SMOKE_TEST_DATABASE_URL")
+        .expect("set SMOKE_TEST_DATABASE_URL to a disposable, migrated Postgres");
     PgPool::connect(&url).await.expect("connect")
 }
 
@@ -32,7 +33,14 @@ fn run_sync(db_url: &str, args: &[&str]) -> (i32, String) {
         .env("IMAGE_DIR", cwd.join("img"))
         .output()
         .expect("run sync");
-    (out.status.code().unwrap_or(-1), format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr)))
+    (
+        out.status.code().unwrap_or(-1),
+        format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        ),
+    )
 }
 
 async fn artist(pool: &PgPool, name: &str, last_indexed: Option<&str>) -> String {
@@ -63,9 +71,15 @@ async fn an_id_selects_exactly_that_row_and_bypasses_the_pending_gate() {
 
     let (code, out) = run_sync(&url, &["--id", &a, "--web"]);
     assert_eq!(code, 0, "{out}");
-    assert!(out.contains("\"total\":1") || out.contains("Processing 1 artist"), "selects exactly one artist, not the pending set (0) or both by name: {out}");
+    assert!(
+        out.contains("\"total\":1") || out.contains("Processing 1 artist"),
+        "selects exactly one artist, not the pending set (0) or both by name: {out}"
+    );
 
     let (code, out) = run_sync(&url, &["--id", "nonexistent-id", "--web"]);
     assert_eq!(code, 0, "{out}");
-    assert!(!out.contains("Processing 1 artist"), "an unknown id selects nothing: {out}");
+    assert!(
+        !out.contains("Processing 1 artist"),
+        "an unknown id selects nothing: {out}"
+    );
 }

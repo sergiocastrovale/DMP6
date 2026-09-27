@@ -10,7 +10,10 @@ pub struct ExistingArtist {
 /// Looks for an existing Artist by MusicBrainz id (any row, including a connected duplicate that
 /// isn't itself the primary - resolved up to its `primaryArtistId`). Only the id counts: another artist
 /// with the same name is a homonym, not this artist (crate::homonym).
-pub async fn find_existing_artist(pool: &PgPool, mb_id: &str) -> Result<Option<ExistingArtist>, sqlx::Error> {
+pub async fn find_existing_artist(
+    pool: &PgPool,
+    mb_id: &str,
+) -> Result<Option<ExistingArtist>, sqlx::Error> {
     let row: Option<(String, String)> = sqlx::query_as(
         r#"SELECT COALESCE(p.name, a.name), COALESCE(p.slug, a.slug)
            FROM "Artist" a
@@ -60,7 +63,10 @@ pub async fn insert_artist(
 }
 
 /// The primary artists already under a base slug.
-pub async fn members(pool: &PgPool, base_slug: &str) -> Result<Vec<crate::homonym::Member>, sqlx::Error> {
+pub async fn members(
+    pool: &PgPool,
+    base_slug: &str,
+) -> Result<Vec<crate::homonym::Member>, sqlx::Error> {
     let rows: Vec<(String, Option<String>)> = sqlx::query_as(
         r#"SELECT id, NULLIF("musicbrainzId", '') FROM "Artist"
            WHERE "baseSlug" = $1 AND "primaryArtistId" IS NULL ORDER BY id"#,
@@ -68,5 +74,8 @@ pub async fn members(pool: &PgPool, base_slug: &str) -> Result<Vec<crate::homony
     .bind(base_slug)
     .fetch_all(pool)
     .await?;
-    Ok(rows.into_iter().map(|(id, mbid)| crate::homonym::Member { id, mbid }).collect())
+    Ok(rows
+        .into_iter()
+        .map(|(id, mbid)| crate::homonym::Member { id, mbid })
+        .collect())
 }

@@ -279,7 +279,9 @@ pub async fn delete_orphan_artists(pool: &PgPool, config: &Config, scope: Artist
     };
 
     let images = artist_images(pool, &artist_ids).await.unwrap_or_default();
-    let bases = common::homonyms::bases_of(pool, &artist_ids).await.unwrap_or_default();
+    let bases = common::homonyms::bases_of(pool, &artist_ids)
+        .await
+        .unwrap_or_default();
     let deleted = match sqlx::query(r#"DELETE FROM "Artist" WHERE id = ANY($1::text[])"#)
         .bind(&artist_ids)
         .execute(pool)

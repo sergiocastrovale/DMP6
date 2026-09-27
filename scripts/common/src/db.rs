@@ -50,12 +50,20 @@ pub async fn create_pool_or_exit(database_url: &str, app_name: &str) -> PgPool {
 /// new row, or - when several artists share the name - its unidentified member. Reconciles the name's group
 /// straight away, since callers of this form do not batch.
 pub async fn ensure_artist(pool: &PgPool, name: &str) -> Result<String, sqlx::Error> {
-    use crate::homonyms::{ensure_artist_identity, reconcile_touched, IdSource, IdentityRequest, IdentityState};
+    use crate::homonyms::{
+        ensure_artist_identity, reconcile_touched, IdSource, IdentityRequest, IdentityState,
+    };
     let mut state = IdentityState::new();
     let id = ensure_artist_identity(
         pool,
         &mut state,
-        &IdentityRequest { name, mbid: None, source: IdSource::Search, release_title: None, credit: false },
+        &IdentityRequest {
+            name,
+            mbid: None,
+            source: IdSource::Search,
+            release_title: None,
+            credit: false,
+        },
     )
     .await?;
     reconcile_touched(pool, &mut state).await?;
@@ -63,10 +71,11 @@ pub async fn ensure_artist(pool: &PgPool, name: &str) -> Result<String, sqlx::Er
         return Ok(id);
     }
     // A reconcile may have connected the row to a survivor; hand back the row that is shown.
-    let primary: Option<String> = sqlx::query_scalar(r#"SELECT COALESCE("primaryArtistId", id) FROM "Artist" WHERE id = $1"#)
-        .bind(&id)
-        .fetch_optional(pool)
-        .await?;
+    let primary: Option<String> =
+        sqlx::query_scalar(r#"SELECT COALESCE("primaryArtistId", id) FROM "Artist" WHERE id = $1"#)
+            .bind(&id)
+            .fetch_optional(pool)
+            .await?;
     Ok(primary.unwrap_or(id))
 }
 

@@ -61,7 +61,10 @@ pub use common::mb::names::{names_are_similar, normalize_name};
 /// A dated title: (title, year).
 pub type DatedTitle = (String, Option<i32>);
 
-pub fn pick_homonym(local: &[DatedTitle], candidates: &[(String, Vec<DatedTitle>)]) -> Option<String> {
+pub fn pick_homonym(
+    local: &[DatedTitle],
+    candidates: &[(String, Vec<DatedTitle>)],
+) -> Option<String> {
     let norm = common::homonyms::normalize_title;
     let mut scored: Vec<(usize, usize, &String)> = candidates
         .iter()
@@ -73,13 +76,20 @@ pub fn pick_homonym(local: &[DatedTitle], candidates: &[(String, Vec<DatedTitle>
                 if t.is_empty() {
                     continue;
                 }
-                let hits: Vec<&Option<i32>> = groups.iter().filter(|(g, _)| norm(g) == t).map(|(_, y)| y).collect();
+                let hits: Vec<&Option<i32>> = groups
+                    .iter()
+                    .filter(|(g, _)| norm(g) == t)
+                    .map(|(_, y)| y)
+                    .collect();
                 if hits.is_empty() {
                     continue;
                 }
                 titles += 1;
                 if let Some(y) = year {
-                    if hits.iter().any(|gy| gy.is_some_and(|gy| (gy - y).abs() <= 1)) {
+                    if hits
+                        .iter()
+                        .any(|gy| gy.is_some_and(|gy| (gy - y).abs() <= 1))
+                    {
                         years += 1;
                     }
                 }
@@ -123,13 +133,20 @@ pub async fn choose_homonym(
         let groups: Vec<(String, Option<i32>)> = groups
             .into_iter()
             .map(|g| {
-                let year = g.first_release_date.as_deref().and_then(|d| d.get(..4)).and_then(|y| y.parse().ok());
+                let year = g
+                    .first_release_date
+                    .as_deref()
+                    .and_then(|d| d.get(..4))
+                    .and_then(|y| y.parse().ok());
                 (g.title, year)
             })
             .collect();
         scored.push((c.id.clone(), groups));
     }
-    Ok(pick_homonym(&local, &scored).and_then(|id| candidates.iter().find(|c| c.id == id).cloned()))
+    Ok(
+        pick_homonym(&local, &scored)
+            .and_then(|id| candidates.iter().find(|c| c.id == id).cloned()),
+    )
 }
 
 /// Returns the best MbArtistMatch for the given artist, or None.
@@ -243,7 +260,10 @@ pub async fn find_mb_match_with_fallback(
         return Ok(Some(m));
     }
     let exact = mb_search_artist_exact_all(client, artist_name, limiter).await?;
-    let real: Vec<MbArtistMatch> = exact.into_iter().filter(|m| !is_special_mb_artist(&m.id, &m.name)).collect();
+    let real: Vec<MbArtistMatch> = exact
+        .into_iter()
+        .filter(|m| !is_special_mb_artist(&m.id, &m.name))
+        .collect();
     // Several artists are exactly this name (docs/sync_decisions.md "Two artists, one name"). The name alone proves
     // nothing, so only the albums can decide: the candidate whose MusicBrainz catalogue holds this row's albums.
     let ambiguous = real.len() > 1;
@@ -251,8 +271,7 @@ pub async fn find_mb_match_with_fallback(
         if let Some(m) = choose_homonym(client, pool, artist_id, &real, limiter).await? {
             return Ok(Some(m));
         }
-    }
-    else if let Some(m) = real.into_iter().next() {
+    } else if let Some(m) = real.into_iter().next() {
         return Ok(Some(m));
     }
 
@@ -436,24 +455,39 @@ async fn try_release_group_credits(
 #[cfg(test)]
 mod tests {
     fn local(titles: &[(&str, i32)]) -> Vec<(String, Option<i32>)> {
-        titles.iter().map(|(t, y)| (t.to_string(), Some(*y))).collect()
+        titles
+            .iter()
+            .map(|(t, y)| (t.to_string(), Some(*y)))
+            .collect()
     }
 
     fn cand(id: &str, groups: &[(&str, i32)]) -> (String, Vec<(String, Option<i32>)>) {
-        (id.to_string(), groups.iter().map(|(t, y)| (t.to_string(), Some(*y))).collect())
+        (
+            id.to_string(),
+            groups
+                .iter()
+                .map(|(t, y)| (t.to_string(), Some(*y)))
+                .collect(),
+        )
     }
 
     #[test]
     fn the_homonym_whose_catalogue_holds_the_albums_wins() {
         let l = local(&[("Senso Comum", 2019), ("Logo Se Vê", 2023)]);
-        let c = [cand("pt", &[("Senso comum", 2019), ("Logo se ve", 2023)]), cand("kr", &[])];
+        let c = [
+            cand("pt", &[("Senso comum", 2019), ("Logo se ve", 2023)]),
+            cand("kr", &[]),
+        ];
         assert_eq!(pick_homonym(&l, &c).as_deref(), Some("pt"));
     }
 
     #[test]
     fn a_tie_or_no_overlap_is_no_answer() {
         let l = local(&[("Greatest Hits", 2000)]);
-        let tie = [cand("a", &[("Greatest Hits", 1990)]), cand("b", &[("Greatest Hits", 1985)])];
+        let tie = [
+            cand("a", &[("Greatest Hits", 1990)]),
+            cand("b", &[("Greatest Hits", 1985)]),
+        ];
         assert_eq!(pick_homonym(&l, &tie), None);
         let none = [cand("a", &[("Other", 2000)]), cand("b", &[])];
         assert_eq!(pick_homonym(&l, &none), None);
@@ -462,14 +496,20 @@ mod tests {
     #[test]
     fn the_year_breaks_a_title_tie() {
         let l = local(&[("Greatest Hits", 2000)]);
-        let c = [cand("a", &[("Greatest Hits", 1990)]), cand("b", &[("Greatest Hits", 2001)])];
+        let c = [
+            cand("a", &[("Greatest Hits", 1990)]),
+            cand("b", &[("Greatest Hits", 2001)]),
+        ];
         assert_eq!(pick_homonym(&l, &c).as_deref(), Some("b"));
     }
 
     #[test]
     fn more_albums_in_common_beats_fewer() {
         let l = local(&[("One", 2001), ("Two", 2002), ("Three", 2003)]);
-        let c = [cand("a", &[("One", 2001)]), cand("b", &[("Two", 2002), ("Three", 2003)])];
+        let c = [
+            cand("a", &[("One", 2001)]),
+            cand("b", &[("Two", 2002), ("Three", 2003)]),
+        ];
         assert_eq!(pick_homonym(&l, &c).as_deref(), Some("b"));
     }
 

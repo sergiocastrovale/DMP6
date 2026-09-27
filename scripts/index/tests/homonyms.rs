@@ -13,9 +13,18 @@ use sqlx::PgPool;
 
 /// A per-test MusicBrainz id, so parallel tests never share a stub entry.
 fn mbid(seed: &str) -> String {
-    let h = seed.bytes().fold(0xcbf29ce484222325u128, |h, b| (h ^ b as u128).wrapping_mul(0x100000001b3));
+    let h = seed.bytes().fold(0xcbf29ce484222325u128, |h, b| {
+        (h ^ b as u128).wrapping_mul(0x100000001b3)
+    });
     let hex = format!("{h:032x}");
-    format!("{}-{}-{}-{}-{}", &hex[..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..32])
+    format!(
+        "{}-{}-{}-{}-{}",
+        &hex[..8],
+        &hex[8..12],
+        &hex[12..16],
+        &hex[16..20],
+        &hex[20..32]
+    )
 }
 
 struct Ctx {
@@ -40,7 +49,9 @@ impl Ctx {
         common::testing::shared_add_artist(&pt, &name, Some("PT"), &["Senso Comum", "Logo Se Ve"]);
         common::testing::shared_add_artist(&kr, &name, Some("KR"), &[]);
         Self {
-            pool: common::db::create_pool(&db_url, "test").await.expect("connect"),
+            pool: common::db::create_pool(&db_url, "test")
+                .await
+                .expect("connect"),
             name,
             folder: format!("homonyms-{tag}"),
             pt,
@@ -102,7 +113,7 @@ impl Ctx {
         id
     }
 
-    /// What the folder scan used to leave behind: one row for the name, owning everything.
+    /// Sets up an unresolved homonym: one row for the name, owning everything.
     async fn premerged_owner(&self, mbid: &str, releases: &[&String]) {
         let artist = cuid2::create_id();
         sqlx::query(
@@ -131,7 +142,9 @@ impl Ctx {
         let mut resolver = ArtistResolver::new(&self.pool, false);
         resolver.warm_cache().await;
         let mut report: Vec<Decision> = Vec::new();
-        resolve_and_apply(&self.pool, &mut resolver, Some(releases), &mut report, None).await.expect("resolve");
+        resolve_and_apply(&self.pool, &mut resolver, Some(releases), &mut report, None)
+            .await
+            .expect("resolve");
     }
 
     /// release title -> (owner's MB id or "unidentified", owner's slug)
@@ -172,25 +185,39 @@ async fn a_premerged_artist_splits_by_the_ids_its_files_carry() {
     let logo = c.release("Logo Se Ve", Some(c.pt.as_str())).await;
     let eleven = c.release("11-11", Some(c.kr.as_str())).await;
     let untagged = c.release("Untagged", None).await;
-    c.premerged_owner(&c.pt.clone(), &[&senso, &logo, &eleven, &untagged]).await;
+    c.premerged_owner(&c.pt.clone(), &[&senso, &logo, &eleven, &untagged])
+        .await;
 
     c.run(&[senso, logo, eleven, untagged]).await;
 
     let s = c.state().await;
     let base = c.base();
-    assert_eq!(s["Senso Comum"], (c.pt.clone(), format!("{base}-{}", &c.pt[..8])));
-    assert_eq!(s["Logo Se Ve"], (c.pt.clone(), format!("{base}-{}", &c.pt[..8])));
+    assert_eq!(
+        s["Senso Comum"],
+        (c.pt.clone(), format!("{base}-{}", &c.pt[..8]))
+    );
+    assert_eq!(
+        s["Logo Se Ve"],
+        (c.pt.clone(), format!("{base}-{}", &c.pt[..8]))
+    );
     assert_eq!(s["11-11"], (c.kr.clone(), format!("{base}-{}", &c.kr[..8])));
-    assert_eq!(s["Untagged"].0, "unidentified", "no id and no evidence: never the PT artist by guess");
+    assert_eq!(
+        s["Untagged"].0, "unidentified",
+        "no id and no evidence: never the PT artist by guess"
+    );
     assert!(s["Untagged"].1.starts_with(&format!("{base}-")));
     assert!(c.violations().await.is_empty());
 
-    let redirect: Option<String> = sqlx::query_scalar(r#"SELECT "oldSlug" FROM "ArtistSlugHistory" WHERE "oldSlug" = $1"#)
-        .bind(&base)
-        .fetch_optional(&c.pool)
-        .await
-        .unwrap();
-    assert!(redirect.is_none(), "the bare slug of a group is the chooser's");
+    let redirect: Option<String> =
+        sqlx::query_scalar(r#"SELECT "oldSlug" FROM "ArtistSlugHistory" WHERE "oldSlug" = $1"#)
+            .bind(&base)
+            .fetch_optional(&c.pool)
+            .await
+            .unwrap();
+    assert!(
+        redirect.is_none(),
+        "the bare slug of a group is the chooser's"
+    );
 }
 
 #[tokio::test]
@@ -219,8 +246,19 @@ async fn the_order_releases_are_indexed_in_does_not_change_the_result() {
             .into_iter()
             .map(|(t, (m, s))| {
                 // Each run has its own ids; compare by role.
-                let role = |id: &str| if id == c.pt { "PT".to_string() } else if id == c.kr { "KR".to_string() } else { id.to_string() };
-                let suffix = s.strip_prefix(&format!("{base}-")).unwrap_or("BARE").to_string();
+                let role = |id: &str| {
+                    if id == c.pt {
+                        "PT".to_string()
+                    } else if id == c.kr {
+                        "KR".to_string()
+                    } else {
+                        id.to_string()
+                    }
+                };
+                let suffix = s
+                    .strip_prefix(&format!("{base}-"))
+                    .unwrap_or("BARE")
+                    .to_string();
                 let suffix = if m == "unidentified" {
                     "artist-id".to_string()
                 } else if suffix == c.pt[..8] {
@@ -244,9 +282,14 @@ async fn a_lone_artist_keeps_its_bare_slug_and_takes_its_untagged_releases() {
     let c = Ctx::new().await;
     let tagged = c.release("Senso Comum", Some(c.pt.as_str())).await;
     let untagged = c.release("Untagged", None).await;
-    c.premerged_owner(&c.pt.clone(), &[&tagged, &untagged]).await;
+    c.premerged_owner(&c.pt.clone(), &[&tagged, &untagged])
+        .await;
     c.run(&[tagged, untagged]).await;
     let s = c.state().await;
     assert_eq!(s["Senso Comum"].1, c.base());
-    assert_eq!(s["Untagged"].1, c.base(), "one artist by this name, so it is theirs as before");
+    assert_eq!(
+        s["Untagged"].1,
+        c.base(),
+        "one artist by this name, so it is theirs as before"
+    );
 }

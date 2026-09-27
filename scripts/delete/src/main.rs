@@ -132,11 +132,13 @@ async fn main() {
     let mut target_ids: Vec<(String, String)> = Vec::new();
 
     if let Some(id) = &args.id {
-        match sqlx::query_as::<_, (String, String)>(r#"SELECT id, name FROM "Artist" WHERE id = $1"#)
-            .bind(id)
-            .fetch_optional(&pool)
-            .await
-            .expect("Failed to query Artist table")
+        match sqlx::query_as::<_, (String, String)>(
+            r#"SELECT id, name FROM "Artist" WHERE id = $1"#,
+        )
+        .bind(id)
+        .fetch_optional(&pool)
+        .await
+        .expect("Failed to query Artist table")
         {
             Some((id, name)) => {
                 reporter.kv("Target", &format!("{} ({})", name, id));

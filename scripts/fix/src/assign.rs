@@ -20,13 +20,14 @@ pub enum Target<'a> {
 }
 
 fn audio_files_under(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
             audio_files_under(&path, out);
-        }
-        else if path
+        } else if path
             .extension()
             .and_then(|e| e.to_str())
             .is_some_and(|e| RELEASE_AUDIO_EXTENSIONS.contains(&e.to_lowercase().as_str()))
@@ -70,12 +71,18 @@ pub async fn assign(
         }
     };
 
-    let ids = MbTagIds { album_artist: Some(mbid), ..MbTagIds::default() };
+    let ids = MbTagIds {
+        album_artist: Some(mbid),
+        ..MbTagIds::default()
+    };
     let (mut ok, mut failed) = (0usize, 0usize);
     let mut folders: Vec<String> = Vec::new();
     for file in &files {
         if dry_run {
-            reporter.nested().info(&format!("[dry-run] would write the album-artist id into {}", file.display()));
+            reporter.nested().info(&format!(
+                "[dry-run] would write the album-artist id into {}",
+                file.display()
+            ));
             ok += 1;
             continue;
         }
@@ -84,7 +91,11 @@ pub async fn assign(
             Ok(_) => {
                 ok += 1;
                 let relative = file.strip_prefix(music_dir).unwrap_or(file);
-                if let Some(folder) = relative.parent().and_then(|p| p.to_str()).filter(|p| !p.is_empty()) {
+                if let Some(folder) = relative
+                    .parent()
+                    .and_then(|p| p.to_str())
+                    .filter(|p| !p.is_empty())
+                {
                     let folder = folder.trim_start_matches('/').to_string();
                     if !folders.contains(&folder) {
                         folders.push(folder);
@@ -93,7 +104,9 @@ pub async fn assign(
             }
             Err(e) => {
                 failed += 1;
-                reporter.nested().warn(&format!("{}: {}", file.display(), e));
+                reporter
+                    .nested()
+                    .warn(&format!("{}: {}", file.display(), e));
             }
         }
     }
