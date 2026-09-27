@@ -30,5 +30,17 @@ Options:
       --dry-run
           Print what would be fixed without writing files or the database
 
+      --assign-artist
+          Say which artist a release belongs to: write this MusicBrainz artist id (--mbid) into the album-artist id of every file of --release or --folder, then re-index them. For two artists sharing a name, and for a download being merged for a known artist
+
+      --mbid <MBID>
+          With --assign-artist: the MusicBrainz artist id to write
+
+      --release <RELEASE>
+          With --assign-artist: the LocalRelease id whose files to write
+
+      --folder <FOLDER>
+          With --assign-artist: a folder (relative to MUSIC_DIR, or absolute) whose audio files to write
+
   -h, --help
           Print help (see a summary with '-h')
