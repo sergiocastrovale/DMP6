@@ -95,7 +95,7 @@ pub fn pick_homonym(local: &[(String, Option<i32>)], candidates: &[(String, Vec<
 
 /// `pick_homonym` fed from the database (the row's owned albums) and MusicBrainz (one release-group browse per
 /// candidate - only ever for a name several artists share).
-async fn choose_homonym(
+pub async fn choose_homonym(
     client: &Client,
     pool: &PgPool,
     artist_id: &str,
