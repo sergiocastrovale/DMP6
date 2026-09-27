@@ -8,6 +8,8 @@ export interface ArtistListItem extends ArtistSummary {
   totalTracks: number
   releaseCount?: number
   musicbrainzId: string | null
+  // Set only when another artist in the library has the same name: what tells this one apart.
+  homonymNote?: string | null
 }
 
 export interface Artist extends ArtistListItem {
@@ -17,7 +19,38 @@ export interface Artist extends ArtistListItem {
   genres: Genre[]
   urls: ArtistUrl[]
   relatedArtists?: RelatedArtist[]
+  country?: string | null
+  disambiguation?: string | null
+  // Other artists with this same name (docs/sync_decisions.md "Two artists, one name"); empty when there are none.
+  homonyms?: ArtistHomonym[]
 }
+
+// One of several artists sharing a name - a chooser card or an "Also named" chip.
+export interface ArtistHomonym {
+  id: string
+  name: string
+  slug: string
+  musicbrainzId: string | null
+  country: string | null
+  disambiguation: string | null
+  releaseCount: number
+  image: string | null
+  imageUrl: string | null
+}
+
+// What `/api/artists/<slug>` answers when the slug is a name several artists share.
+export interface ArtistChooser {
+  chooser: true
+  name: string
+  homonyms: ArtistHomonym[]
+}
+
+// ...and when the slug is one an artist used to have (or the base of a name only one artist has now).
+export interface ArtistRedirect {
+  redirectTo: string
+}
+
+export type ArtistPageResponse = (Artist & { totalPlayCount: number }) | ArtistChooser | ArtistRedirect
 
 export interface ReleaseStatsResult {
   releaseCount: number
@@ -52,6 +85,9 @@ export interface MbArtistSearchRow {
   country: string | null
   type: string | null
   existing: { slug: string, name: string } | null
+  // Another artist in the library with this same name (a different MusicBrainz artist, or one not yet identified).
+  // Adding is fine - both get their own page (docs/sync_decisions.md "Two artists, one name").
+  namesake: { slug: string, identified: boolean } | null
 }
 
 export interface Genre {

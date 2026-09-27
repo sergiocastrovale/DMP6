@@ -6,7 +6,7 @@ import type { IssueColumn, IssueType } from '~/types/issues'
 export const REVERTABLE_ISSUE_TYPES: IssueType[] = ['corrupted', 'missing']
 
 // Types that are audit-only: listed and counted, never fixed from the UI.
-export const AUDIT_ONLY_ISSUE_TYPES: IssueType[] = ['enrichment', 'duplicate-release', 'mismatched-release-id']
+export const AUDIT_ONLY_ISSUE_TYPES: IssueType[] = ['enrichment', 'duplicate-release', 'mismatched-release-id', 'ambiguous-artists']
 
 // `canFix` makes the corrupted-value proposal editable.
 export const issueColumns = (type: IssueType, canFix: boolean): IssueColumn[] => {
@@ -57,6 +57,11 @@ export const issueColumns = (type: IssueType, canFix: boolean): IssueColumn[] =>
       { key: 'releaseB.title', label: 'Release B', sortable: false },
       { key: 'releaseA.release.title', label: 'Shared MB Title', sortable: false },
     ]
+    case 'ambiguous-artists': return [
+      { key: 'artist.name', label: 'Artist', sortable: false },
+      { key: 'releaseCount', label: 'Releases', sortable: false, width: 'w-24' },
+      { key: 'groupSize', label: 'Artists with this name', sortable: false, width: 'w-44' },
+    ]
     default: return []
   }
 }
@@ -89,6 +94,7 @@ export const ISSUE_TYPE_LABELS: Record<IssueType, string> = {
   enrichment: 'Enrichment Gaps',
   'duplicate-release': 'Duplicate Releases',
   'mismatched-release-id': 'Mismatched Release ID',
+  'ambiguous-artists': 'Ambiguous Artists',
 }
 
 export const ISSUE_TYPE_DESCRIPTIONS: Record<IssueType, { detection: string; fix: string }> = {
@@ -119,6 +125,10 @@ export const ISSUE_TYPE_DESCRIPTIONS: Record<IssueType, { detection: string; fix
   'mismatched-release-id': {
     detection: 'Local release pairs pointing at the same MusicBrainz release despite having different titles - a sync-matcher bug linking unrelated albums to the same release row.',
     fix: 'No automatic fix - requires re-running the sync matcher, not a mechanical database edit.',
+  },
+  'ambiguous-artists': {
+    detection: 'Several artists in the library share this name, and these releases could not be placed with any of them: their files carry no MusicBrainz artist id and no artist\'s catalogue lists them.',
+    fix: 'Open the artist and use "Assign to artist" in a release\'s info to write the right artist\'s id into its files, or retag them in Picard and re-scan.',
   },
 }
 

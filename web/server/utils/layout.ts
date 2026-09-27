@@ -1,4 +1,5 @@
 import { readdir, rmdir } from 'node:fs/promises'
+import { artistFolderName } from '~/server/utils/homonyms'
 import { errorMessage } from '~/helpers/functions'
 import { join, dirname, basename, sep } from 'node:path'
 import { prisma } from '~/server/utils/prisma'
@@ -81,6 +82,8 @@ export const transformToLibraryLayout = async (
     include: { artist: { select: { name: true } } },
   })
   if (!row) {throw new Error(`download ${downloadId} not found`)}
+  // Its own folder when another artist has the same name (`Name (token)`, server/utils/homonyms.ts).
+  const artistFolder = await artistFolderName(row.artistId, row.artist?.name || '')
 
   const { downloadsPath } = await resolveDownloadSettings()
   if (!downloadsPath) {throw new Error('DOWNLOADS_PATH not configured')}
@@ -93,7 +96,7 @@ export const transformToLibraryLayout = async (
     1,
   )
 
-  const artist = sanitize(row.artist?.name || '') || 'Unknown Artist'
+  const artist = sanitize(artistFolder) || 'Unknown Artist'
   const type = sanitize(await resolveAlbumType(row.mbReleaseId, row.releaseGroupId)) || 'Album'
   const album = sanitize(row.title) || 'Unknown Album'
   // Year from the matched MB release; fall back to the (enriched) file tags when MB has none.

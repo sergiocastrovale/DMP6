@@ -41,6 +41,8 @@ const showAllGenres = ref(false)
           {{ artist.name }}
         </h1>
 
+        <ArtistHomonyms :artist="artist" />
+
         <ArtistShowing />
 
         <DownloadProgress v-if="activeDownloads?.length" :items="activeDownloads" class="max-w-md" />

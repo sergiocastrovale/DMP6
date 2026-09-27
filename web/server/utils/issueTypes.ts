@@ -1,5 +1,6 @@
 import { prisma } from '~/server/utils/prisma'
 import type { IssueType } from '~/types/issues'
+import { countUnidentifiedMembers } from '~/server/utils/homonyms'
 
 export type IssueStatus = 'DETECTED' | 'PENDING' | 'PENDING_REVERT' | 'RESOLVED' | 'FAILED'
 
@@ -25,6 +26,16 @@ export interface IssueTypeDef {
 
 const asDelegate = (model: unknown): IssueDelegate => model as IssueDelegate
 
+// Read live from the artist rows rather than a table the audit fills: it is only ever DETECTED, and resolving one means
+// assigning its releases to an artist (or retagging), not changing a status here.
+const ambiguousArtists: IssueDelegate = {
+  count: async ({ where }) => (where.status === 'DETECTED' ? countUnidentifiedMembers() : 0),
+  update: async () => {
+    throw createError({ statusCode: 400, message: 'Ambiguous artists are resolved by assigning their releases, not here' })
+  },
+  updateMany: async () => ({ count: 0 }),
+}
+
 // The single list of issue types. Order is the order the UI shows them in.
 export const ISSUE_TYPES: readonly IssueTypeDef[] = [
   { id: 'corrupted', label: 'Corrupted tags', delegate: asDelegate(prisma.issueCorruptedTpe2), fixable: true, revertable: true, patchableFields: ['proposedValue'] },
@@ -34,6 +45,7 @@ export const ISSUE_TYPES: readonly IssueTypeDef[] = [
   { id: 'enrichment', label: 'Enrichment gaps', delegate: asDelegate(prisma.issueEnrichmentGap), fixable: false, revertable: false, patchableFields: [] },
   { id: 'duplicate-release', label: 'Duplicate releases', delegate: asDelegate(prisma.issueDuplicateRelease), fixable: false, revertable: false, patchableFields: [] },
   { id: 'mismatched-release-id', label: 'Mismatched release ids', delegate: asDelegate(prisma.issueMismatchedReleaseId), fixable: false, revertable: false, patchableFields: [] },
+  { id: 'ambiguous-artists', label: 'Ambiguous artists', delegate: ambiguousArtists, fixable: false, revertable: false, patchableFields: [] },
 ]
 
 const BY_ID = new Map<string, IssueTypeDef>(ISSUE_TYPES.map(t => [t.id, t]))

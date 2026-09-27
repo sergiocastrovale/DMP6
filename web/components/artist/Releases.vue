@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { UnifiedRelease } from '~/types/release'
+import type { ArtistHomonym } from '~/types/artist'
 import type { Track } from '~/types/track'
 import type { TrackListColumn } from '~/types/ui'
 import { favoriteTargetId, sortReleaseGroups } from '~/helpers/artistPageLogic'
@@ -11,6 +12,8 @@ const props = defineProps<{
   slug: string
   artistName?: string
   releases: UnifiedRelease[]
+  // Other artists with this name - lets a release be moved to the right one.
+  homonyms?: ArtistHomonym[]
 }>()
 
 const player = usePlayerStore()
@@ -43,6 +46,7 @@ const {
   redownloadRelease, showRedownloadDialog, openRedownloadDialog, confirmRedownload,
   cancelRelease, showCancelDialog, openCancelDialog, confirmCancelDownload,
   refreshRelease,
+  assignArtist,
   infoRelease, infoExtra, showInfoDialog, openInfoDialog,
   toggleFavoriteRelease,
 } = useReleaseActions(favoriteReleases)
@@ -120,7 +124,10 @@ const buildPlayerTracks = (tracks: Track[], startTrack: Track) => {
       :is-acquiring="infoRelease ? acquiringIds.has(infoRelease.id) : false"
       removable
       :artist-slug="slug"
+      :artist-name="artistName"
+      :homonyms="homonyms ?? []"
       @go-to-release="goToReleaseById"
+      @assign-artist="mbid => infoRelease && assignArtist(infoRelease, mbid)"
       @toggle-favorite="infoRelease && toggleFavoriteRelease(infoRelease)"
       @refresh="infoRelease && refreshRelease(infoRelease)"
       @redownload="infoRelease && openRedownloadDialog(infoRelease)"

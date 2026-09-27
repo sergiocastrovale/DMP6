@@ -19,6 +19,7 @@ const { artistImage } = useImageUrl()
           :title="artist.name"
           :link="`/artist/${artist.slug}`"
           :image="artistImage(artist)"
+          :subtitle="artist.homonymNote ?? undefined"
         />
       </div>
     </template>

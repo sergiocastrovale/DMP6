@@ -3,6 +3,8 @@ import type { Release } from './release'
 
 export interface SearchArtist extends ArtistSummary {
   genres: string[]
+  // Set only when another artist in the library has the same name: what tells this one apart.
+  homonymNote?: string | null
 }
 
 export type SearchRelease = Omit<Release, 'genre'>

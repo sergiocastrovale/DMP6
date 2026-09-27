@@ -98,6 +98,19 @@ export const useReleaseActions = (favoriteReleases: Ref<Set<string>>) => {
     })))
   }
 
+  // "This release is by a different artist with the same name": re-tag its files with that artist's id and re-index
+  // (./fix --assign-artist), then re-sync the release under its new owner.
+  const assignArtist = (edition: UnifiedRelease, mbid: string) => {
+    const id = edition.localReleaseId
+    if (!id) {
+      return
+    }
+    terminal.runSequence([
+      { command: './fix', args: ['--assign-artist', '--release', id, '--mbid', mbid], session: scanSessionName('assign-artist', id) },
+      { command: './refresh', args: ['--release', id], session: scanSessionName('refresh-release', id) },
+    ], { stopOnFailure: true })
+  }
+
   const openInfoDialog = async (edition: UnifiedRelease) => {
     infoRelease.value = edition
     infoExtra.value = null
@@ -134,6 +147,7 @@ export const useReleaseActions = (favoriteReleases: Ref<Set<string>>) => {
     redownloadRelease, showRedownloadDialog, openRedownloadDialog, confirmRedownload,
     cancelRelease, showCancelDialog, openCancelDialog, confirmCancelDownload,
     refreshRelease,
+    assignArtist,
     infoRelease, infoExtra, showInfoDialog, openInfoDialog,
     toggleFavoriteRelease,
   }

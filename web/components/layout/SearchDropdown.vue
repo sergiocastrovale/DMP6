@@ -115,7 +115,10 @@ const viewAllClass = (index: number) => cx(
             <p class="truncate text-base font-medium text-stone-100">
               {{ artist.name }}
             </p>
-            <p v-if="artist.genres.length" class="truncate text-xs text-stone-100/55">
+            <p v-if="artist.homonymNote" class="truncate text-xs text-amber-400/80">
+              {{ artist.homonymNote }}
+            </p>
+            <p v-else-if="artist.genres.length" class="truncate text-xs text-stone-100/55">
               {{ artist.genres.join(', ') }}
             </p>
           </div>

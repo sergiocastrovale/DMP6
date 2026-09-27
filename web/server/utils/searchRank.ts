@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client'
+import { HOMONYM_SELECT, withHomonymNotes } from '~/server/utils/homonyms'
 import { db, withStatementTimeout } from '~/server/utils/statementTimeout'
 import { verifyImage } from '~/server/utils/images'
 import { RELEASE_TILE_SELECT_NO_GENRE, toReleaseTile } from '~/server/utils/releaseTiles'
@@ -126,14 +127,17 @@ export const hydrateArtists = async (ids: string[]) => {
       // Capped at the source: only ever need the first 3 for the "max 3, ellipsis" display, so
       // there's no reason to pull an artist's full genre list over the wire.
       genres: { select: { name: true }, take: 3 },
+      ...HOMONYM_SELECT,
     },
   })
+  const noted = new Map((await withHomonymNotes(rows)).map(r => [r.id, r.homonymNote]))
   const byId = new Map(rows.map(r => [r.id, r]))
   return ids.map(id => byId.get(id)).filter((r): r is NonNullable<typeof r> => !!r).map(artist => ({
     id: artist.id,
     name: artist.name,
     slug: artist.slug,
     genres: artist.genres.map(g => g.name),
+    homonymNote: noted.get(artist.id) ?? null,
     ...verifyImage(artist.image, artist.imageUrl, 'artists'),
   }))
 }

@@ -14,12 +14,15 @@ vi.mock('~/server/utils/prisma', () => {
   return { prisma }
 })
 
+const unidentified = vi.hoisted(() => ({ count: vi.fn(async () => 3) }))
+vi.mock('~/server/utils/homonyms', () => ({ countUnidentifiedMembers: unidentified.count }))
+
 const { ISSUE_TYPES, countByStatus, findIssueType, isIssueType, requireIssueType } = await import('../../../server/utils/issueTypes')
 
 describe('issue type registry', () => {
-  it('lists the seven types once, in UI order', () => {
-    expect(ISSUE_TYPES.map(t => t.id)).toEqual(['corrupted', 'orphans', 'duplicates', 'missing', 'enrichment', 'duplicate-release', 'mismatched-release-id'])
-    expect(new Set(ISSUE_TYPES.map(t => t.id)).size).toBe(7)
+  it('lists the eight types once, in UI order', () => {
+    expect(ISSUE_TYPES.map(t => t.id)).toEqual(['corrupted', 'orphans', 'duplicates', 'missing', 'enrichment', 'duplicate-release', 'mismatched-release-id', 'ambiguous-artists'])
+    expect(new Set(ISSUE_TYPES.map(t => t.id)).size).toBe(8)
   })
 
   it('marks exactly the four fixable and two revertable types', () => {
@@ -50,9 +53,17 @@ describe('issue type registry', () => {
   it('countByStatus asks every table for the status and keys the result by type id', async () => {
     const counts = await countByStatus('PENDING')
     expect(Object.keys(counts)).toEqual(ISSUE_TYPES.map(t => t.id))
-    expect(Object.values(counts)).toEqual(Array(7).fill(2))
+    expect(Object.values(counts)).toEqual([...Array(7).fill(2), 0])
     for (const m of Object.values(models)) {
       expect(m.count).toHaveBeenCalledWith({ where: { status: 'PENDING' } })
     }
+  })
+
+  it('counts the live ambiguous-artists list only as detected, and refuses a status change', async () => {
+    const counts = await countByStatus('DETECTED')
+    expect(counts['ambiguous-artists']).toBe(3)
+    const def = findIssueType('ambiguous-artists')!
+    expect(def.fixable).toBe(false)
+    await expect(def.delegate.update({ where: { id: 'x' }, data: {} })).rejects.toMatchObject({ statusCode: 400 })
   })
 })

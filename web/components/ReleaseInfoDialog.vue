@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Disc3, DownloadCloud, Heart, Link, RefreshCw, Trash2 } from 'lucide-vue-next'
 import type { UnifiedRelease, ReleaseInfoExtra } from '~/types/release'
+import type { ArtistHomonym } from '~/types/artist'
 import { useTerminalStore } from '~/stores/terminal'
 import { useDownloadsStore } from '~/stores/downloads'
 import { actionReleaseIds, canRedownload, favoriteLabel, favoriteTargetId } from '~/helpers/artistPageLogic'
@@ -18,11 +19,16 @@ const props = withDefaults(defineProps<{
   // Artist page the dialog is opened from. With it, "also part of" entries link to that release on the
   // page; without it (player, Explore, downloads) they are plain text - there is no page to jump to.
   artistSlug?: string | null
+  // Other artists with the artist's name, when opened from their page: offers "Assign to artist".
+  homonyms?: ArtistHomonym[]
+  artistName?: string | null
 }>(), {
   isFavorite: false,
   isAcquiring: false,
   removable: false,
   artistSlug: null,
+  homonyms: () => [],
+  artistName: null,
 })
 
 const emit = defineEmits<{
@@ -31,6 +37,7 @@ const emit = defineEmits<{
   redownload: []
   removed: []
   goToRelease: [releaseId: string]
+  assignArtist: [mbid: string]
 }>()
 
 const model = defineModel<boolean>({ required: true })
@@ -38,6 +45,7 @@ const { releaseImage } = useImageUrl()
 const { isAdmin, hasPerm } = useAuth()
 const canDownload = hasPerm('downloads.crud')
 const canScan = hasPerm('sync.run')
+const canFix = hasPerm('issues.fix')
 const terminal = useTerminalStore()
 const downloadsStore = useDownloadsStore()
 
@@ -283,6 +291,13 @@ const ddClass = 'font-mono text-xs text-stone-100/60'
           </div>
         </dl>
       </div>
+
+      <ReleaseAssignArtist
+        v-if="canFix && canScan && release.localReleaseId && homonyms.length && artistName"
+        :artist-name="artistName"
+        :homonyms="homonyms"
+        @assign="mbid => { model = false; emit('assignArtist', mbid) }"
+      />
     </template>
   </Dialog>
 

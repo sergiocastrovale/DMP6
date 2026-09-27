@@ -10,7 +10,7 @@ const route = useRoute()
 const slug = computed(() => route.params.slug as string)
 
 const {
-  artist, error, pending, releases, favoriteReleaseIds, dlInFlight, refreshDownloadStatus,
+  artist, chooser, error, pending, releases, favoriteReleaseIds, dlInFlight, refreshDownloadStatus,
   monitorBusy, toggleMonitor, artistFolders, playingAll, playAll, shufflingAll, shuffleAll,
   photoBusy, fetchPhoto,
 } = useArtistPage(slug)
@@ -26,7 +26,7 @@ const canScan = hasPerm('sync.run')
 const terminal = useTerminalStore()
 const canFetchPhoto = computed(() => canScan.value && !!artist.value?.musicbrainzId && !terminal.isRunning)
 
-watch(() => artist.value?.name, (name) => {
+watch(() => artist.value?.name ?? chooser.value?.name, (name) => {
   if (name) {
     useTitle(name)
   }
@@ -37,6 +37,7 @@ watch(() => artist.value?.name, (name) => {
   <div :class="pageWidth">
     <UiLoadingBlock v-if="pending" />
     <ArtistNotFound v-else-if="error" />
+    <ArtistHomonymChooser v-else-if="chooser" :chooser="chooser" />
     <div v-else-if="artist" class="flex flex-col gap-8">
       <ArtistHeader
         :artist="artist"
@@ -75,6 +76,7 @@ watch(() => artist.value?.name, (name) => {
         :slug="artist.slug"
         :artist-name="artist.name"
         :releases="releases"
+        :homonyms="artist.homonyms"
       />
     </div>
   </div>

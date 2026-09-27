@@ -5,7 +5,7 @@ import {
 } from '../../helpers/issueColumns'
 import type { IssueType } from '../../types/issues'
 
-const TYPES: IssueType[] = ['corrupted', 'orphans', 'duplicates', 'missing', 'enrichment', 'duplicate-release', 'mismatched-release-id']
+const TYPES: IssueType[] = ['corrupted', 'orphans', 'duplicates', 'missing', 'enrichment', 'duplicate-release', 'mismatched-release-id', 'ambiguous-artists']
 
 describe('per-type tables', () => {
   it('every type has columns, a label and a description', () => {

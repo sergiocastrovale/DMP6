@@ -41,6 +41,7 @@ const typeCards: { key: IssueType; label: string; description: string }[] = [
   { key: 'enrichment', label: 'Enrichment Gaps', description: 'Releases missing BPM, mood, AcousticID, or other enrichment data' },
   { key: 'duplicate-release', label: 'Duplicate Releases', description: 'Local release pairs sharing one MusicBrainz release ID with matching title, track count, and duration - likely redundant folder copies' },
   { key: 'mismatched-release-id', label: 'Mismatched Release ID', description: 'Local release pairs sharing one MusicBrainz release ID despite different titles - a sync-matcher linking bug' },
+  { key: 'ambiguous-artists', label: 'Ambiguous Artists', description: 'Releases filed under a name several artists share, with nothing in the files saying which one' },
 ]
 
 const lastAuditText = computed(() => {

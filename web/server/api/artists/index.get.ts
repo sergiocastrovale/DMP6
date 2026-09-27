@@ -7,6 +7,7 @@ import { artistListWhere, rankedArtistPage, releaseCountsByArtist, type ArtistLi
 import { resolveSortDirection } from '~/helpers/browseSort'
 import { currentUserId } from '~/server/utils/libraryOwnership'
 import { artistPlayTotals } from '~/server/utils/userPlays'
+import { HOMONYM_SELECT, withHomonymNotes } from '~/server/utils/homonyms'
 
 const selectFields = {
   id: true,
@@ -17,6 +18,7 @@ const selectFields = {
   completeness: true,
   totalTracks: true,
   musicbrainzId: true,
+  ...HOMONYM_SELECT,
 } as const
 
 export default defineEventHandler(async (event) => {
@@ -63,7 +65,7 @@ export default defineEventHandler(async (event) => {
     const ordered = ranked.ids.flatMap(id => byId.get(id) ?? [])
     await primeImageExistence('artists', ordered.map(a => a.image))
 
-    const items = withReleaseCounts(ordered, counts).map(a => ({
+    const items = (await withHomonymNotes(withReleaseCounts(ordered, counts))).map(a => ({
       ...a,
       ...verifyImage(a.image, a.imageUrl, 'artists'),
       totalPlayCount: playTotals.get(a.id) ?? 0,
@@ -115,7 +117,7 @@ export default defineEventHandler(async (event) => {
 
     const counts = await releaseCountsByArtist(items.map(a => a.id))
     await primeImageExistence('artists', items.map(a => a.image))
-    const verifiedItems = withReleaseCounts(items, counts).map(a => ({
+    const verifiedItems = (await withHomonymNotes(withReleaseCounts(items, counts))).map(a => ({
       ...a,
       ...verifyImage(a.image, a.imageUrl, 'artists'),
     }))

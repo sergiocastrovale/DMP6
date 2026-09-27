@@ -5,6 +5,7 @@ import { firstArtist } from '~/server/utils/releaseTiles'
 import { requireIssueType, type IssueStatus } from '~/server/utils/issueTypes'
 import type { PaginatedResponse } from '~/types/api'
 import type { IssueType } from '~/types/issues'
+import { listUnidentifiedMembers } from '~/server/utils/homonyms'
 
 const VALID_STATUSES: readonly IssueStatus[] = ['DETECTED', 'PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED']
 
@@ -194,6 +195,14 @@ const fetchType = async (
         folderPath: item.localRelease?.tracks?.[0]?.filePath ?? null,
       }))
       return [mapped, total]
+    }
+
+    case 'ambiguous-artists': {
+      // Live, and only ever "detected" - see server/utils/issueTypes.ts.
+      if (status !== 'DETECTED') {
+        return [[], 0]
+      }
+      return listUnidentifiedMembers(skip, take, q)
     }
 
     case 'duplicate-release':

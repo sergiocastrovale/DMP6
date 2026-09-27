@@ -1,4 +1,5 @@
 import { mkdir, readdir, rename, unlink, rm, rmdir, access } from 'node:fs/promises'
+import { homonymStampArgs } from '~/server/utils/homonyms'
 import { errorCode, errorMessage } from '~/helpers/functions'
 import { join, basename, dirname, relative, sep } from 'node:path'
 import { Prisma } from '@prisma/client'
@@ -28,8 +29,24 @@ const cleanupSongkongMarkers = async (id: string): Promise<void> => {
  * Run the Rust reconciler binary, serialized against every other script run in this process so it
  * never hits the binaries' exclusive DB lock (which hard-exits on contention).
  */
-const runReconciler = async (name: 'index' | 'sync', args: string[]): Promise<void> => {
+const runReconciler = async (name: 'index' | 'sync' | 'fix', args: string[]): Promise<void> => {
   await runScript(name, args, { exclusive: true })
+}
+
+// A download for an artist whose name another artist shares: stamp its files with that artist's id before indexing,
+// so they are filed under it by id rather than by the shared name. Best-effort - if it fails, the index still places the
+// release by catalogue evidence (the artist's catalogue holds the album it was downloaded for).
+const stampHomonym = async (row: { artistId: string | null, title: string }, rel: string): Promise<void> => {
+  const args = await homonymStampArgs(row.artistId, rel)
+  if (!args) {
+    return
+  }
+  try {
+    await runReconciler('fix', args)
+  }
+  catch (e) {
+    monitorLog('warn', `merge: could not stamp the artist id on "${row.title}": ${errorMessage(e)}`)
+  }
 }
 
 const moveDir = async (src: string, dest: string): Promise<void> => {
@@ -362,6 +379,7 @@ export const mergeDownloadedRelease = async (id: string, emit?: (line: string) =
     emit?.(`Moving "${title}" to library…`)
     await purgeReplacedRelease(row, music)
     const rel = await moveIntoLibrary(row, music, downloadsReadyPath)
+    await stampHomonym(row, rel)
     setMergeProgress(id, { step: 'indexing', title })
     emit?.(`Indexing "${title}"…`)
     await runReconciler('index', ['--folders', rel])
@@ -434,6 +452,7 @@ export const mergeManyDownloadedReleases = async (ids: string[], emit?: (line: s
     for (const m of moved) {setMergeProgress(m.row.id, { step: 'indexing', title: m.row.title })}
     emit?.(`Indexing ${moved.length} release${moved.length === 1 ? '' : 's'}…`)
     const safeRels = moved.map(m => m.rel).filter(r => !r.includes(';'))
+    for (const m of moved) {await stampHomonym(m.row, m.rel)}
     if (safeRels.length) {await runReconciler('index', ['--folders', safeRels.join(';')])}
     for (const m of moved.filter(m => m.rel.includes(';'))) {await runReconciler('index', ['--folders', m.rel])}
 

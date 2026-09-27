@@ -1,5 +1,5 @@
 import type { Ref } from 'vue'
-import type { Artist } from '~/types/artist'
+import type { Artist, ArtistChooser, ArtistPageResponse } from '~/types/artist'
 import type { UnifiedRelease } from '~/types/release'
 import type { Track } from '~/types/track'
 import type { PlayerTrack } from '~/types/player'
@@ -23,9 +23,19 @@ const api = useApi()
   const { hasPerm } = useAuth()
   const canViewDownloads = hasPerm('sync.view')
 
-  const { data: artist, pending: artistPending, error } = useFetch<Artist>(() => `/api/artists/${slug.value}`, {
+  const { data: response, pending: artistPending, error } = useFetch<ArtistPageResponse>(() => `/api/artists/${slug.value}`, {
     key: () => `artist-${slug.value}`,
   })
+
+  // The slug is an artist, a name several artists share (a chooser), or one an artist used to have (a redirect) -
+  // docs/sync_decisions.md "Two artists, one name".
+  const artist = computed<Artist | null>(() => response.value && 'id' in response.value ? response.value : null)
+  const chooser = computed<ArtistChooser | null>(() => response.value && 'chooser' in response.value ? response.value : null)
+  watch(() => response.value && 'redirectTo' in response.value ? response.value.redirectTo : null, (to) => {
+    if (to) {
+      navigateTo(`/artist/${to}`, { replace: true, redirectCode: 301 })
+    }
+  }, { immediate: true })
 
   const { data: releasesData, pending: releasesPending, refresh: refreshReleases } = useFetch(() => `/api/artists/${slug.value}/releases`, {
     key: () => `artist-releases-${slug.value}`,
@@ -237,6 +247,7 @@ const api = useApi()
 
   return {
     artist,
+    chooser,
     error,
     pending,
     releases,

@@ -35,6 +35,13 @@ defineEmits<{
         </td>
         <td :class="cx(data.td, 'text-stone-100/55')">
           {{ [row.disambiguation, row.country, row.type].filter(Boolean).join(' · ') || '—' }}
+          <p v-if="row.namesake" class="text-xs text-amber-400/80">
+            <NuxtLink :to="`/artist/${row.namesake.slug}`" class="underline">Another {{ row.name }}</NuxtLink>
+            is in your library.
+            {{ row.namesake.identified
+              ? 'This one is added separately - each gets its own page.'
+              : 'It is not identified yet: adding checks whether it is this one first.' }}
+          </p>
         </td>
         <td :class="cx(data.td, 'text-right')">
           <NuxtLink

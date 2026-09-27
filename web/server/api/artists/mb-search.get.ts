@@ -29,11 +29,23 @@ export default defineEventHandler(async (event) => {
   const existingByMbid = new Map(
     existingRows.map(a => [a.musicbrainzId!, a.primaryArtist ?? { slug: a.slug, name: a.name }]),
   )
+  // Artists already here under the same name but another identity: adding is still right, and the page says so.
+  const namesakes = await prisma.artist.findMany({
+    where: { name: { in: [...new Set(results.map(r => r.name))], mode: 'insensitive' }, primaryArtistId: null },
+    select: { name: true, slug: true, baseSlug: true, musicbrainzId: true },
+  })
+  const namesakeFor = (r: { name: string, mbid: string }) => {
+    const same = namesakes.filter(a => a.name.toLowerCase() === r.name.toLowerCase() && a.musicbrainzId !== r.mbid)
+    const first = same[0]
+    // Several of them already share the name: link the chooser page rather than one of them.
+    return first ? { slug: same.length > 1 ? first.baseSlug ?? first.slug : first.slug, identified: !!first.musicbrainzId } : null
+  }
 
   return {
     items: results.map(r => ({
       ...r,
       existing: existingByMbid.get(r.mbid) ?? null,
+      namesake: existingByMbid.has(r.mbid) ? null : namesakeFor(r),
     })),
   }
 })

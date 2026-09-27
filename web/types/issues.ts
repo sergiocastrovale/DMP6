@@ -1,6 +1,6 @@
 import type { Tone } from './ui'
 
-export type IssueType ='corrupted' | 'orphans' | 'duplicates' | 'missing' | 'enrichment' | 'duplicate-release' | 'mismatched-release-id'
+export type IssueType ='corrupted' | 'orphans' | 'duplicates' | 'missing' | 'enrichment' | 'duplicate-release' | 'mismatched-release-id' | 'ambiguous-artists'
 export type HistoryIssueType = Extract<IssueType, 'corrupted' | 'missing'>
 // Types that flow through the /api/issues/[type] patch+queue endpoints (a strict subset of IssueType —
 // duplicate-release/mismatched-release-id/enrichment are audit-only, never individually patched/queued).

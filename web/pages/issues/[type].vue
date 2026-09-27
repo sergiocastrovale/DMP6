@@ -9,6 +9,7 @@ const TITLES: Record<string, string> = {
   'mismatched-release-id': 'Mismatched Release ID',
   missing: 'Missing Metadata',
   orphans: 'Orphan Artists',
+  'ambiguous-artists': 'Ambiguous Artists',
 }
 
 definePageMeta({

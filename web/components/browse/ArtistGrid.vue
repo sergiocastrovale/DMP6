@@ -39,6 +39,7 @@ const trackCountText = (count: number) => `${count} ${count === 1 ? 'track' : 't
         :completeness="(artist as Artist).completeness"
       >
         <template #subtitle>
+          <span v-if="artist.homonymNote" class="block truncate text-amber-400/80">{{ artist.homonymNote }}</span>
           <span class="flex items-center gap-1.5 truncate">
             <span class="shrink-0">{{ releaseCountText(artist.releaseCount ?? 0) }}</span>
             <Bullet />

@@ -1,4 +1,5 @@
 import { mkdir, writeFile, rm, access } from 'node:fs/promises'
+import { artistFolderName } from '~/server/utils/homonyms'
 import { errorMessage } from '~/helpers/functions'
 import { join, basename } from 'node:path'
 import { prisma } from '~/server/utils/prisma'
@@ -159,7 +160,7 @@ const reconcileWorker = createWorker({ name: 'reconcile', run: async () => {
       if (!row.artist?.name) { await failAttempt(row, maxAttempts, 'missing artist'); failed++; continue }
       // Bounded so one slow transfer/transcode can't wedge the whole reconcile loop. On timeout the work is
       // ABORTED and awaited (server/utils/timeout.ts), so nothing is still moving files when the purge below runs.
-      const artistName = row.artist.name
+      const artistName = await artistFolderName(row.artistId, row.artist.name)
       const res = await withDeadline(signal => relocateDownloadedFiles({
         username: row.slskUsername!,
         files,

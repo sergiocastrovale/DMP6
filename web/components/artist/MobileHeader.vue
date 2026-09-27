@@ -35,6 +35,7 @@ const showAllGenres = ref(false)
         <h1 :class="typography.h1">
           {{ artist.name }}
         </h1>
+        <ArtistHomonyms :artist="artist" />
         
         <ArtistShowing />
       </div>

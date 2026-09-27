@@ -9,7 +9,8 @@ import { useArtistPage } from '../../composables/useArtistPage'
 const fetchMock = vi.fn()
 vi.stubGlobal('$fetch', fetchMock)
 
-const artist = ref<{ monitored: boolean } | null>({ monitored: false })
+// An artist payload has an id; the page tells an artist from a chooser or a redirect by it.
+const artist = ref<{ id: string, monitored: boolean } | null>({ id: 'a1', monitored: false })
 
 const { auth } = vi.hoisted(() => ({ auth: { permissions: ['sync.view'] as string[] } }))
 mockNuxtImport('useAuth', () => () => ({ hasPerm: (key: string) => ({ value: auth.permissions.includes(key) }) }))
@@ -44,7 +45,7 @@ describe('useArtistPage download-status polling', () => {
     vi.useFakeTimers()
     fetchMock.mockReset()
     fetchMock.mockResolvedValue({ items: [] })
-    artist.value = { monitored: false }
+    artist.value = { id: 'a1', monitored: false }
     auth.permissions = ['sync.view']
   })
 
@@ -54,7 +55,7 @@ describe('useArtistPage download-status polling', () => {
 
   it('never asks for download status without sync.view, even for a monitored artist', async () => {
     auth.permissions = []
-    artist.value = { monitored: true }
+    artist.value = { id: 'a1', monitored: true }
     const wrapper = await mountPage()
     await vi.advanceTimersByTimeAsync(120_000)
     expect(statusCalls()).toBe(0)
@@ -88,7 +89,7 @@ describe('useArtistPage download-status polling', () => {
   })
 
   it('keeps a 30s heartbeat for a monitored artist with nothing in flight', async () => {
-    artist.value = { monitored: true }
+    artist.value = { id: 'a1', monitored: true }
     const wrapper = await mountPage()
     expect(statusCalls()).toBe(1)
     await vi.advanceTimersByTimeAsync(2000)
