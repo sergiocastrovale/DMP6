@@ -52,10 +52,13 @@ cd scripts && cargo build --release -p add
 2. Take the scan lock (`"add"`) — same exclusive lock `index`/`sync`/`tidy` share, no racing a library-wide scan.
 3. One MB call: `mb_get_artist_detail` → authoritative name, area (ISO country), relations (image source). The typed search-box name is never trusted directly — "Embedded MB IDs are definitive".
 4. Derive `slug` via `common::slug::make_slug` (same fn `index`'s `ensure_artist` uses — critical, or a transliterated name could fork a second Artist row once real files land) and sanitized `folder`.
-5. **Duplicate check** — aborts exit 3, nothing written, if: existing Artist row with this `musicbrainzId` (resolved through `primaryArtistId` if a connected duplicate); existing row with this slug; folder already exists under `MUSIC_DIR`.
+5. **Duplicate check** — aborts exit 3, nothing written, only if an Artist row already has this `musicbrainzId` (resolved through `primaryArtistId` if a connected duplicate). Another artist with the **same name** is not a collision (identity is the MB id, `docs/sync_decisions.md` §21):
+   - an identified namesake (different id) → the add goes ahead; both become id-suffixed homonyms;
+   - the name's **unidentified** member (an existing row with no MB id) is first checked against the artist being added: `dmp_sync::mb_matching::choose_homonym` scores its own albums against each same-named MB artist's release groups. If they are this artist's → **linked** (`musicbrainzId` set on the existing row, no new row, gaps pass for it, exit 0). If they are someone else's → that id is stored on it and the add goes ahead. Undecided → the add goes ahead and it stays the group's unidentified member.
+   - Decision is the pure `add::homonym::decide`, unit-tested.
 6. `--dry-run` stops here.
 7. `mkdir` the folder (non-recursive, refuses a parent that isn't exactly `MUSIC_DIR` — guards a sanitized name still containing `..`).
-8. Insert `Artist` row: `manuallyAdded=true`, `musicbrainzId`, `country`, `monitored` from flag, totals 0. Unique-constraint race (another `./add` won the slug) → removes the just-created folder, exits 3.
+8. Insert `Artist` row: `manuallyAdded=true`, `musicbrainzId`, `country`, `disambiguation`, `monitored` from flag, totals 0, `baseSlug` = the name's slug. Alone under its name it takes the bare slug; otherwise a provisional one, and `common::homonyms::reconcile_group` then moves every member of the name to `{base}-{id8}` (existing members' old slugs get `ArtistSlugHistory` redirects; the bare slug becomes the web chooser). The folder is `Name (id8)` when `Name/` already exists. Unique-constraint race → removes the just-created folder, exits 3.
 9. Artist image via the same path sync uses — non-fatal on failure.
 10. `fill_catalogue_gaps` scoped to just this artist id (not name filtering — avoids cross-matching e.g. "NAPA (PT)"/"NAPA (CL)"), then the shared `catalogue_gaps::finish_run` tail (orphan sweep, retire MISSING placeholders, `update_statistics`). Stamps `lastGapsCheckedAt` so the monitor loop's own trickle doesn't immediately redo this artist.
 11. Release lock, exit 0.
@@ -68,7 +71,7 @@ A gaps-pass failure at step 10 does **not** roll back the artist/folder (valid e
 |---|---|
 | 0 | Created (or `--dry-run` completed cleanly). |
 | 1 | Failure — bad mbid, no `MUSIC_DIR`, lock held, MB lookup failed, DB error, gaps pass failed. |
-| 3 | Already exists — mbid, slug, or folder collision. The web caller (`Search.vue`) uses this code specifically to show `Dialog.vue`'s error instead of a generic failure toast; every other non-zero code is a generic failure. |
+| 3 | Already exists — this MusicBrainz artist is already in the library (or its `Name (id8)` folder already exists). A same-named, different artist is not a collision. The web caller (`Search.vue`) uses this code specifically to show `Dialog.vue`'s error instead of a generic failure toast; every other non-zero code is a generic failure. |
 
 ## `manuallyAdded`
 

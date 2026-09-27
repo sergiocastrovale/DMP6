@@ -439,3 +439,64 @@ ssh nas 'bash /tmp/whatever.sh'                                    # fine
 ssh nas 'tmux new-session -d -s x "bash /tmp/whatever.sh"'         # fine
 ssh nas 'tmux new-session -d -s x "/tmp/whatever.sh"'              # BREAKS — noexec, kills tmux
 ```
+
+---
+
+## 21. Two artists, one name
+
+An artist's identity is its **MusicBrainz id**, not its name. Before this, `Artist` rows were keyed on the slug (the name):
+two different artists called "NAPA" (a Portuguese band, and a Napa whose files carry another MB id) collapsed into one
+row whose `musicbrainzId` flipped to whichever folder was resolved last, and sync's name search took whichever
+same-named artist MusicBrainz ranked first. On the live library, 101 rows owned folders whose files named a different MB
+artist than the row held (1,758 releases) - homonyms among them (Nirvana, Saga, Air, Ghost, Prism, ...), credit variants
+too ("James Brown & The Famous Flames", which are left to the existing rules).
+
+**The model** (`scripts/common/src/homonyms.rs`, the one place it is implemented):
+
+- Rows whose names slugify alike share `Artist.baseSlug` and form a **homonym group** (primary rows only).
+- `reconcile_group(base)` keeps each group in shape, and every flow calls it for the names it touched - index (folder pass
+  and resolve pass), sync (after it identifies or connects an artist), `./add`, `./delete`, the orphan sweeps,
+  canonicalize (a rename touches the old and the new name), `./fix`, and `./tidy` as a safety net:
+  1. one member → it holds the bare slug (`napa`);
+  2. two or more → each holds `{base}-{first 8 of its MB id}` (`napa-d76eeba7`), or of its Artist id for the member with no
+     MB id; the bare slug belongs to nobody - it is the web app's chooser page;
+  3. at most one member without an MB id (the group's **unidentified** member);
+  4. no two members with the same MB id;
+  5. in a group of two or more, every release sits with the member its files' ids name, else the one member whose synced
+     catalogue holds it (its bound MB release, or its title), else the unidentified member.
+  Rules 3 and 4 connect extra rows through `primaryArtistId` (the existing duplicate model), never delete. Every slug that
+  changes leaves an `ArtistSlugHistory` row, so an old URL redirects. Rule 5 is what makes the result independent of which
+  release, or which flow, came first.
+- **The suffix is an id, never a country.** A folder can bind some releases to one artist and carry another artist's id
+  whose MB entry has no country, or that sync has not reached yet. An id is known the moment the tags are read, is unique,
+  and gives the same slug after a nuke + re-index. Country and MusicBrainz's disambiguation (`Artist.disambiguation`) are
+  display only.
+
+**Believing a file's id.** 99.8% of the live library's tracks carry an album-artist id with no `ALBUMARTISTS` frame beside
+it, so the resolve pass pairs a lone album-artist id with the album-artist tag - but only when the name cache already
+says that id, or MusicBrainz confirms the id is called exactly that name (`ArtistResolver::verify_id`, one lookup per name
+and id per run; a cached "no such artist" rules it out for free). When the cache names a *different* id, the file is
+either mistagged (the §4 case, rejected) or a second real artist with the name (`confirm_homonym`: MusicBrainz calls the
+file's id exactly this name → the name is marked `MbArtistLookup.ambiguous` and the file believed). Once a name is
+ambiguous, every file id for it needs that confirmation - one mistagged file must never become yet another artist.
+
+**A name several MB artists answer to.** The resolver's exact search now returns all exact matches
+(`mb_search_artist_exact_all`); more than one marks the name ambiguous, and the name alone is never resolved to one id
+again: a searched id only fills or identifies a group's only member, never creates a homonym. Sync picks between
+same-named candidates by evidence only (`mb_matching::pick_homonym`): the candidate whose release groups hold this row's
+own albums (year as the tiebreak), and only a clear winner with at least one album in common - otherwise nothing is pulled.
+Canonicalize and tidy's identity repair ignore ambiguous names, so they never clear a homonym's id.
+
+**Adding one** (`./add`, `docs/scripts/add.md`): a same-named artist is not a collision. The name's unidentified member, if
+any, is checked first by its albums: it may *be* the artist being added (linked, no second row).
+
+**Moving one** (`./fix --assign-artist`, "Assign to artist" in the web release info): writes the chosen artist's id into
+the release's files and re-indexes - the files stay the source of truth. A download for an artist that shares its name
+lands in its own `Name (id8)` folder and has that id stamped into its files on merge.
+
+**Repairing existing data**: `./tidy --split-homonyms [--dry-run] [--emit-artist-ids f]` re-runs the resolve pass over every
+affected artist's releases; follow with `./sync --artist-ids f --overwrite` and `./tidy --artist-ids f`.
+
+**Web**: `/artist/<base>` is a chooser when shared; the artist header shows the disambiguation and links the others; lists
+show the note only where names collide; `/issues` → Ambiguous artists lists each group's unidentified member.
+

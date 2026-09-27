@@ -38,6 +38,7 @@ Artist.primaryArtistId → Artist.id (dup → canonical)
 - **Box set = one MusicBrainzRelease, N `MusicBrainzReleaseMedium` rows**, never several releases — MB has no box-set entity, shared identity is **recording** only. `index` never folds multi-medium; `dmp_sync::boxset::run_repair` (via `./tidy`) binds + folds/dissolves + equivalences. Binding: unanimous embedded id, else `boxset::plan_box_bind` strictest-first ladder (`pair_tracks_at`: exact title 5s→15s→60s→containment→qualifier-stripped→typo). No-match folder left out; ambiguous rejects group; needs ≥2 folders + majority. `mediumCount>1` + ≥2 equivalent media → **dissolves** (standalone via `boxReleaseId`); 0-1 equivalent → **folds** into one `LocalRelease`. Each sibling group has its own error boundary (one group's DB error never aborts the rest — `docs/sync_decisions.md` §9 "One box never blocks the rest"). Matcher replay test: `boxset::tests::replay_library_dump` (`#[ignore]`d). Full detail: `docs/sync_decisions.md`.
 - **Discarded merge must not orphan its just-bound MB release.** `stampMerged` discard branch (`web/server/utils/promote.ts`) deletes MusicBrainzRelease only if nothing else needs it. `dmp_sync::db::delete_orphaned_mb_releases` must run before `retire_owned_missing_placeholders` at every call site.
 - `LocalRelease.groupKey` (unique) = `"folder:{folderPath}"` (fallback `"meta:{slugTitle}:{year}:{slugArtist}"`) — folder is the physical unit, per-track MB ids not part of key. Binds only Official Album/EP, +Single only when files' own MB ids point at it.
+- **Artist identity = MusicBrainz id, not name** (`scripts/common/src/homonyms.rs`, `docs/sync_decisions.md` §21). Rows sharing `Artist.baseSlug` (= `make_slug(name)`, filled by a DB trigger when an insert omits it) are a homonym group; flows only change facts (owners, ids, names, rows) then call `reconcile_group`/`reconcile_bases` for the names they touched: 1 member → bare slug; ≥2 → `{base}-{first 8 of MB id | Artist id}` each, bare slug = web chooser; ≤1 unidentified (no MB id) member; same-id members connected (`primaryArtistId`); releases re-homed by files' ids → catalogue → unidentified member. Slug changes write `ArtistSlugHistory` (redirects). Suffix is an id, never country (country/`disambiguation` display only). A file's id for a shared or contradicted name is believed only after MB confirms the name (`verify_id`/`confirm_homonym`); a lone album-artist id (99.8% of files: no `ALBUMARTISTS` frame) pairs with the tag under the same check. `MbArtistLookup.ambiguous` = several exact MB artists by that name; never resolve it to one id by name alone (sync picks by album evidence, `pick_homonym`). Repair: `./tidy --split-homonyms`; move a release: `./fix --assign-artist`.
 - `Artist.manuallyAdded` — only stored (not derived) ownership flag. Set by `./add` only, never un-set. Lets file-less artist show in `/browse` + count into `Statistics.mainArtists`; excluded from orphan-artist sweep (`index/src/deletion.rs`, `audit/src/orphans.rs` — must match).
 - `ArtistFact` — "Did you know..." trivia on Explore (`components/explore/DidYouKnow.vue`, `GET /tracks/[id]/fact`), see `docs/feature_did_you_know.md`. Specificity cascade: exact track → its release → artist-general → nothing (never demotes). Fetched from Genius, persisted; past `ARTIST_FACTS_DB_THRESHOLD` (15) rows, Genius skipped, DB-only.
 - `UserApiKey` — per-user Subsonic (`/rest/*`) credential, see `docs/feature_subsonic.md`. sha256-hashed (`server/utils/apiKeys.ts`), plaintext shown once at creation. Survives password change (PAT semantics), dies on revoke (`revokedAt` set, row kept).
@@ -103,6 +104,7 @@ Root shell wrappers over pre-built release binaries — **rebuild after code cha
 ./sync --catalogue-gaps [--overwrite]        # fast MISSING-entry pass
 ./sync --artist-ids file      # used by refresh
 ./tidy [--all] [--only "Name" [--exact]] [--from x] [--to y] [--artist-ids file] [--rescore-only]
+./tidy --split-homonyms [--dry-run] [--emit-artist-ids f]   # one-off: split same-named artists merged into one row (§21)
 # Library-wide repair, split out of sync: empty/orphaned release cleanup, box-set binding +
 # fold/dissolve + equivalence (dmp_sync::boxset::run_repair), DB-only re-score of anything the box
 # pass leaves at UNKNOWN, artist identity repair (3 passes), score recompute. Picks its own scope from
@@ -121,6 +123,7 @@ Root shell wrappers over pre-built release binaries — **rebuild after code cha
 ./audit [--corrupted|--orphans|--duplicates|--missing|--enrichment|--duplicate-release|--mismatched-release-id]
 ./fix [--corrupted|--orphans|--duplicates|--missing]
 ./fix --revert --corrupted [--mode undo-resolved]   # default mode 'undo' → back to DETECTED
+./fix --assign-artist --mbid <uuid> (--release clxxx | --folder "Artist/Album")   # write the artist's id into the files, re-index
 
 # Destructive
 ./delete "Artist Name" [--files] [--dry-run]   # cascade delete; "A;B" for multi
@@ -144,6 +147,7 @@ Web UI scan buttons run these binaries via `/api/terminal/run`, from **two separ
 - `scanActions` → `components/settings/ScanActions.vue` (library-wide): check new / re-check changed (`--inspect`) / index only / sync only (MANAGER), + ADMIN full re-scan (`--overwrite-with-images` + `sync --overwrite`, never `--prune` library-wide). Check/full/sync-only all chain `./tidy` after `./sync`.
 - `artistScanActions` → `components/artist/ScanActions.vue` (per-artist): scan new files (MANAGER) / rebuild everything / rebuild files-only / re-match from scratch (ADMIN). Scan/rebuild/re-match chain `./tidy` after `./sync`; rebuild-files-only doesn't touch MusicBrainz so has no `./tidy` step.
 
+- Tests that exercise MusicBrainz-backed decisions use the stub in `common::testing` (`testing` feature, dev-dependencies only): `MbStub` per test for binaries run with `MB_BASE_URL`, or `shared_url`/`shared_add_artist` for in-process tests (the base URL is read once per process). Binary tests run from an empty temp dir with `DATABASE_URL` set explicitly so `web/.env` (prod) is never loaded.
 - `./delete` takes artist **name** positionally + needs `--y` (stdin prompt, nothing answers it in tmux).
 - Per-artist actions pass `--folders`, never `--only`: `--only` matches whole top-level directories, and a release co-owned inside another artist's folder drags that artist's entire catalogue into the scan (Michael Jackson → 5 roots, 662 Diana Ross files re-read for one duet). `artistScanFolders` (`helpers/artistPageLogic.ts`) mixes granularity — own roots (artist's + connected duplicate-merged) go in bare so new albums are found; other roots contribute only the exact album folders concerned. Trade-off: a **new** co-owned album filed under another artist is found by that artist's scan, not this one.
 - ADMIN gating: `DESTRUCTIVE_FLAGS` in `server/utils/terminalCommand.ts` (`--delete`,`--overwrite*`,`--prune`,`--files`) + `COMMAND_PERM` (`./delete`/`./nuke` ADMIN outright). New destructive flag → add to deny-list explicitly. `FLAG_PERM` = non-destructive counterpart, gates a flag on top of its command's own permission (`--monitored` on `./add` needs `downloads.crud` even though `./add` itself only needs `sync.run`).
@@ -197,7 +201,7 @@ NAS: `sudo docker exec dmp cat /app/data/logs/errors.log`
 | `/` | Dashboard: latest, recently played, playlists, favorites |
 | `/browse` | Artist grid, filters, infinite scroll |
 | `/add` | Search MusicBrainz and add an artist before owning any files (`./add`, `sync.run`) |
-| `/artist/[slug]` | Artist detail + releases (aggregated across connected artists) + sync controls |
+| `/artist/[slug]` | Artist detail + releases (aggregated across connected artists) + sync controls. A name several artists share → chooser (`components/artist/HomonymChooser.vue`); an old slug → redirect (`server/utils/homonyms.ts` `resolveArtistSlug`) |
 | `/explore` | 4-slider discovery (energy/era/familiarity/sound) |
 | `/playlists`, `/playlists/[slug]` | Playlist library / single playlist |
 | `/playlists/setup/generated` (+`new`, `[id]`) | Admin: CRUD for `PlaylistGenerator` seeds (genre/region playlist settings) |
@@ -206,7 +210,7 @@ NAS: `sudo docker exec dmp cat /app/data/logs/errors.log`
 | `/statistics` (+18 subpages) | Stats dashboard |
 | `/downloads` (+5 subpages) | Queue shell: monitoring, merge, queue (`?filter=`), history, events |
 | `/labs` (+4 subpages) | map, mosaic, network, decades |
-| `/issues`, `/issues/<type>` (7), `/issues/history` | Metadata issue review/fix/undo |
+| `/issues`, `/issues/<type>` (8), `/issues/history` | Metadata issue review/fix/undo (`ambiguous-artists` is live from the artist rows, no table) |
 | `/settings/*` (9) | api-keys, downloads, library, permissions, storage, users (admin); subsonic, lastfm, themes (every role) |
 | `/change-password`, `/login` | Auth |
 

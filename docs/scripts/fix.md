@@ -28,6 +28,8 @@ All fix types can be combined in one invocation. Only rows with `status = 'PENDI
 | `--duplicates` | bool | false | Fix duplicate artists (merge B into A) |
 | `--missing` | bool | false | Fix missing metadata (tag writes) |
 | `--revert` | bool | false | Revert already-applied fixes instead of fixing |
+| `--assign-artist` | bool | false | Say which artist a release belongs to: write `--mbid` into the album-artist id (`MUSICBRAINZ_ALBUMARTISTID` / `MusicBrainz Album Artist Id`, via `common::tags::write_mb_ids`, forced) of every file of `--release <LocalRelease id>` or `--folder <path>` (relative to `MUSIC_DIR` or absolute; audio files found on disk, for a download not indexed yet), then re-index their folders. Used by the web app's "Assign to artist" and by the download merge for an artist that shares its name (`docs/sync_decisions.md` §21). Needs `issues.fix` in the web terminal. |
+| `--mbid` / `--release` / `--folder` | string | - | Arguments of `--assign-artist`. |
 | `--mode` | `undo` \| `undo-resolved` | `undo` | Revert mode: back to `DETECTED`, or stays `RESOLVED` |
 | `--dry-run` | bool | false | Print what each fixer would change; writes nothing (file, DB, or statistics) |
 
