@@ -19,12 +19,15 @@ unchecked "Remove all files from this artist" switch.
 
 | Flag | Type | Default | Description |
 |---|---|---|---|
-| `artist` | String (positional) | required | Artist name(s), semicolon-separated |
+| `artist` | String (positional) | required | Artist name(s), semicolon-separated. Mutually exclusive with `--id`/`--release` |
+| `--id` | String | - | Target exactly this Artist row by id - never ambiguous. Mutually exclusive with `artist`/`--release` |
 | `--y` | bool | false | Skip confirmation prompt |
 | `--files` | bool | false | Delete the artist's audio files and the folders they empty |
 | `--dry-run` | bool | false | Preview without changes |
 
-Artist lookup uses **case-insensitive exact match** (SQL `LOWER(name) = LOWER($1)`). Exits if 0 or >1 matches per name.
+Artist lookup by name uses **case-insensitive exact match** (SQL `LOWER(name) = LOWER($1)`). Exits if 0 or >1 matches per name -
+two artists can share a name (`docs/sync_decisions.md` "Two artists, one name"), and this never guesses which one is meant.
+`--id` is what callers that already know the row use instead, e.g. the artist page's own scan actions (`components/artist/ScanActions.vue`).
 
 ## Cascade Rule
 

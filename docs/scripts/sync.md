@@ -50,6 +50,7 @@ Sync = per-artist matching only. Library-wide repair (box-set fold/dissolve, ide
 | `--to` / `-t` | String | - | End letter filter |
 | `--only` / `-o` | String | - | Artist filter (`;`-separated) |
 | `--exact` | bool | false | Exact match for `--only` |
+| `--id` | String | - | Sync exactly this Artist row by id - never ambiguous, bypasses name matching and the pending gate (same exemption `--artist-ids` has). Mutually exclusive with `--only`/`--from`/`--to`. Two artists can share a name (`docs/sync_decisions.md` "Two artists, one name"), where `--only --exact` would select both; used by the artist page's own scan actions (`components/artist/ScanActions.vue`) |
 | `--release` | String | - | Re-sync one release by LocalRelease id |
 | `--overwrite` | bool | false | Re-sync all matched, not just pending |
 | `--skip-artist-img` | bool | false | Skip artist image download |

@@ -8,6 +8,7 @@ import { scanSessionName } from '~/helpers/functions'
 import { ICON_STROKE_WIDTH } from '~/helpers/ui'
 
 const props = defineProps<{
+  artistId: string
   artistName: string
   folders: string[]
 }>()
@@ -17,43 +18,45 @@ const { isAdmin } = useAuth()
 
 const scanIcons: Record<string, Component> = { Search, RefreshCw, HardDriveDownload, Globe }
 
-// `./delete` prompts for confirmation on stdin, which nothing answers in a tmux-backed run - `--y` is
-// what keeps the rebuilds from hanging there forever. It scopes by artist name; index scopes by the
-// artist's on-disk folders, which is why the two take different arguments.
+// index scopes by the artist's on-disk folders (`--folders`, not `--only`: `--only` matches whole
+// top-level directories, so a release this artist co-owns inside another artist's directory dragged
+// that artist's entire catalogue into every scan). artistScanFolders() hands back the artist's own
+// roots plus the exact album folders elsewhere, and index walks each entry as given.
 //
-// index takes `--folders`, not `--only`: `--only` matches whole top-level directories, so a release
-// this artist co-owns inside another artist's directory dragged that artist's entire catalogue into
-// every scan. artistScanFolders() hands back the artist's own roots plus the exact album folders
-// elsewhere, and index walks each entry as given.
-const artistActions: Record<string, (name: string, folders: string[]) => () => Promise<void>> = {
-  'check': (name, folders) => async () => {
+// ./delete and ./sync target this one artist by id (`--id`), not by name: two artists can share a
+// name (docs/sync_decisions.md "Two artists, one name"), and a name match would either refuse as
+// ambiguous (./delete) or silently sweep in the other same-named artist too (./sync --only --exact).
+// `./delete` also prompts for confirmation on stdin, which nothing answers in a tmux-backed run -
+// `--y` is what keeps the rebuilds from hanging there forever.
+const artistActions: Record<string, (id: string, name: string, folders: string[]) => () => Promise<void>> = {
+  'check': (id, name, folders) => async () => {
     const session = scanSessionName('check', name)
     await terminal.runSequence([
       { command: './index', args: ['--folders', folders.join(';')], session },
-      { command: './sync', args: ['--only', name, '--exact'], session },
+      { command: './sync', args: ['--id', id], session },
       { command: './tidy', args: [], session },
     ])
   },
-  'rebuild': (name, folders) => async () => {
+  'rebuild': (id, name, folders) => async () => {
     const session = scanSessionName('rebuild', name)
     await terminal.runSequence([
-      { command: './delete', args: [name, '--y'], session },
+      { command: './delete', args: ['--id', id, '--y'], session },
       { command: './index', args: ['--folders', folders.join(';'), '--overwrite'], session },
-      { command: './sync', args: ['--only', name, '--exact', '--overwrite'], session },
+      { command: './sync', args: ['--id', id, '--overwrite'], session },
       { command: './tidy', args: [], session },
     ])
   },
-  'reindex': (name, folders) => async () => {
+  'reindex': (id, name, folders) => async () => {
     const session = scanSessionName('reindex', name)
     await terminal.runSequence([
-      { command: './delete', args: [name, '--y'], session },
+      { command: './delete', args: ['--id', id, '--y'], session },
       { command: './index', args: ['--folders', folders.join(';'), '--overwrite'], session },
     ])
   },
-  'resync': (name) => async () => {
+  'resync': (id, name) => async () => {
     const session = scanSessionName('resync', name)
     await terminal.runSequence([
-      { command: './sync', args: ['--only', name, '--exact', '--overwrite'], session },
+      { command: './sync', args: ['--id', id, '--overwrite'], session },
       { command: './tidy', args: [], session },
     ])
   },
@@ -64,7 +67,7 @@ const syncOptions = computed<ButtonDropdownOption[]>(() =>
     label: s.text,
     description: s.subtext,
     icon: scanIcons[s.icon],
-    action: artistActions[s.id]!(props.artistName, props.folders),
+    action: artistActions[s.id]!(props.artistId, props.artistName, props.folders),
   })),
 )
 </script>

@@ -1,11 +1,12 @@
 Permanently delete an artist's catalogue, or a single release from it. If the artist is credited on other artists' tracks, those credits are removed too - warned before confirming.
 
-Usage: delete [OPTIONS] <ARTIST|--release <RELEASE>>
+Usage: delete [OPTIONS] <ARTIST|--release <RELEASE>|--id <ID>>
 
 Arguments:
-  [ARTIST]  Artist name(s), separated by ';' for multiple (case-insensitive exact match)
+  [ARTIST]  Artist name(s), separated by ';' for multiple (case-insensitive exact match). Refused when a name matches more than one Artist row - two artists can share a name (docs/sync_decisions.md "Two artists, one name"), and this must never guess which one is meant. Use `--id` to target one row unambiguously
 
 Options:
+      --id <ID>            Delete exactly this Artist row by id - no name matching, so it can never be ambiguous. What callers that already know the id (the artist page's own scan actions) should use instead of `artist`
       --release <RELEASE>  Delete a single release (LocalRelease id) instead of a whole artist - the rest of the artist's catalogue is left untouched
       --y                  Skip confirmation prompt
       --files              Also delete the audio files from disk (only paths inside MUSIC_DIR)

@@ -30,6 +30,12 @@ pub(crate) struct SyncArgs {
     to: Option<String>,
     #[arg(long, short, help = "Only sync these artists (semicolon-separated)")]
     only: Option<String>,
+    /// Sync exactly this Artist row by id, bypassing name matching and the pending
+    /// (lastIndexedAt > lastSyncedAt) gate - same exemption `--artist-ids` has. Two artists can
+    /// share a name (docs/sync_decisions.md "Two artists, one name"), so `--only` can match more
+    /// than one row and this is what callers that already know the id use instead.
+    #[arg(long, conflicts_with_all = ["only", "from", "to"])]
+    id: Option<String>,
     #[arg(long, help = "Re-sync a single release by its LocalRelease ID")]
     release: Option<String>,
     #[arg(
@@ -380,6 +386,8 @@ async fn main() {
         "Mode",
         if args.release.is_some() {
             "single release"
+        } else if args.id.is_some() {
+            "single artist id"
         } else if args.artist_ids.is_some() {
             "artist IDs from file"
         } else if args.overwrite {
@@ -406,7 +414,22 @@ async fn main() {
     }
     reporter.blank();
 
-    let mut artists: Vec<ArtistSyncRow> = if let Some(ref release_id) = target_release_id {
+    let mut artists: Vec<ArtistSyncRow> = if let Some(ref id) = args.id {
+        let rows: Vec<ArtistImageRow> = common::lock::expect_or_release(
+            &pool,
+            "sync",
+            pid,
+            sqlx::query_as(
+                r#"SELECT id, name, slug, "musicbrainzId", image, "imageUrl" FROM "Artist" WHERE id = $1"#,
+            )
+            .bind(id)
+            .fetch_all(&pool)
+            .await,
+            "DB query failed",
+        )
+        .await;
+        rows.into_iter().map(ArtistSyncRow::from).collect()
+    } else if let Some(ref release_id) = target_release_id {
         match get_artist_for_release(&pool, release_id, args.artist_hint.as_deref()).await {
             Ok(Some(artist)) => {
                 reporter.info(&format!("Release {} → artist: {}", release_id, artist.name));
@@ -507,7 +530,8 @@ async fn main() {
     let has_filter = args.only.is_some()
         || args.from.is_some()
         || args.to.is_some()
-        || args.artist_ids.is_some();
+        || args.artist_ids.is_some()
+        || args.id.is_some();
     if has_filter && !artists.is_empty() {
         let primary_ids: Vec<String> = artists.iter().map(|a| a.id.clone()).collect();
         let connected: Vec<ArtistImageRow> = sqlx::query_as(

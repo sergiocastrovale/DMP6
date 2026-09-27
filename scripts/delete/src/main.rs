@@ -20,11 +20,20 @@ use std::io;
     about = "Permanently delete an artist's catalogue, or a single release from it. If the \
              artist is credited on other artists' tracks, those credits are removed too - \
              warned before confirming.",
-    group(ArgGroup::new("target").required(true).args(["artist", "release"]))
+    group(ArgGroup::new("target").required(true).args(["artist", "release", "id"]))
 )]
 struct Args {
-    /// Artist name(s), separated by ';' for multiple (case-insensitive exact match)
+    /// Artist name(s), separated by ';' for multiple (case-insensitive exact match). Refused when a
+    /// name matches more than one Artist row - two artists can share a name
+    /// (docs/sync_decisions.md "Two artists, one name"), and this must never guess which one is
+    /// meant. Use `--id` to target one row unambiguously.
     artist: Option<String>,
+
+    /// Delete exactly this Artist row by id - no name matching, so it can never be ambiguous. What
+    /// callers that already know the id (the artist page's own scan actions) should use instead of
+    /// `artist`.
+    #[arg(long)]
+    id: Option<String>,
 
     /// Delete a single release (LocalRelease id) instead of a whole artist - the rest of the
     /// artist's catalogue is left untouched.
@@ -119,57 +128,78 @@ async fn main() {
         return;
     }
 
-    // Reachable only in artist mode - the clap ArgGroup guarantees exactly one of `artist`/`release`.
-    let artist_names: Vec<String> = args
-        .artist
-        .as_deref()
-        .unwrap_or_default()
-        .split(';')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
+    // Reachable only in artist mode - the clap ArgGroup guarantees exactly one of `artist`/`release`/`id`.
+    let mut target_ids: Vec<(String, String)> = Vec::new();
 
-    if artist_names.len() == 1 {
-        reporter.kv("Target", &artist_names[0]);
+    if let Some(id) = &args.id {
+        match sqlx::query_as::<_, (String, String)>(r#"SELECT id, name FROM "Artist" WHERE id = $1"#)
+            .bind(id)
+            .fetch_optional(&pool)
+            .await
+            .expect("Failed to query Artist table")
+        {
+            Some((id, name)) => {
+                reporter.kv("Target", &format!("{} ({})", name, id));
+                target_ids.push((id, name));
+            }
+            None => {
+                error_log::log_error(&format!("No artist found with id '{}'", id));
+                reporter.failed(&format!("No artist found with id '{}'", id));
+                std::process::exit(1);
+            }
+        }
     } else {
-        reporter.kv("Targets", &format!("{} artists", artist_names.len()));
+        let artist_names: Vec<String> = args
+            .artist
+            .as_deref()
+            .unwrap_or_default()
+            .split(';')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        if artist_names.len() == 1 {
+            reporter.kv("Target", &artist_names[0]);
+        } else {
+            reporter.kv("Targets", &format!("{} artists", artist_names.len()));
+            for name in &artist_names {
+                reporter.nested().info(name);
+            }
+        }
+
         for name in &artist_names {
-            reporter.nested().info(name);
+            let matches: Vec<(String, String, String)> = sqlx::query_as(
+                r#"SELECT id, name, slug FROM "Artist" WHERE LOWER(name) = LOWER($1) ORDER BY name ASC"#,
+            )
+            .bind(name)
+            .fetch_all(&pool)
+            .await
+            .expect("Failed to query Artist table");
+
+            match matches.len() {
+                0 => {
+                    error_log::log_error(&format!("No artist found matching '{}'", name));
+                    reporter.failed(&format!("No artist found matching '{}'", name));
+                    std::process::exit(1);
+                }
+                1 => {
+                    target_ids.push((matches[0].0.clone(), matches[0].1.clone()));
+                }
+                n => {
+                    // Two artists can share a name (docs/sync_decisions.md "Two artists, one name") - never guess
+                    // which one is meant. Callers that already know the id use `--id` instead.
+                    error_log::log_error(&format!("{} artists match '{}' - ambiguous", n, name));
+                    reporter.err(&format!("{} artists match '{}':", n, name));
+                    for (_id, name, slug) in &matches {
+                        reporter.nested().info(&format!("{} ({})", name, slug));
+                    }
+                    reporter.failed("Refine the name, or pass --id, and try again.");
+                    std::process::exit(1);
+                }
+            }
         }
     }
     reporter.blank();
-
-    // Resolve target artists
-    let mut target_ids: Vec<(String, String)> = Vec::new();
-    for name in &artist_names {
-        let matches: Vec<(String, String, String)> = sqlx::query_as(
-            r#"SELECT id, name, slug FROM "Artist" WHERE LOWER(name) = LOWER($1) ORDER BY name ASC"#,
-        )
-        .bind(name)
-        .fetch_all(&pool)
-        .await
-        .expect("Failed to query Artist table");
-
-        match matches.len() {
-            0 => {
-                error_log::log_error(&format!("No artist found matching '{}'", name));
-                reporter.failed(&format!("No artist found matching '{}'", name));
-                std::process::exit(1);
-            }
-            1 => {
-                target_ids.push((matches[0].0.clone(), matches[0].1.clone()));
-            }
-            n => {
-                error_log::log_error(&format!("{} artists match '{}' - ambiguous", n, name));
-                reporter.err(&format!("{} artists match '{}':", n, name));
-                for (_id, name, slug) in &matches {
-                    reporter.nested().info(&format!("{} ({})", name, slug));
-                }
-                reporter.failed("Refine the name and try again.");
-                std::process::exit(1);
-            }
-        }
-    }
 
     // Expand targets: include connected (linked) artists
     let mut connected_ids: Vec<(String, String)> = Vec::new();

@@ -494,6 +494,15 @@ any, is checked first by its albums: it may *be* the artist being added (linked,
 the release's files and re-indexes - the files stay the source of truth. A download for an artist that shares its name
 lands in its own `Name (id8)` folder and has that id stamped into its files on merge.
 
+**Targeting one artist by id, not name.** The web app's per-artist scan actions (`components/artist/ScanActions.vue`
+"Rebuild everything"/"Rebuild from files only"/"Re-match from scratch") used to call `./delete "<name>"` and
+`./sync --only "<name>" --exact` - both name-based. Once a name is shared, `./delete` refuses as ambiguous (its
+long-standing safeguard: 0 or >1 matches per name is always an error, never a guess) and `./sync --only --exact` would
+silently sweep in *every* same-named artist instead of just the one the button was for. Both binaries now also accept
+`--id <ArtistId>` (mutually exclusive with the name-based flags), an exact single-row target that can never be
+ambiguous; the web actions pass the artist's own id, not its name. `./add`/`./fix --assign-artist` already targeted by
+id and mbid respectively and needed no change.
+
 **Repairing existing data**: `./tidy --split-homonyms [--dry-run] [--emit-artist-ids f]` re-runs the resolve pass over every
 affected artist's releases; follow with `./sync --artist-ids f --overwrite` and `./tidy --artist-ids f`.
 

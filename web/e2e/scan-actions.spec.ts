@@ -129,21 +129,23 @@ test.describe('artist scan dropdown', () => {
 
     await expect.poll(() => runs).toEqual([
       { command: './index', args: ['--folders', artistName] },
-      { command: './sync', args: ['--only', artistName, '--exact'] },
+      { command: './sync', args: ['--id', artistId] },
       { command: './tidy', args: [] },
     ])
   })
 
   // --y is load-bearing: ./delete prompts on stdin, and a tmux-backed run has nobody to answer it.
+  // --id, not the name: two artists can share a name (docs/sync_decisions.md "Two artists, one name"),
+  // and only the id targets exactly this row.
   test('"Rebuild everything" deletes, re-indexes and re-matches', async ({ page }) => {
     const runs = await stubTerminal(page)
     await openArtistMenu(page)
     await page.getByRole('menuitem', { name: 'Rebuild everything' }).click()
 
     await expect.poll(() => runs).toEqual([
-      { command: './delete', args: [artistName, '--y'] },
+      { command: './delete', args: ['--id', artistId, '--y'] },
       { command: './index', args: ['--folders', artistName, '--overwrite'] },
-      { command: './sync', args: ['--only', artistName, '--exact', '--overwrite'] },
+      { command: './sync', args: ['--id', artistId, '--overwrite'] },
       { command: './tidy', args: [] },
     ])
   })
@@ -154,7 +156,7 @@ test.describe('artist scan dropdown', () => {
     await page.getByRole('menuitem', { name: 'Rebuild from files only' }).click()
 
     await expect.poll(() => runs).toEqual([
-      { command: './delete', args: [artistName, '--y'] },
+      { command: './delete', args: ['--id', artistId, '--y'] },
       { command: './index', args: ['--folders', artistName, '--overwrite'] },
     ])
   })
@@ -165,7 +167,7 @@ test.describe('artist scan dropdown', () => {
     await page.getByRole('menuitem', { name: 'Re-match from scratch' }).click()
 
     await expect.poll(() => runs).toEqual([
-      { command: './sync', args: ['--only', artistName, '--exact', '--overwrite'] },
+      { command: './sync', args: ['--id', artistId, '--overwrite'] },
       { command: './tidy', args: [] },
     ])
   })
@@ -263,7 +265,7 @@ test.describe('manager (non-admin)', () => {
     await page.getByRole('menuitem', { name: 'Scan for new files' }).click()
     await expect.poll(() => runs).toEqual([
       { command: './index', args: ['--folders', artistName] },
-      { command: './sync', args: ['--only', artistName, '--exact'] },
+      { command: './sync', args: ['--id', artistId] },
       { command: './tidy', args: [] },
     ])
   })

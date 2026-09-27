@@ -4,6 +4,7 @@ Options:
   -f, --from <FROM>                
   -t, --to <TO>                    
   -o, --only <ONLY>                Only sync these artists (semicolon-separated)
+      --id <ID>                    Sync exactly this Artist row by id, bypassing name matching and the pending (lastIndexedAt > lastSyncedAt) gate - same exemption `--artist-ids` has. Two artists can share a name (docs/sync_decisions.md "Two artists, one name"), so `--only` can match more than one row and this is what callers that already know the id use instead
       --release <RELEASE>          Re-sync a single release by its LocalRelease ID
       --artist-hint <ARTIST_HINT>  With --release: prefer this Artist ID when the release has multiple main artists (e.g. the download's own artist, so a collab release syncs/validates under the artist it was actually downloaded for, not whichever main artist sorts first alphabetically)
       --overwrite                  
