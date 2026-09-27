@@ -31,7 +31,8 @@ async fn slug_of(pool: &PgPool, id: &str) -> String {
     sqlx::query_scalar(r#"SELECT slug FROM "Artist" WHERE id = $1"#).bind(id).fetch_one(pool).await.unwrap()
 }
 
-async fn own_release(pool: &PgPool, artist_id: &str, title: &str) -> String {
+/// A release owned by `artist_id`; `mbid` is the album-artist id its one track carries (the evidence rule 5 reads).
+async fn own_release(pool: &PgPool, artist_id: &str, title: &str, mbid: Option<&str>) -> String {
     let release = cuid2::create_id();
     sqlx::query(r#"INSERT INTO "LocalRelease" (id, title, "groupKey", "createdAt", "updatedAt") VALUES ($1, $2, $3, NOW(), NOW())"#)
         .bind(&release)
@@ -47,6 +48,18 @@ async fn own_release(pool: &PgPool, artist_id: &str, title: &str) -> String {
         .execute(pool)
         .await
         .unwrap();
+    let ids: Vec<String> = mbid.map(|m| vec![m.to_string()]).unwrap_or_default();
+    sqlx::query(
+        r#"INSERT INTO "LocalReleaseTrack" (id, title, "filePath", "localReleaseId", "mbAlbumArtistIds", "createdAt", "updatedAt")
+           VALUES ($1, 'T', $2, $3, $4, NOW(), NOW())"#,
+    )
+    .bind(cuid2::create_id())
+    .bind(format!("homonyms/{release}/01.mp3"))
+    .bind(&release)
+    .bind(&ids)
+    .execute(pool)
+    .await
+    .unwrap();
     release
 }
 
@@ -96,12 +109,12 @@ async fn two_proven_ids_under_one_name_become_two_suffixed_artists() {
     let mut state = IdentityState::new();
 
     let pt = ensure_artist_identity(&pool, &mut state, &owner(&n, Some(PT), IdSource::Proven, None)).await.unwrap();
-    own_release(&pool, &pt, "Senso Comum").await;
+    own_release(&pool, &pt, "Senso Comum", Some(PT)).await;
     reconcile_touched(&pool, &mut state).await.unwrap();
     assert_eq!(slug_of(&pool, &pt).await, base, "alone, it keeps the bare slug");
 
     let kr = ensure_artist_identity(&pool, &mut state, &owner(&n, Some(KR), IdSource::Proven, None)).await.unwrap();
-    own_release(&pool, &kr, "11:11").await;
+    own_release(&pool, &kr, "11:11", Some(KR)).await;
     let outcome = reconcile_touched(&pool, &mut state).await.unwrap();
 
     assert_ne!(pt, kr);
@@ -127,8 +140,8 @@ async fn a_release_without_an_id_goes_by_catalogue_evidence_else_to_the_unidenti
     let mut state = IdentityState::new();
     let pt = ensure_artist_identity(&pool, &mut state, &owner(&n, Some(PT), IdSource::Proven, None)).await.unwrap();
     let kr = ensure_artist_identity(&pool, &mut state, &owner(&n, Some(KR), IdSource::Proven, None)).await.unwrap();
-    own_release(&pool, &pt, "Senso Comum").await;
-    own_release(&pool, &kr, "11:11").await;
+    own_release(&pool, &pt, "Senso Comum", Some(PT)).await;
+    own_release(&pool, &kr, "11:11", Some(KR)).await;
     catalogue(&pool, &pt, "Logo Se Vê").await;
     reconcile_touched(&pool, &mut state).await.unwrap();
 
@@ -137,7 +150,7 @@ async fn a_release_without_an_id_goes_by_catalogue_evidence_else_to_the_unidenti
 
     let unknown = ensure_artist_identity(&pool, &mut state, &owner(&n, None, IdSource::Search, Some("Something Else"))).await.unwrap();
     assert!(unknown != pt && unknown != kr, "no evidence: never an identified member by guess");
-    own_release(&pool, &unknown, "Something Else").await;
+    own_release(&pool, &unknown, "Something Else", None).await;
     let again = ensure_artist_identity(&pool, &mut state, &owner(&n, None, IdSource::Search, Some("Another One"))).await.unwrap();
     assert_eq!(again, unknown, "one unidentified member per group");
     reconcile_touched(&pool, &mut state).await.unwrap();
@@ -196,7 +209,7 @@ async fn a_proven_id_identifies_a_lone_unidentified_artist_instead_of_splitting_
     let base = make_slug(&n);
     let mut state = IdentityState::new();
     let lone = ensure_artist_identity(&pool, &mut state, &owner(&n, None, IdSource::Search, None)).await.unwrap();
-    own_release(&pool, &lone, "Untagged").await;
+    own_release(&pool, &lone, "Untagged", None).await;
     let tagged = ensure_artist_identity(&pool, &mut state, &owner(&n, Some(PT), IdSource::Proven, None)).await.unwrap();
     assert_eq!(tagged, lone, "the name's only artist, not yet identified, is this one");
     reconcile_touched(&pool, &mut state).await.unwrap();
@@ -212,8 +225,8 @@ async fn the_group_shrinks_back_to_the_bare_slug_and_old_links_redirect() {
     let mut state = IdentityState::new();
     let pt = ensure_artist_identity(&pool, &mut state, &owner(&n, Some(PT), IdSource::Proven, None)).await.unwrap();
     let kr = ensure_artist_identity(&pool, &mut state, &owner(&n, Some(KR), IdSource::Proven, None)).await.unwrap();
-    own_release(&pool, &pt, "Senso Comum").await;
-    own_release(&pool, &kr, "11:11").await;
+    own_release(&pool, &pt, "Senso Comum", Some(PT)).await;
+    own_release(&pool, &kr, "11:11", Some(KR)).await;
     reconcile_touched(&pool, &mut state).await.unwrap();
 
     sqlx::query(r#"DELETE FROM "Artist" WHERE id = $1"#).bind(&kr).execute(&pool).await.unwrap();
@@ -250,9 +263,9 @@ async fn pre_existing_duplicates_are_connected_not_deleted_and_reconcile_is_idem
             .unwrap();
         ids.push(id);
     }
-    own_release(&pool, &ids[1], "A").await;
-    own_release(&pool, &ids[1], "B").await;
-    own_release(&pool, &ids[2], "C").await;
+    own_release(&pool, &ids[1], "A", Some(PT)).await;
+    own_release(&pool, &ids[1], "B", Some(PT)).await;
+    own_release(&pool, &ids[2], "C", None).await;
 
     let first = reconcile_group(&pool, &base).await.unwrap();
     assert_eq!(first.connected.len(), 2);

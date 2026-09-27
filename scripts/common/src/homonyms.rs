@@ -11,7 +11,10 @@
 //!   2. two or more  -> each holds `{base}-{first 8 of its MB id}` (`napa-d76eeba7`), or of its Artist id when it
 //!      has no MB id, growing on a clash; nobody holds the bare slug - it is the web app's chooser page;
 //!   3. at most one member without an MB id (the group's *unidentified* member);
-//!   4. no two members with the same MB id.
+//!   4. no two members with the same MB id;
+//!   5. in a group of two or more, every release sits with the member its files' ids name, else the one member
+//!      whose synced catalogue holds it, else the unidentified member - so a release placed while its name still
+//!      had one artist is re-homed the moment a second one appears, whichever flow brought it.
 //!
 //! 3 and 4 are enforced by connecting the extra rows to the survivor (`primaryArtistId`), the same way every
 //! other duplicate artist is connected, so nothing is deleted and the web app already aggregates them. Every
@@ -129,15 +132,12 @@ pub fn normalize_title(title: &str) -> String {
 #[derive(Debug, Clone)]
 struct Member {
     id: String,
-    slug: String,
     mbid: Option<String>,
-    owned: i64,
 }
 
 async fn primaries(pool: &PgPool, base: &str) -> Result<Vec<Member>, sqlx::Error> {
-    let rows: Vec<(String, String, Option<String>, i64)> = sqlx::query_as(
-        r#"SELECT a.id, a.slug, NULLIF(a."musicbrainzId", ''),
-                  (SELECT count(*) FROM "LocalReleaseArtist" l WHERE l."artistId" = a.id)
+    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
+        r#"SELECT a.id, NULLIF(a."musicbrainzId", '')
            FROM "Artist" a
            WHERE a."baseSlug" = $1 AND a."primaryArtistId" IS NULL
            ORDER BY a.id"#,
@@ -145,10 +145,7 @@ async fn primaries(pool: &PgPool, base: &str) -> Result<Vec<Member>, sqlx::Error
     .bind(base)
     .fetch_all(pool)
     .await?;
-    Ok(rows
-        .into_iter()
-        .map(|(id, slug, mbid, owned)| Member { id, slug, mbid, owned })
-        .collect())
+    Ok(rows.into_iter().map(|(id, mbid)| Member { id, mbid }).collect())
 }
 
 /// Whether MusicBrainz answers to this name with more than one artist, as recorded by the resolver.
@@ -337,17 +334,191 @@ pub struct ReconcileOutcome {
     pub renamed: Vec<(String, String, String)>,
     /// (connected artist id, survivor id)
     pub connected: Vec<(String, String)>,
+    /// (release id, from artist id, to artist id)
+    pub moved: Vec<(String, String, String)>,
 }
 
 impl ReconcileOutcome {
     pub fn is_empty(&self) -> bool {
-        self.renamed.is_empty() && self.connected.is_empty()
+        self.renamed.is_empty() && self.connected.is_empty() && self.moved.is_empty()
     }
 
     fn absorb(&mut self, other: ReconcileOutcome) {
         self.renamed.extend(other.renamed);
         self.connected.extend(other.connected);
+        self.moved.extend(other.moved);
     }
+}
+
+/// One release owned by a member of a group of two or more, with the evidence about whose it is.
+#[derive(Debug, Clone)]
+struct OwnedRelease {
+    link_id: String,
+    release_id: String,
+    owner: String,
+    /// Every MusicBrainz artist id its files carry (album-artist and artist frames).
+    file_ids: HashSet<String>,
+    /// Members whose synced catalogue holds this release (its bound MB release, or its title).
+    catalogue_members: HashSet<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Home {
+    Keep,
+    Move(String),
+    ToUnidentified,
+}
+
+/// Rule 5 - where a release of a group of two or more belongs. Pure. In order: the member whose MB id its own
+/// files carry; else the one member whose catalogue holds it; else the group's unidentified member. The same
+/// evidence the index applies when it places a release (`ensure_artist_identity`), applied again here so that a
+/// release placed before its name had a second artist ends up where it would have if the order had been reversed.
+fn home_of(release: &OwnedRelease, members: &[(String, Option<String>)]) -> Home {
+    let mut proven: Vec<&String> = members
+        .iter()
+        .filter(|(_, mbid)| mbid.as_ref().is_some_and(|m| release.file_ids.contains(m)))
+        .map(|(id, _)| id)
+        .collect();
+    proven.sort();
+    if !proven.is_empty() {
+        return if proven.contains(&&release.owner) { Home::Keep } else { Home::Move(proven[0].clone()) };
+    }
+    let evidence: Vec<&String> = members
+        .iter()
+        .map(|(id, _)| id)
+        .filter(|id| release.catalogue_members.contains(*id))
+        .collect();
+    if evidence.len() == 1 {
+        return if *evidence[0] == release.owner { Home::Keep } else { Home::Move(evidence[0].clone()) };
+    }
+    let owner_unidentified = members.iter().any(|(id, mbid)| *id == release.owner && mbid.is_none());
+    if owner_unidentified { Home::Keep } else { Home::ToUnidentified }
+}
+
+async fn owned_releases(tx: &mut Transaction<'_, Postgres>, member_ids: &[String]) -> Result<Vec<OwnedRelease>, sqlx::Error> {
+    let rows: Vec<(String, String, String, Vec<String>, String, Option<String>)> = sqlx::query_as(
+        r#"SELECT lra.id, lr.id, lra."artistId",
+                  ARRAY(SELECT DISTINCT x FROM "LocalReleaseTrack" t,
+                          unnest(COALESCE(t."mbAlbumArtistIds", '{}') || COALESCE(t."mbArtistIds", '{}')
+                                 || CASE WHEN t."mbAlbumArtistId" IS NULL THEN '{}'::text[] ELSE ARRAY[t."mbAlbumArtistId"] END) x
+                        WHERE t."localReleaseId" = lr.id),
+                  lr.title, lr."releaseId"
+           FROM "LocalReleaseArtist" lra JOIN "LocalRelease" lr ON lr.id = lra."localReleaseId"
+           WHERE lra."artistId" = ANY($1::text[])
+           ORDER BY lr.id, lra."artistId""#,
+    )
+    .bind(member_ids)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    let catalogue: Vec<(String, String, String)> = sqlx::query_as(
+        r#"SELECT mra."artistId", mr.id, mr.title FROM "MusicBrainzReleaseArtist" mra
+           JOIN "MusicBrainzRelease" mr ON mr.id = mra."releaseId"
+           WHERE mra."artistId" = ANY($1::text[])"#,
+    )
+    .bind(member_ids)
+    .fetch_all(&mut **tx)
+    .await?;
+    let mut by_release: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut by_title: HashMap<String, HashSet<String>> = HashMap::new();
+    for (artist, release, title) in catalogue {
+        by_release.entry(release).or_default().insert(artist.clone());
+        by_title.entry(normalize_title(&title)).or_default().insert(artist);
+    }
+
+    Ok(rows
+        .into_iter()
+        .map(|(link_id, release_id, owner, ids, title, bound)| {
+            let mut catalogue_members: HashSet<String> = HashSet::new();
+            if let Some(b) = bound.and_then(|b| by_release.get(&b).cloned()) {
+                catalogue_members.extend(b);
+            }
+            let t = normalize_title(&title);
+            if !t.is_empty() {
+                if let Some(m) = by_title.get(&t) {
+                    catalogue_members.extend(m.iter().cloned());
+                }
+            }
+            OwnedRelease {
+                link_id,
+                release_id,
+                owner,
+                file_ids: ids.into_iter().filter_map(|i| crate::filters::sanitize_mb_id(&i)).collect(),
+                catalogue_members,
+            }
+        })
+        .collect())
+}
+
+/// Rule 5 applied: moves each release of a group of two or more to the member the evidence names, creating the
+/// group's unidentified member when a release needs it. Returns whether the group's rows changed.
+async fn rehome_releases(
+    tx: &mut Transaction<'_, Postgres>,
+    base: &str,
+    rows: &[GroupRow],
+    outcome: &mut ReconcileOutcome,
+) -> Result<bool, sqlx::Error> {
+    let primaries: Vec<&GroupRow> = rows.iter().filter(|r| r.primary.is_none()).collect();
+    if primaries.len() < 2 {
+        return Ok(false);
+    }
+    let mut members: Vec<(String, Option<String>)> = primaries.iter().map(|p| (p.id.clone(), p.mbid.clone())).collect();
+    let ids: Vec<String> = members.iter().map(|(id, _)| id.clone()).collect();
+    let releases = owned_releases(tx, &ids).await?;
+
+    let mut created = false;
+    let mut unidentified: Option<String> = members.iter().find(|(_, m)| m.is_none()).map(|(id, _)| id.clone());
+    for release in &releases {
+        let target = match home_of(release, &members) {
+            Home::Keep => continue,
+            Home::Move(to) => to,
+            Home::ToUnidentified => match &unidentified {
+                Some(id) => id.clone(),
+                None => {
+                    let name = rows.iter().find(|r| r.id == release.owner).map(|r| r.name.clone()).unwrap_or_default();
+                    let id = cuid2::create_id();
+                    sqlx::query(
+                        r#"INSERT INTO "Artist" (id, name, slug, "baseSlug", "totalTracks", "totalFileSize", "createdAt", "updatedAt")
+                           VALUES ($1, $2, $3, $4, 0, 0, NOW(), NOW())"#,
+                    )
+                    .bind(&id)
+                    .bind(&name)
+                    .bind(format!("__homonym-{}", id))
+                    .bind(base)
+                    .execute(&mut **tx)
+                    .await?;
+                    members.push((id.clone(), None));
+                    unidentified = Some(id.clone());
+                    created = true;
+                    id
+                }
+            },
+        };
+        let already: bool = sqlx::query_scalar(
+            r#"SELECT EXISTS (SELECT 1 FROM "LocalReleaseArtist" WHERE "localReleaseId" = $1 AND "artistId" = $2)"#,
+        )
+        .bind(&release.release_id)
+        .bind(&target)
+        .fetch_one(&mut **tx)
+        .await?;
+        if already {
+            sqlx::query(r#"DELETE FROM "LocalReleaseArtist" WHERE id = $1"#).bind(&release.link_id).execute(&mut **tx).await?;
+        }
+        else {
+            sqlx::query(r#"UPDATE "LocalReleaseArtist" SET "artistId" = $1 WHERE id = $2"#)
+                .bind(&target)
+                .bind(&release.link_id)
+                .execute(&mut **tx)
+                .await?;
+        }
+        // Sync only looks at artists stamped as indexed since their last sync.
+        sqlx::query(r#"UPDATE "Artist" SET "lastIndexedAt" = NOW(), "updatedAt" = NOW() WHERE id = $1"#)
+            .bind(&target)
+            .execute(&mut **tx)
+            .await?;
+        outcome.moved.push((release.release_id.clone(), release.owner.clone(), target));
+    }
+    Ok(created)
 }
 
 #[derive(Debug, Clone)]
@@ -479,6 +650,9 @@ pub async fn reconcile_group(pool: &PgPool, base: &str) -> Result<ReconcileOutco
     if !outcome.connected.is_empty() {
         rows = load_group(&mut tx, base).await?;
     }
+    if rehome_releases(&mut tx, base, &rows, &mut outcome).await? || !outcome.moved.is_empty() {
+        rows = load_group(&mut tx, base).await?;
+    }
 
     let group_ids: Vec<String> = rows.iter().map(|r| r.id.clone()).collect();
     let like = format!("{}-%", base);
@@ -593,6 +767,23 @@ pub async fn reconcile_touched(pool: &PgPool, state: &mut IdentityState) -> Resu
     state.touched.clear();
     state.clear_cache();
     Ok(outcome)
+}
+
+/// The base slugs of these artists and of every row connected to them - read *before* deleting or connecting them,
+/// so their groups can be reconciled afterwards (a deleted member shrinks its group; its connected rows become
+/// members again).
+pub async fn bases_of(pool: &PgPool, artist_ids: &[String]) -> Result<Vec<String>, sqlx::Error> {
+    if artist_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    sqlx::query_scalar(
+        r#"SELECT DISTINCT "baseSlug" FROM "Artist"
+           WHERE (id = ANY($1::text[]) OR "primaryArtistId" = ANY($1::text[])) AND "baseSlug" IS NOT NULL
+           ORDER BY 1"#,
+    )
+    .bind(artist_ids)
+    .fetch_all(pool)
+    .await
 }
 
 /// Every base slug in the whole library that breaks the invariant - `./tidy`'s safety net and the tests' oracle.
@@ -728,6 +919,43 @@ mod tests {
             row("c", "napa-c", Some("y"), None, 1),
         ];
         assert_eq!(connections(&rows), vec![("b".to_string(), "a".to_string())]);
+    }
+
+    fn owned(owner: &str, file_ids: &[&str], catalogue: &[&str]) -> OwnedRelease {
+        OwnedRelease {
+            link_id: "l".into(),
+            release_id: "r".into(),
+            owner: owner.into(),
+            file_ids: file_ids.iter().map(|s| s.to_string()).collect(),
+            catalogue_members: catalogue.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    fn members() -> Vec<(String, Option<String>)> {
+        vec![("pt".into(), Some("PT".into())), ("kr".into(), Some("KR".into()))]
+    }
+
+    #[test]
+    fn a_release_goes_to_the_member_its_files_name() {
+        assert_eq!(home_of(&owned("pt", &["PT"], &[]), &members()), Home::Keep);
+        assert_eq!(home_of(&owned("pt", &["KR"], &[]), &members()), Home::Move("kr".into()));
+        assert_eq!(home_of(&owned("pt", &["KR"], &["pt"]), &members()), Home::Move("kr".into()), "files beat catalogue");
+    }
+
+    #[test]
+    fn without_ids_the_one_member_whose_catalogue_holds_it_wins() {
+        assert_eq!(home_of(&owned("kr", &[], &["pt"]), &members()), Home::Move("pt".into()));
+        assert_eq!(home_of(&owned("pt", &[], &["pt"]), &members()), Home::Keep);
+    }
+
+    #[test]
+    fn without_ids_or_unique_evidence_it_goes_to_the_unidentified_member() {
+        assert_eq!(home_of(&owned("pt", &[], &[]), &members()), Home::ToUnidentified);
+        assert_eq!(home_of(&owned("pt", &[], &["pt", "kr"]), &members()), Home::ToUnidentified);
+        assert_eq!(home_of(&owned("pt", &["SOMEONE-ELSE"], &[]), &members()), Home::ToUnidentified);
+        let mut with_unknown = members();
+        with_unknown.push(("u".into(), None));
+        assert_eq!(home_of(&owned("u", &[], &[]), &with_unknown), Home::Keep);
     }
 
     #[test]

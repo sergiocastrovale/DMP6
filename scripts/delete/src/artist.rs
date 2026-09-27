@@ -253,6 +253,9 @@ pub async fn execute_plan(
         common::images::artist_images(pool, &all_artist_ids).await?
     };
 
+    // Read before the delete: a removed homonym member's group may shrink back to the bare slug afterwards.
+    let bases = common::homonyms::bases_of(pool, &all_artist_ids).await?;
+
     let mut tx = pool.begin().await?;
 
     // Unlink first: a release another surviving artist also owns stays, just without these owners.
@@ -300,6 +303,7 @@ pub async fn execute_plan(
     }
 
     tx.commit().await?;
+    common::homonyms::reconcile_bases(pool, &bases).await?;
 
     common::cleanup::delete_orphaned_mb_releases(
         pool,

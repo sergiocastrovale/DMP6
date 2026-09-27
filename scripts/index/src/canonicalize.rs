@@ -81,6 +81,8 @@ pub struct CanonicalizeReport {
     pub renames: Vec<Rename>,
     pub connections: Vec<Connection>,
     pub mbids_cleared: Vec<String>,
+    /// Base slugs a rename moved from or to - their homonym groups are reconciled after the pass.
+    pub touched_bases: Vec<String>,
 }
 
 /// Step 1 - drop MBIDs that the lookup table contradicts.
@@ -104,6 +106,7 @@ async fn clear_contradicted_mbids(
            JOIN "MbArtistLookup" m ON m.name = a.name
            WHERE m.mbid IS DISTINCT FROM a."musicbrainzId"
              AND a."musicbrainzId" IS NOT NULL
+             AND NOT m.ambiguous
              AND a."lastSyncedAt" IS NULL
              AND ($2::bool OR a.id = ANY($1::text[]))"#;
 
@@ -149,6 +152,10 @@ async fn rename_to_canonical(
         r#"SELECT a.id, a.name, a.slug, m."mbName" FROM "Artist" a
            JOIN "MbArtistLookup" m ON m.name = a.name
            WHERE m."mbName" IS NOT NULL AND m."mbName" <> a.name
+             AND NOT m.ambiguous
+             -- A member of a homonym group (common::homonyms) is named what its files say; the name it shares
+             -- is exactly why it has a suffixed slug.
+             AND a.slug = a."baseSlug"
              AND ($2::bool OR a.id = ANY($1::text[]))
            ORDER BY a.name"#,
     )
@@ -212,13 +219,15 @@ async fn rename_to_canonical(
             continue;
         }
         sqlx::query(
-            r#"UPDATE "Artist" SET name = $1, slug = $2, "updatedAt" = NOW() WHERE id = $3"#,
+            r#"UPDATE "Artist" SET name = $1, slug = $2, "baseSlug" = $2, "updatedAt" = NOW() WHERE id = $3"#,
         )
         .bind(mb_name)
         .bind(&target_slug)
         .bind(id)
         .execute(pool)
         .await?;
+        report.touched_bases.push(slug.clone());
+        report.touched_bases.push(target_slug.clone());
         renamed += 1;
     }
     Ok(renamed)
@@ -322,5 +331,25 @@ pub async fn canonicalize_artists(
         renamed: rename_to_canonical(pool, scope, dry_run, &mut report).await?,
         connected: connect_corroborated_duplicates(pool, scope, dry_run, &mut report).await?,
     };
+    if !dry_run {
+        // A rename moves a row between names, and a connection takes one out of its group: both groups
+        // must be brought back into shape (common::homonyms).
+        let mut bases = report.touched_bases.clone();
+        if !report.connections.is_empty() {
+            let names: Vec<String> = report
+                .connections
+                .iter()
+                .flat_map(|c| [c.duplicate.clone(), c.primary.clone()])
+                .collect();
+            let rows: Vec<String> = sqlx::query_scalar(r#"SELECT DISTINCT "baseSlug" FROM "Artist" WHERE name = ANY($1::text[]) AND "baseSlug" IS NOT NULL"#)
+                .bind(&names)
+                .fetch_all(pool)
+                .await?;
+            bases.extend(rows);
+        }
+        bases.sort();
+        bases.dedup();
+        common::homonyms::reconcile_bases(pool, &bases).await?;
+    }
     Ok((stats, report))
 }

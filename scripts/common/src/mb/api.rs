@@ -628,10 +628,21 @@ pub async fn mb_search_artist_exact(
     name: &str,
     limiter: &mut RateLimiter,
 ) -> Result<Option<MbArtistMatch>, String> {
+    Ok(mb_search_artist_exact_all(client, name, limiter).await?.into_iter().next())
+}
+
+/// Every artist `name` exactly is, best first - more than one means a homonym (docs/sync_decisions.md "Two artists,
+/// one name"), and then the name alone can never stand for one id. Same strict test as `mb_search_artist_exact`, over
+/// a wider page so a second exact match below the first few fuzzy ones is not missed.
+pub async fn mb_search_artist_exact_all(
+    client: &Client,
+    name: &str,
+    limiter: &mut RateLimiter,
+) -> Result<Vec<MbArtistMatch>, String> {
     let phrase = format!("\"{}\"", escape_lucene_phrase(name));
     let quoted = urlencoding::encode(&phrase);
     let url = format!(
-        "{}/artist/?query=artist:{}&limit=5&inc=aliases&fmt=json",
+        "{}/artist/?query=artist:{}&limit=15&inc=aliases&fmt=json",
         mb_base(),
         quoted
     );
@@ -639,10 +650,17 @@ pub async fn mb_search_artist_exact(
     let result: MbArtistSearchResult =
         serde_json::from_str(&body).map_err(|e| format!("Parse error: {}", e))?;
 
-    Ok(result
-        .artists
+    Ok(exact_candidates(name, result.artists))
+}
+
+/// The strict-match filter behind `mb_search_artist_exact_all`, one entry per MusicBrainz id. Pure, for tests.
+pub fn exact_candidates(name: &str, candidates: Vec<MbArtistMatch>) -> Vec<MbArtistMatch> {
+    let mut seen = std::collections::HashSet::new();
+    candidates
         .into_iter()
-        .find(|a| a.score.unwrap_or(0) >= 90 && mb_artist_exact(name, a)))
+        .filter(|a| a.score.unwrap_or(0) >= 90 && mb_artist_exact(name, a))
+        .filter(|a| seen.insert(a.id.clone()))
+        .collect()
 }
 
 pub async fn mb_lookup_artist(

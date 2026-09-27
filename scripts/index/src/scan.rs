@@ -53,6 +53,8 @@ pub(crate) struct FolderCtx<'a> {
     pub(crate) target_folders: &'a Option<HashMap<String, Vec<String>>>,
     pub(crate) already_indexed: &'a HashSet<String>,
     pub(crate) artist_cache: &'a mut HashMap<String, String>,
+    /// Which artist row each provisional owner lands on (`common::homonyms`); main reconciles what it touched.
+    pub(crate) identities: &'a mut common::homonyms::IdentityState,
     pub(crate) release_cache: &'a mut HashMap<String, String>,
     pub(crate) mb_id_to_image_hash: &'a mut HashMap<String, String>,
 }
@@ -97,6 +99,7 @@ pub(crate) async fn process_folder(
         target_folders,
         already_indexed,
         artist_cache,
+        identities,
         release_cache,
         mb_id_to_image_hash,
     } = ctx;
@@ -535,26 +538,36 @@ pub(crate) async fn process_folder(
                                 .unwrap_or(LookupResult::NeedsFetch)
                         });
 
+                        // The file's own album-artist id, when it names exactly this one artist: that is who owns
+                        // it even if another artist already has the name. Otherwise the cache's answer, which the
+                        // homonym rules only trust while the name is not shared (`common::homonyms`).
+                        let own_id = match (track.album_artists.as_slice(), track.mb_album_artist_ids.as_slice()) {
+                            ([single], [id]) if single == owner_tag => common::filters::sanitize_mb_id(id),
+                            ([], [id]) if track.album_artist.as_deref() == Some(owner_tag) => common::filters::sanitize_mb_id(id),
+                            _ => None,
+                        };
                         for (owner_name, owner_mbid) in owners {
-                            let Ok(aa_id) =
-                                ensure_artist_cached(&pool, &owner_name, artist_cache).await
+                            let (mbid, source) = match (&own_id, owners_is_whole(&owner_name, owner_tag)) {
+                                (Some(id), true) => (Some(id.as_str()), common::homonyms::IdSource::Proven),
+                                _ => (owner_mbid.as_deref(), common::homonyms::IdSource::Search),
+                            };
+                            let Ok(aa_id) = common::homonyms::ensure_artist_identity(
+                                &pool,
+                                identities,
+                                &common::homonyms::IdentityRequest {
+                                    name: &owner_name,
+                                    mbid,
+                                    source,
+                                    release_title: Some(album_name),
+                                    credit: false,
+                                },
+                            )
+                            .await
                             else {
                                 continue;
                             };
                             if aa_id.is_empty() {
                                 continue;
-                            }
-                            if let Some(ref mbid) = owner_mbid {
-                                // Fill only when empty - never overwrite an id sync established.
-                                sqlx::query(
-                                r#"UPDATE "Artist" SET "musicbrainzId" = $1, "updatedAt" = NOW()
-                                   WHERE id = $2 AND ("musicbrainzId" IS NULL OR "musicbrainzId" = '')"#,
-                            )
-                            .bind(mbid)
-                            .bind(&aa_id)
-                            .execute(&pool)
-                            .await
-                            .ok();
                             }
                             pending_release_artist_links
                                 .insert((release_id.clone(), aa_id.clone()));
@@ -1040,4 +1053,10 @@ pub(crate) async fn process_folder(
         consensus_cleared_total,
         artist_ids: outcome_artist_ids,
     })
+}
+
+/// Is this resolved owner the whole owner tag (not one part of a split compound)? Only then does the file's single
+/// album-artist id belong to it.
+fn owners_is_whole(owner_name: &str, owner_tag: &str) -> bool {
+    common::mb::names::normalize_name(owner_name) == common::mb::names::normalize_name(owner_tag)
 }

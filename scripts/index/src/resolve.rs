@@ -15,12 +15,14 @@
 use std::collections::{HashMap, HashSet};
 
 use common::artists::is_special_artist_name;
-use common::mb::api::{mb_search_artist_exact, RateLimiter};
+use common::mb::api::{mb_lookup_artist, mb_search_artist_exact_all, RateLimiter};
+use common::mb::names::mb_artist_exact;
 use common::mb::names::normalize_name;
 use common::mb::resolve::{
     cap_co_owners, resolve_with, JoinKind, LookupResult, Resolution, ResolveSource, ResolvedArtist,
 };
 use common::progress::Reporter;
+use common::homonyms::{ensure_artist_identity, reconcile_touched, IdSource, IdentityRequest, IdentityState};
 use common::slug::make_slug;
 use reqwest::Client;
 use sqlx::PgPool;
@@ -54,6 +56,8 @@ pub struct ArtistResolver<'a> {
     limiter: RateLimiter,
     /// Per-run memo, so a name repeated across 40k tracks is looked at once.
     memo: HashMap<String, LookupResult>,
+    /// (name, claimed id) -> whether that id's MusicBrainz artist really is called `name` - asked once per run.
+    homonym_checks: HashMap<(String, String), bool>,
     pub dry_run: bool,
     pub offline: bool,
     pub stats: ResolveStats,
@@ -71,6 +75,7 @@ impl<'a> ArtistResolver<'a> {
                 .unwrap_or_default(),
             limiter: RateLimiter::new(),
             memo: HashMap::new(),
+            homonym_checks: HashMap::new(),
             dry_run,
             offline: false,
             stats: ResolveStats::default(),
@@ -87,8 +92,9 @@ impl<'a> ArtistResolver<'a> {
     /// i.e. every request re-asked a name it already knew. The table is one row per distinct artist
     /// name (~44k), so loading it whole costs a few MB - the folder scan already does exactly this.
     pub async fn warm_cache(&mut self) {
-        let rows: Vec<(String, Option<String>, bool)> = sqlx::query_as(
-            r#"SELECT name, mbid, ("mbid" IS NULL AND "checkedAt" < NOW() - ($1 || ' days')::interval) AS stale
+        let rows: Vec<(String, Option<String>, bool, bool)> = sqlx::query_as(
+            r#"SELECT name, mbid, ("mbid" IS NULL AND NOT ambiguous AND "checkedAt" < NOW() - ($1 || ' days')::interval) AS stale,
+                      ambiguous
                FROM "MbArtistLookup""#,
         )
         .bind(NEGATIVE_TTL_DAYS.to_string())
@@ -96,14 +102,16 @@ impl<'a> ArtistResolver<'a> {
         .await
         .unwrap_or_default();
 
-        for (name, mbid, stale) in rows {
+        for (name, mbid, stale, ambiguous) in rows {
             // A stale miss is simply not seeded - it gets re-asked.
             if mbid.is_none() && stale {
                 continue;
             }
-            let result = match mbid {
-                Some(id) => LookupResult::Found { mbid: Some(id) },
-                None => LookupResult::NotFound,
+            // An ambiguous name is a real artist name that stands for no single id.
+            let result = match (mbid, ambiguous) {
+                (_, true) => LookupResult::Found { mbid: None },
+                (Some(id), false) => LookupResult::Found { mbid: Some(id) },
+                (None, false) => LookupResult::NotFound,
             };
             self.memo.insert(name, result);
         }
@@ -114,23 +122,26 @@ impl<'a> ArtistResolver<'a> {
     /// for them again would waste hours at 1.1 req/s. Dry run still writes no artists, links or
     /// credits - see `resolve_and_apply`.
     async fn persist_lookup(&self, name: &str, result: &LookupResult, mb_name: Option<String>) {
-        let (mbid, mb_name) = match result {
-            LookupResult::Found { mbid } => (mbid.clone(), mb_name),
-            LookupResult::NotFound => (None, None),
+        let (mbid, mb_name, ambiguous) = match result {
+            // Found with no id: MusicBrainz knows several artists by exactly this name.
+            LookupResult::Found { mbid: None } => (None, mb_name, true),
+            LookupResult::Found { mbid } => (mbid.clone(), mb_name, false),
+            LookupResult::NotFound => (None, None, false),
             // Never cache an unknown - it isn't an answer.
             LookupResult::Transient | LookupResult::NeedsFetch => return,
         };
         sqlx::query(
-            r#"INSERT INTO "MbArtistLookup" (id, name, normalized, mbid, "mbName", "checkedAt")
-               VALUES ($1, $2, $3, $4, $5, NOW())
+            r#"INSERT INTO "MbArtistLookup" (id, name, normalized, mbid, "mbName", ambiguous, "checkedAt")
+               VALUES ($1, $2, $3, $4, $5, $6, NOW())
                ON CONFLICT (name) DO UPDATE SET
-                 mbid = EXCLUDED.mbid, "mbName" = EXCLUDED."mbName", "checkedAt" = NOW()"#,
+                 mbid = EXCLUDED.mbid, "mbName" = EXCLUDED."mbName", ambiguous = EXCLUDED.ambiguous, "checkedAt" = NOW()"#,
         )
         .bind(cuid2::create_id())
         .bind(name)
         .bind(normalize_name(name))
         .bind(mbid)
         .bind(mb_name)
+        .bind(ambiguous)
         .execute(self.pool)
         .await
         .ok();
@@ -144,12 +155,18 @@ impl<'a> ArtistResolver<'a> {
         // MB's own spelling of the name, kept so the cache row records what was matched rather than
         // leaving `mbName` permanently NULL.
         let mut mb_name: Option<String> = None;
-        let result = match mb_search_artist_exact(&self.client, name, &mut self.limiter).await {
-            Ok(Some(m)) => {
+        let result = match mb_search_artist_exact_all(&self.client, name, &mut self.limiter).await {
+            // Several artists are exactly this name: it is a real artist name, but not any one id.
+            Ok(all) if all.len() > 1 => {
+                mb_name = Some(all[0].name.clone());
+                LookupResult::Found { mbid: None }
+            }
+            Ok(mut all) if all.len() == 1 => {
+                let m = all.remove(0);
                 mb_name = Some(m.name);
                 LookupResult::Found { mbid: Some(m.id) }
             }
-            Ok(None) => LookupResult::NotFound,
+            Ok(_) => LookupResult::NotFound,
             Err(e) => {
                 // A transient failure must never be recorded as "no such artist", or one network blip
                 // permanently splits a real band name.
@@ -168,6 +185,37 @@ impl<'a> ArtistResolver<'a> {
         self.persist_lookup(name, &result, mb_name).await;
         self.memo.insert(name.to_string(), result.clone());
         result
+    }
+
+    /// A file names `name` with id `claimed`, but the cache says `name` is a different id. Either the file is
+    /// mistagged (the certainty gate's original case, docs/sync_decisions.md §4) or both are real artists with
+    /// this name - a cache row written before homonyms were detected. Asking MusicBrainz what `claimed` is called
+    /// tells them apart: exactly `name` means a homonym, so the name is recorded as ambiguous and the file's id is
+    /// believed. One lookup per (name, id) per run, and only on a contradiction.
+    pub async fn confirm_homonym(&mut self, name: &str, claimed: &str) -> bool {
+        let key = (name.to_string(), claimed.to_string());
+        if let Some(v) = self.homonym_checks.get(&key) {
+            return *v;
+        }
+        if self.offline {
+            return false;
+        }
+        self.stats.mb_lookups += 1;
+        let confirmed = match mb_lookup_artist(&self.client, claimed, &mut self.limiter).await {
+            Ok(m) => mb_artist_exact(name, &m),
+            Err(_) => false,
+        };
+        if confirmed {
+            let mb_name = match self.memo.get(name) {
+                Some(LookupResult::Found { .. }) => Some(name.to_string()),
+                _ => None,
+            };
+            let ambiguous = LookupResult::Found { mbid: None };
+            self.persist_lookup(name, &ambiguous, mb_name).await;
+            self.memo.insert(name.to_string(), ambiguous);
+        }
+        self.homonym_checks.insert(key, confirmed);
+        confirmed
     }
 
     /// Is this tag value already fully answered by the cache? See [`is_fully_memoized`].
@@ -414,47 +462,52 @@ pub async fn artist_slug_map(pool: &PgPool) -> HashMap<String, String> {
     rows.into_iter().collect()
 }
 
-/// Create (or reuse) the Artist row for a resolved part, and record its MBID when we learned one.
+/// The Artist row for a resolved part, by the homonym rules (`common::homonyms`): a part read from the files'
+/// own tags (`IdSource::Proven`) may create its own row even when another artist already has the name; a part
+/// found by a name search may not. `release_title` is the release an owner is being resolved for.
 ///
-/// Only MB-verified names may be created here. An unverified fallback atom is a guess, and creating a
-/// browsable artist from a guess is exactly the junk this refactor exists to stop - callers must
-/// filter on `verified` before calling for credit-side parts.
+/// Only MB-verified names may be created as credits. An unverified fallback atom is a guess, and creating a
+/// browsable artist from a guess is exactly the junk this refactor exists to stop - callers must filter on
+/// `verified` before calling for credit-side parts.
 pub async fn ensure_resolved_artist(
     pool: &PgPool,
+    identities: &mut IdentityState,
     artist: &ResolvedArtist,
-    cache: &mut HashMap<String, String>,
+    source: IdSource,
+    release_title: Option<&str>,
+    credit: bool,
 ) -> Result<String, sqlx::Error> {
-    let slug = make_slug(&artist.name);
-    if slug.is_empty() {
-        return Ok(String::new());
+    let mbid = if artist.verified { artist.mbid.as_deref() } else { None };
+    ensure_artist_identity(
+        pool,
+        identities,
+        &IdentityRequest { name: &artist.name, mbid, source, release_title, credit },
+    )
+    .await
+}
+
+/// A file's own artist pairing, as far as it can be believed. Offline first (`embedded_pairing_checked`); when a
+/// part is contradicted by the cache it is either a mistag (rejected, as before) or a second real artist with the
+/// same name (`ArtistResolver::confirm_homonym`, one lookup), which is accepted.
+async fn checked_file_pairing(
+    resolver: &mut ArtistResolver<'_>,
+    tag: &str,
+    artists: &[String],
+    mb_ids: &[String],
+    join: JoinKind,
+) -> Option<Vec<ResolvedArtist>> {
+    if let Some(parts) = embedded_pairing_checked(&resolver.memo, tag, artists, mb_ids, join) {
+        return Some(parts);
     }
-    if let Some(id) = cache.get(&slug) {
-        return Ok(id.clone());
-    }
-    let id = common::db::ensure_artist(pool, &artist.name).await?;
-    if !id.is_empty() {
-        if let (Some(ref mbid), true) = (&artist.mbid, artist.verified) {
-            // Fill when empty, or repair when the stored value differs from what THIS pass
-            // confirms. `verified` here means the certainty gate already passed - either
-            // `embedded_pairing_checked` found no contradiction, or this came from
-            // `resolver.resolve`'s own memo-backed lookup - so a differing stored value is not a
-            // fresher opinion to defer to, it is the very id docs/sync_decisions.md §4 traces:
-            // written once, fill-only, and never re-examined since. Without this repair path a
-            // wrong id written before this gate existed could never self-correct - the write
-            // only ever filled an empty slot, and a name seen once was never looked at again.
-            sqlx::query(
-                r#"UPDATE "Artist" SET "musicbrainzId" = $1, "updatedAt" = NOW()
-                   WHERE id = $2 AND ("musicbrainzId" IS NULL OR "musicbrainzId" = '' OR "musicbrainzId" <> $1)"#,
-            )
-            .bind(mbid)
-            .bind(&id)
-            .execute(pool)
-            .await
-            .ok();
+    let parts = embedded_pairing(tag, artists, mb_ids, join)?;
+    for part in &parts {
+        if let Some(mbid) = &part.mbid {
+            if embedded_id_contradicted(&resolver.memo, &part.name, mbid) && !resolver.confirm_homonym(&part.name, mbid).await {
+                return None;
+            }
         }
-        cache.insert(slug, id.clone());
     }
-    Ok(id)
+    Some(parts)
 }
 
 struct TrackRow {
@@ -564,7 +617,23 @@ pub async fn resolve_and_apply(
             .insert(artist_id);
     }
 
-    let mut slug_cache = artist_slug_map(pool).await;
+    let slug_cache = artist_slug_map(pool).await;
+    // Which artist row each owner or credit lands on, and which names' groups need reconciling afterwards.
+    let mut identities = IdentityState::new();
+    // Release titles, for the catalogue-evidence rule when a name several artists share arrives with no id.
+    let release_title_rows: Vec<(String, String)> = {
+        let ids: Vec<String> = tracks
+            .iter()
+            .filter_map(|t| t.local_release_id.clone())
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        sqlx::query_as(r#"SELECT id, title FROM "LocalRelease" WHERE id = ANY($1::text[])"#)
+            .bind(&ids)
+            .fetch_all(pool)
+            .await?
+    };
+    let release_titles: HashMap<String, String> = release_title_rows.into_iter().collect();
     let mut resolved_names: HashMap<String, Vec<ResolvedArtist>> = HashMap::new();
     // Kept apart from `resolved_names`: the same string can be a track's `artist` tag AND (on a VA
     // compilation) its owner tag, and the two want different join semantics - co-billing for owners,
@@ -616,25 +685,18 @@ pub async fn resolve_and_apply(
                 OwnerTag::TrackArtist(_) => (&track.artists, &track.mb_artist_ids),
             };
 
-            if !resolved_owners.contains_key(owner) {
-                match embedded_pairing_checked(
-                    &resolver.memo,
-                    owner,
-                    multi,
-                    mb_ids,
-                    JoinKind::CoBilling,
-                ) {
-                    Some(mut parts) => {
-                        resolver.stats.from_embedded += 1;
-                        cap_co_owners(&mut parts);
-                        report.push(Decision {
-                            name: owner.to_string(),
-                            source: ResolveSource::EmbeddedId,
-                            parts: parts.clone(),
-                        });
-                        resolved_owners.insert(owner.to_string(), parts);
-                    }
-                    None => {
+            // The file's own pairing is per track, never cached by name: two releases can both say "Napa" and mean
+            // two different artists, and only their ids tell them apart.
+            let from_files = checked_file_pairing(resolver, owner, multi, mb_ids, JoinKind::CoBilling).await;
+            let source = if from_files.is_some() { IdSource::Proven } else { IdSource::Search };
+            let owner_parts: Option<Vec<ResolvedArtist>> = match from_files {
+                Some(mut parts) => {
+                    resolver.stats.from_embedded += 1;
+                    cap_co_owners(&mut parts);
+                    Some(parts)
+                }
+                None => {
+                    if !resolved_owners.contains_key(owner) {
                         let (res, src) = resolver.resolve(owner).await;
                         match res {
                             Resolution::Resolved(mut parts) => {
@@ -654,14 +716,16 @@ pub async fn resolve_and_apply(
                             }
                         }
                     }
+                    if !resolved_owners.contains_key(owner) {
+                        // Deferred on an earlier track of this same release.
+                        releases_with_deferred.insert(release_id.clone());
+                        tracks_with_deferred.insert(track.id.clone());
+                    }
+                    resolved_owners.get(owner).cloned()
                 }
-            }
-            if !resolved_owners.contains_key(owner) {
-                // Deferred on an earlier track of this same release.
-                releases_with_deferred.insert(release_id.clone());
-                tracks_with_deferred.insert(track.id.clone());
-            }
-            if let Some(parts) = resolved_owners.get(owner).cloned() {
+            };
+            if let Some(parts) = owner_parts {
+                let title = release_titles.get(release_id).map(String::as_str);
                 for part in parts {
                     // Guest-joined album artists are credits, not owners - "Frank Sinatra with Count
                     // Basie" means Sinatra's album, Basie appearing on it.
@@ -680,7 +744,7 @@ pub async fn resolve_and_apply(
                             .cloned()
                             .unwrap_or_default()
                     } else {
-                        ensure_resolved_artist(pool, &part, &mut slug_cache).await?
+                        ensure_resolved_artist(pool, &mut identities, &part, source, title, !is_owner).await?
                     };
                     if id.is_empty() {
                         continue;
@@ -696,13 +760,15 @@ pub async fn resolve_and_apply(
 
         // --- artist tag produces track CREDITS ---------------------------------------------------
         // Tier 0 first: the file's own paired artists/MBIDs need no lookup at all.
-        let embedded = embedded_pairing_checked(
-            &resolver.memo,
+        let embedded = checked_file_pairing(
+            resolver,
             track.artist.as_deref().unwrap_or(""),
             &track.artists,
             &track.mb_artist_ids,
             JoinKind::Guest,
-        );
+        )
+        .await;
+        let credit_source = if embedded.is_some() { IdSource::Proven } else { IdSource::Search };
         let parts: Vec<ResolvedArtist> = match embedded {
             Some(p) => {
                 resolver.stats.from_embedded += 1;
@@ -744,7 +810,7 @@ pub async fn resolve_and_apply(
                     .cloned()
                     .unwrap_or_default()
             } else {
-                ensure_resolved_artist(pool, &part, &mut slug_cache).await?
+                ensure_resolved_artist(pool, &mut identities, &part, credit_source, None, true).await?
             };
             if id.is_empty() {
                 continue;
@@ -900,8 +966,14 @@ pub async fn resolve_and_apply(
     }
     tx.commit().await?;
 
+    // Every name whose owners or credits changed: bring its homonym group into shape (slugs, connections,
+    // redirects) now that the links are written.
+    let outcome = reconcile_touched(pool, &mut identities).await?;
     if let Some(reporter) = progress {
         reporter.clear_transient();
+        for (_, old, new) in &outcome.renamed {
+            reporter.ok(&format!("Artist page moved: /artist/{old} -> /artist/{new}"));
+        }
     }
 
     Ok(())

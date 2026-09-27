@@ -571,6 +571,7 @@ async fn main() {
     // -------------------------------------------------------------------------
     // Pre-load caches
     // -------------------------------------------------------------------------
+    let mut identities = common::homonyms::IdentityState::new();
     let mut artist_cache: HashMap<String, String> = {
         let rows: Vec<(String, String)> = sqlx::query_as(r#"SELECT slug, id FROM "Artist""#)
             .fetch_all(&pool)
@@ -587,16 +588,18 @@ async fn main() {
     // files as they are read, so there is nothing to filter on until it is too late to batch. One query
     // for the table beats a round trip per name. Same reasoning as the slug map above.
     let lookup_memo: HashMap<String, LookupResult> = {
-        let rows: Vec<(String, Option<String>)> =
-            sqlx::query_as(r#"SELECT name, mbid FROM "MbArtistLookup""#)
+        let rows: Vec<(String, Option<String>, bool)> =
+            sqlx::query_as(r#"SELECT name, mbid, ambiguous FROM "MbArtistLookup""#)
                 .fetch_all(&pool)
                 .await
                 .unwrap_or_default();
         rows.into_iter()
-            .map(|(name, mbid)| {
-                let result = match mbid {
-                    Some(id) => LookupResult::Found { mbid: Some(id) },
-                    None => LookupResult::NotFound,
+            .map(|(name, mbid, ambiguous)| {
+                // An ambiguous name is a real artist name that stands for no single id.
+                let result = match (mbid, ambiguous) {
+                    (_, true) => LookupResult::Found { mbid: None },
+                    (Some(id), false) => LookupResult::Found { mbid: Some(id) },
+                    (None, false) => LookupResult::NotFound,
                 };
                 (name, result)
             })
@@ -823,6 +826,7 @@ async fn main() {
             target_folders: &target_folders,
             already_indexed: &already_indexed,
             artist_cache: &mut artist_cache,
+            identities: &mut identities,
             release_cache: &mut release_cache,
             mb_id_to_image_hash: &mut mb_id_to_image_hash,
         };
@@ -841,6 +845,17 @@ async fn main() {
         }
         consensus_cleared_total += outcome.consensus_cleared_total;
         all_artist_ids.extend(outcome.artist_ids);
+    }
+
+    // The folder loop's provisional owners may have started or joined a homonym group; settle their slugs before
+    // anything reads them. The resolve pass below reconciles again after its own corrections.
+    match common::homonyms::reconcile_touched(&pool, &mut identities).await {
+        Ok(outcome) => {
+            for (_, old, new) in &outcome.renamed {
+                reporter.ok(&format!("Artist page moved: /artist/{old} -> /artist/{new}"));
+            }
+        }
+        Err(e) => reporter.warn(&format!("Homonym reconcile failed: {}", e)),
     }
 
     // -------------------------------------------------------------------------

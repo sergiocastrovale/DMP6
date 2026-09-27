@@ -43,6 +43,7 @@ pub async fn fix(
             continue;
         }
         let images = artist_images(pool, std::slice::from_ref(artist_id)).await?;
+        let bases = common::homonyms::bases_of(pool, std::slice::from_ref(artist_id)).await?;
         match sqlx::query(&delete_unlinked)
             .bind(artist_id)
             .execute(pool)
@@ -50,6 +51,7 @@ pub async fn fix(
         {
             Ok(r) if r.rows_affected() == 1 => {
                 delete_artist_image_files(config, &images).await;
+                common::homonyms::reconcile_bases(pool, &bases).await?;
                 reporter.nested().ok(&format!("Deleted orphan: {}", name));
                 sqlx::query(
                     r#"UPDATE "IssueOrphanArtist" SET status = 'RESOLVED', "updatedAt" = $1 WHERE id = $2"#,
