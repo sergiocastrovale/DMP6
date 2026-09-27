@@ -187,12 +187,9 @@ impl<'a> ArtistResolver<'a> {
         result
     }
 
-    /// A file names `name` with id `claimed`, but the cache says `name` is a different id. Either the file is
-    /// mistagged (the certainty gate's original case, docs/sync_decisions.md §4) or both are real artists with
-    /// this name - a cache row written before homonyms were detected. Asking MusicBrainz what `claimed` is called
-    /// tells them apart: exactly `name` means a homonym, so the name is recorded as ambiguous and the file's id is
-    /// believed. One lookup per (name, id) per run, and only on a contradiction.
-    pub async fn confirm_homonym(&mut self, name: &str, claimed: &str) -> bool {
+    /// Does MusicBrainz call the artist with id `claimed` exactly `name` (or an alias of it)? One lookup per
+    /// (name, id) per run. The check behind every file id the cache cannot vouch for.
+    pub async fn verify_id(&mut self, name: &str, claimed: &str) -> bool {
         let key = (name.to_string(), claimed.to_string());
         if let Some(v) = self.homonym_checks.get(&key) {
             return *v;
@@ -205,16 +202,21 @@ impl<'a> ArtistResolver<'a> {
             Ok(m) => mb_artist_exact(name, &m),
             Err(_) => false,
         };
-        if confirmed {
-            let mb_name = match self.memo.get(name) {
-                Some(LookupResult::Found { .. }) => Some(name.to_string()),
-                _ => None,
-            };
+        self.homonym_checks.insert(key, confirmed);
+        confirmed
+    }
+
+    /// A file names `name` with id `claimed`, but the cache says `name` is a different id. Either the file is
+    /// mistagged (the certainty gate's original case, docs/sync_decisions.md §4) or both are real artists with
+    /// this name - a cache row written before homonyms were detected. `verify_id` tells them apart: when MusicBrainz
+    /// calls `claimed` exactly `name`, the name is recorded as ambiguous and the file's id is believed.
+    pub async fn confirm_homonym(&mut self, name: &str, claimed: &str) -> bool {
+        let confirmed = self.verify_id(name, claimed).await;
+        if confirmed && !matches!(self.memo.get(name), Some(LookupResult::Found { mbid: None })) {
             let ambiguous = LookupResult::Found { mbid: None };
-            self.persist_lookup(name, &ambiguous, mb_name).await;
+            self.persist_lookup(name, &ambiguous, Some(name.to_string())).await;
             self.memo.insert(name.to_string(), ambiguous);
         }
-        self.homonym_checks.insert(key, confirmed);
         confirmed
     }
 
@@ -493,16 +495,37 @@ pub async fn ensure_resolved_artist(
     .await
 }
 
-/// A file's own artist pairing, as far as it can be believed. Offline first (`embedded_pairing_checked`); when a
-/// part is contradicted by the cache it is either a mistag (rejected, as before) or a second real artist with the
-/// same name (`ArtistResolver::confirm_homonym`, one lookup), which is accepted.
+/// A file's own artist pairing, as far as it can be believed.
+///
+/// Two shapes. Picard's multi-value frames (`artists[]`/`mbArtistIds[]`) pair names with ids already; a part is
+/// believed unless the cache disputes it (then `confirm_homonym` tells a second real artist with the name from a
+/// mistag). And the far commoner shape - on the live library 99.8% of tracks - a single album-artist id with no
+/// `ALBUMARTISTS` frame beside it: pass `lone_id` and it is paired with the whole tag, but only once the cache already
+/// agrees or MusicBrainz confirms that id is called exactly that (`verify_id`), so a compound tag ("A & B") carrying
+/// one member's id never becomes an artist named "A & B".
 async fn checked_file_pairing(
     resolver: &mut ArtistResolver<'_>,
     tag: &str,
     artists: &[String],
     mb_ids: &[String],
     join: JoinKind,
+    lone_id: bool,
 ) -> Option<Vec<ResolvedArtist>> {
+    if lone_id {
+        if !artists.is_empty() || mb_ids.len() != 1 {
+            return None;
+        }
+        let id = &mb_ids[0];
+        let settled = matches!(resolver.memo.get(tag), Some(LookupResult::Found { mbid: Some(known) }) if known == id);
+        let believed = settled
+            || match resolver.memo.get(tag) {
+                Some(LookupResult::Found { mbid: Some(_) }) => resolver.confirm_homonym(tag, id).await,
+                // MusicBrainz already said no artist is exactly this string (aliases included), so no id is either.
+                Some(LookupResult::NotFound) => false,
+                _ => resolver.verify_id(tag, id).await,
+            };
+        return believed.then(|| embedded_pairing(tag, &[tag.to_string()], mb_ids, join)).flatten();
+    }
     if let Some(parts) = embedded_pairing_checked(&resolver.memo, tag, artists, mb_ids, join) {
         return Some(parts);
     }
@@ -694,7 +717,10 @@ pub async fn resolve_and_apply(
 
             // The file's own pairing is per track, never cached by name: two releases can both say "Napa" and mean
             // two different artists, and only their ids tell them apart.
-            let from_files = checked_file_pairing(resolver, owner, multi, mb_ids, JoinKind::CoBilling).await;
+            // Only the album-artist frame's id can stand alone: a track-artist tag on a compilation names the track's
+            // artist, and its frames are always paired.
+            let lone_id = multi.is_empty() && matches!(tag, OwnerTag::AlbumArtist(_));
+            let from_files = checked_file_pairing(resolver, owner, multi, mb_ids, JoinKind::CoBilling, lone_id).await;
             let source = if from_files.is_some() { IdSource::Proven } else { IdSource::Search };
             let owner_parts: Option<Vec<ResolvedArtist>> = match from_files {
                 Some(mut parts) => {
@@ -773,6 +799,7 @@ pub async fn resolve_and_apply(
             &track.artists,
             &track.mb_artist_ids,
             JoinKind::Guest,
+            false,
         )
         .await;
         let credit_source = if embedded.is_some() { IdSource::Proven } else { IdSource::Search };

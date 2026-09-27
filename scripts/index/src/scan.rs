@@ -540,19 +540,15 @@ pub(crate) async fn process_folder(
 
                         // The file's own album-artist id, when it names exactly this one artist: that is who owns
                         // it even if another artist already has the name. Otherwise the cache's answer, which the
-                        // homonym rules only trust while the name is not shared (`common::homonyms`).
+                        // homonym rules only trust while the name is not shared (`common::homonyms`). Offline, the
+                        // file's id is believed only when the cache already says the same; anything else waits for
+                        // the resolve pass, which can ask MusicBrainz.
                         let own_id = match (track.album_artists.as_slice(), track.mb_album_artist_ids.as_slice()) {
                             ([single], [id]) if single == owner_tag => common::filters::sanitize_mb_id(id),
                             ([], [id]) if track.album_artist.as_deref() == Some(owner_tag) => common::filters::sanitize_mb_id(id),
                             _ => None,
                         }
-                        // Offline, only an id the cache does not dispute is believed here; one it disputes (or a
-                        // name several artists share) waits for the resolve pass, which can ask MusicBrainz.
-                        .filter(|id| match lookup_memo.get(owner_tag) {
-                            Some(LookupResult::Found { mbid: Some(known) }) => known == id,
-                            Some(LookupResult::Found { mbid: None }) => false,
-                            _ => true,
-                        });
+                        .filter(|id| matches!(lookup_memo.get(owner_tag), Some(LookupResult::Found { mbid: Some(known) }) if known == id));
                         for (owner_name, owner_mbid) in owners {
                             let (mbid, source) = match (&own_id, owners_is_whole(&owner_name, owner_tag)) {
                                 (Some(id), true) => (Some(id.as_str()), common::homonyms::IdSource::Proven),

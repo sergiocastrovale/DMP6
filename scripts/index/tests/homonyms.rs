@@ -80,10 +80,9 @@ impl Ctx {
         .execute(&self.pool)
         .await
         .unwrap();
-        let (names, ids): (Vec<String>, Vec<String>) = match mbid {
-            Some(m) => (vec![self.name.clone()], vec![m.to_string()]),
-            None => (vec![], vec![]),
-        };
+        // The shape of 99.8% of the live library: an album-artist id with no ALBUMARTISTS frame beside it.
+        let names: Vec<String> = Vec::new();
+        let ids: Vec<String> = mbid.map(|m| vec![m.to_string()]).unwrap_or_default();
         sqlx::query(
             r#"INSERT INTO "LocalReleaseTrack"
                  (id, title, artist, "albumArtist", album, "filePath", "localReleaseId",
