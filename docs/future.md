@@ -28,7 +28,7 @@
 
 - [ ] Better hierarchy in statistics vs subpages
 - [ ] "Connected now" panel in settings/users needs more love
-- [ ] if downloads are paused, re-download button in artist page should be disabled with Popover.vue explaining why
+- [x] if downloads are paused, re-download button in artist page should be disabled with Popover.vue explaining why *(done 2026-09-27)*
 - [x] In downloads page "1 release have no MusicBrainz release date and can never be auto-acquired." -> which one(s)? Change to: "The following releases have no MusicBrainz release date and can never be auto-acquired: {unordered list of artist - release}" *(done 2026-09-27)*
 
 ## Tidy

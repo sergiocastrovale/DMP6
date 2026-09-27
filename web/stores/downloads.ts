@@ -23,6 +23,7 @@ export const useDownloadsStore = defineStore('downloads', () => {
   const acquireBlockReasons = computed(() => {
     if (!capabilitiesChecked.value) {return ['Checking download environment…']}
     if (!downloadsEnabled.value) {return ['Downloads are switched off in Settings → Downloads']}
+    if (paused.value) {return [pausedReason.value ?? 'Downloads are paused']}
     const reasons: string[] = []
     if (env.value && !env.value.downloadsPath.ok) {reasons.push(env.value.downloadsPath.detail!)}
     if (env.value && !env.value.slskd.ok) {reasons.push(env.value.slskd.detail!)}

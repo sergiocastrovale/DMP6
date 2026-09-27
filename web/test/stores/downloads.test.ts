@@ -39,6 +39,24 @@ describe('useDownloadsStore - pure getters (seeded state)', () => {
     expect(store.readyCount).toBe(2)
   })
 
+  it('acquireBlockReasons names the pause reason once capabilities are checked and downloads are paused', () => {
+    const store = useDownloadsStore()
+    store.capabilitiesChecked = true
+    store.downloadsEnabled = true
+    store.paused = true
+    store.pausedReason = 'disk full'
+    expect(store.acquireBlockReasons).toEqual(['disk full'])
+  })
+
+  it('acquireBlockReasons falls back to a generic message when paused with no reason recorded', () => {
+    const store = useDownloadsStore()
+    store.capabilitiesChecked = true
+    store.downloadsEnabled = true
+    store.paused = true
+    store.pausedReason = null
+    expect(store.acquireBlockReasons).toEqual(['Downloads are paused'])
+  })
+
   it('mergingIds/mergeActive reflect ids while a merge streams through the terminal, then clear', async () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise(() => {}))) // never resolves - stay "in flight"
     fetchMock.mockResolvedValue({ active: [], ready: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: null })
