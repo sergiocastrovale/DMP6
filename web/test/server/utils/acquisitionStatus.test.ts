@@ -24,7 +24,7 @@ vi.mock('~/server/utils/downloadEnvironment', () => ({
   acquireBlockReasons: () => [],
 }))
 
-const { isDownloadsEnabled, countNoYearMissing, getAcquisitionStatus, cachedNoYearMissing, _resetNoYearCacheForTest } = await import('../../../server/utils/acquisitionStatus')
+const { isDownloadsEnabled, listNoYearMissing, getAcquisitionStatus, cachedNoYearMissing, _resetNoYearCacheForTest } = await import('../../../server/utils/acquisitionStatus')
 
 describe('isDownloadsEnabled', () => {
   const originalEnv = process.env.DOWNLOADS_ENABLED
@@ -75,15 +75,15 @@ describe('isDownloadsEnabled', () => {
   })
 })
 
-describe('countNoYearMissing', () => {
-  it('returns the raw query count as a number', async () => {
-    prismaMocks.queryRaw.mockResolvedValue([{ count: 7n }])
-    expect(await countNoYearMissing()).toBe(7)
+describe('listNoYearMissing', () => {
+  it('returns the raw query rows', async () => {
+    prismaMocks.queryRaw.mockResolvedValue([{ artist: 'Artist A', title: 'Release A' }])
+    expect(await listNoYearMissing()).toEqual([{ artist: 'Artist A', title: 'Release A' }])
   })
 
-  it('returns 0 when the query yields no rows', async () => {
+  it('returns an empty list when the query yields no rows', async () => {
     prismaMocks.queryRaw.mockResolvedValue([])
-    expect(await countNoYearMissing()).toBe(0)
+    expect(await listNoYearMissing()).toEqual([])
   })
 })
 
@@ -95,11 +95,12 @@ describe('getAcquisitionStatus', () => {
 
   it('summarizes acquisition eligibility when downloads are enabled', async () => {
     prismaMocks.findUnique.mockResolvedValue({ downloadsEnabled: true })
-    prismaMocks.queryRaw.mockResolvedValue([{ count: 2n }])
+    const releases = [{ artist: 'Artist A', title: 'Release A' }, { artist: 'Artist B', title: 'Release B' }]
+    prismaMocks.queryRaw.mockResolvedValue(releases)
 
     const status = await getAcquisitionStatus()
 
-    expect(status).toEqual({ canAcquire: true, enabled: true, noYearMissing: 2, environment: healthyEnv })
+    expect(status).toEqual({ canAcquire: true, enabled: true, noYearMissing: 2, noYearMissingReleases: releases, environment: healthyEnv })
   })
 
   it('is not acquirable when downloads are disabled', async () => {
@@ -108,7 +109,7 @@ describe('getAcquisitionStatus', () => {
 
     const status = await getAcquisitionStatus()
 
-    expect(status).toEqual({ canAcquire: false, enabled: false, noYearMissing: 0, environment: healthyEnv })
+    expect(status).toEqual({ canAcquire: false, enabled: false, noYearMissing: 0, noYearMissingReleases: [], environment: healthyEnv })
   })
 })
 
@@ -118,23 +119,26 @@ describe('cachedNoYearMissing', () => {
     _resetNoYearCacheForTest()
   })
 
-  it('runs the heavy count once per 5 minutes, however often the queue is polled', async () => {
-    prismaMocks.queryRaw.mockResolvedValue([{ count: 7n }])
+  it('runs the heavy query once per 5 minutes, however often the queue is polled', async () => {
+    const sevenReleases = Array.from({ length: 7 }, (_, i) => ({ artist: `Artist ${i}`, title: `Release ${i}` }))
+    prismaMocks.queryRaw.mockResolvedValue(sevenReleases)
 
-    expect(await cachedNoYearMissing(1_000)).toBe(7)
-    expect(await cachedNoYearMissing(60_000)).toBe(7)
-    expect(await cachedNoYearMissing(299_000)).toBe(7)
+    expect(await cachedNoYearMissing(1_000)).toEqual(sevenReleases)
+    expect(await cachedNoYearMissing(60_000)).toEqual(sevenReleases)
+    expect(await cachedNoYearMissing(299_000)).toEqual(sevenReleases)
     expect(prismaMocks.queryRaw).toHaveBeenCalledTimes(1)
 
-    prismaMocks.queryRaw.mockResolvedValue([{ count: 9n }])
-    expect(await cachedNoYearMissing(302_000)).toBe(9)
+    const nineReleases = Array.from({ length: 9 }, (_, i) => ({ artist: `Artist ${i}`, title: `Release ${i}` }))
+    prismaMocks.queryRaw.mockResolvedValue(nineReleases)
+    expect(await cachedNoYearMissing(302_000)).toEqual(nineReleases)
     expect(prismaMocks.queryRaw).toHaveBeenCalledTimes(2)
   })
 
-  it('keeps serving the last value when a refresh fails instead of flashing 0', async () => {
-    prismaMocks.queryRaw.mockResolvedValueOnce([{ count: 4n }]).mockRejectedValueOnce(new Error('db down'))
+  it('keeps serving the last value when a refresh fails instead of flashing empty', async () => {
+    const releases = [{ artist: 'Artist A', title: 'Release A' }]
+    prismaMocks.queryRaw.mockResolvedValueOnce(releases).mockRejectedValueOnce(new Error('db down'))
 
-    expect(await cachedNoYearMissing(1_000)).toBe(4)
-    expect(await cachedNoYearMissing(400_000)).toBe(4)
+    expect(await cachedNoYearMissing(1_000)).toEqual(releases)
+    expect(await cachedNoYearMissing(400_000)).toEqual(releases)
   })
 })

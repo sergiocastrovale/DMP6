@@ -166,6 +166,12 @@ export interface DlInFlightItem {
   totalBytes: number
 }
 
+// One MISSING album/EP release (of a monitored artist) MusicBrainz gave no release date for.
+export interface NoYearMissingRelease {
+  artist: string
+  title: string
+}
+
 export interface Acquisition {
   canAcquire: boolean
   enabled: boolean
@@ -173,6 +179,7 @@ export interface Acquisition {
   // trickle worker requires a year to lay a release out as `YYYY - title`, so these are permanently
   // unacquirable and otherwise invisible. See docs/downloader_issues.md #15.
   noYearMissing: number
+  noYearMissingReleases: NoYearMissingRelease[]
   environment: DownloadEnvironment
 }
 

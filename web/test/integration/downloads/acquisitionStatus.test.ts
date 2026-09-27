@@ -4,7 +4,7 @@ import { makeArtist, makeMbRelease } from '../../../test/factories'
 
 const prisma = getTestPrisma()
 
-describe('countNoYearMissing (real Postgres)', () => {
+describe('listNoYearMissing (real Postgres)', () => {
   beforeEach(async () => {
     await resetDb()
   })
@@ -13,18 +13,18 @@ describe('countNoYearMissing (real Postgres)', () => {
     await prisma.$disconnect()
   })
 
-  it('counts MISSING album/EP releases of monitored artists with no MusicBrainz year', async () => {
-    const { countNoYearMissing } = await import('../../../server/utils/acquisitionStatus')
+  it('lists MISSING album/EP releases of monitored artists with no MusicBrainz year', async () => {
+    const { listNoYearMissing } = await import('../../../server/utils/acquisitionStatus')
 
-    const artist = await makeArtist(prisma, { monitored: true })
-    const noYear = await makeMbRelease(prisma, { status: 'MISSING', year: null })
+    const artist = await makeArtist(prisma, { monitored: true, name: 'Solo Artist' })
+    const noYear = await makeMbRelease(prisma, { status: 'MISSING', year: null, title: 'Untitled Release' })
     await prisma.musicBrainzReleaseArtist.create({ data: { releaseId: noYear.id, artistId: artist.id } })
 
-    expect(await countNoYearMissing()).toBe(1)
+    expect(await listNoYearMissing()).toEqual([{ artist: 'Solo Artist', title: 'Untitled Release' }])
   })
 
   it('excludes releases that DO have a year, unmonitored artists, and non-MISSING releases', async () => {
-    const { countNoYearMissing } = await import('../../../server/utils/acquisitionStatus')
+    const { listNoYearMissing } = await import('../../../server/utils/acquisitionStatus')
 
     const monitored = await makeArtist(prisma, { monitored: true })
     const unmonitored = await makeArtist(prisma, { monitored: false })
@@ -38,6 +38,6 @@ describe('countNoYearMissing (real Postgres)', () => {
     const unmonitoredNoYear = await makeMbRelease(prisma, { status: 'MISSING', year: null })
     await prisma.musicBrainzReleaseArtist.create({ data: { releaseId: unmonitoredNoYear.id, artistId: unmonitored.id } })
 
-    expect(await countNoYearMissing()).toBe(0)
+    expect(await listNoYearMissing()).toEqual([])
   })
 })

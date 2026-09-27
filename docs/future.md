@@ -20,7 +20,6 @@
 
 ## Bugs
 
-- [ ] Disabiguating artists: NAPA's catalogue features both portuguese and chilean band in one catalogue. These catalogues should be separated - best strategy? The name of the band isn't the problem - it's the slug generation and the way we catalogue them (they can't be together).
 - [ ] 3 identical "Dear Michael: The Motown Collection" cards — diagnosed, not fixed: the album matcher bound three separate 9-12 track albums to one 257-track box. See `docs/sync_decisions.md` §19 item 7.
 - [ ] Compilations owned by dozens of unrelated artists (a Harold Land compilation on Lana Del Rey's page) — scattered per-track artist tags; index ownership. See `docs/sync_decisions.md` §19 item 8.
 - [ ] 124 "Chronological Classics" bindings whose files agree on the wrong volume — retag the files. List: `docs/specs/spec_tidy_observations_cc_retag.tsv`, background in `docs/sync_decisions.md` §19 item 9.
@@ -30,9 +29,9 @@
 - [ ] Better hierarchy in statistics vs subpages
 - [ ] "Connected now" panel in settings/users needs more love
 - [ ] if downloads are paused, re-download button in artist page should be disabled with Popover.vue explaining why
-- [ ] In downloads page "1 release have no MusicBrainz release date and can never be auto-acquired." -> which one(s)? Change to: "The following releases have no MusicBrainz release date and can never be auto-acquired: {unordered list of artist - release}"
+- [x] In downloads page "1 release have no MusicBrainz release date and can never be auto-acquired." -> which one(s)? Change to: "The following releases have no MusicBrainz release date and can never be auto-acquired: {unordered list of artist - release}" *(done 2026-09-27)*
 
 ## Tidy
 
-- [x] Add proper eslint and apply everywhere *(done 2026-09-26: ESLint runs in CI with 0 errors, arrow-function rule enforced everywhere; ~405 `no-explicit-any` warnings remain, deliberately left)*
+- [ ] Add proper eslint auto-fix on save and apply everywhere *(done 2026-09-26: ESLint runs in CI with 0 errors, arrow-function rule enforced everywhere; ~405 `no-explicit-any` warnings remain, deliberately left)*
 - [ ] docs are all over the place. We need one consistent doc with the entire flow and ifs / trade-offs - from index to sync to tidy. What decisions do we make? Why and how? Are they because of faulty metadata or true problems with grouping / UI display that we need to tackle even with pristine metadata (particularly in compilations, multi-disk albums, box-sets)? Are we logging the output of each script? Where? Make it bullet-point and almost pseudo-code based - e.g. "1. We find a multi-disk release 2. We then test against X 2.1 Is it Y? Then ...". For each of the inner flows and decision making, also include a mermaid / markdown diagram. Make it SUPER simple to understand for non-technical people.

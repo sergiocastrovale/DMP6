@@ -16,6 +16,11 @@ const acquisitionIdle = computed(() => !!acquisition.value && !acquisition.value
     Downloads are switched off — turn Soulseek back on in Settings → Downloads to resume acquisition.
   </UiBanner>
   <UiBanner v-if="acquisition?.noYearMissing" tone="info" :icon="PauseCircle">
-    {{ acquisition.noYearMissing }} release{{ acquisition.noYearMissing === 1 ? '' : 's' }} have no MusicBrainz release date and can never be auto-acquired.
+    The following release{{ acquisition.noYearMissing === 1 ? '' : 's' }} have no MusicBrainz release date and can never be auto-acquired:
+    <ul class="list-disc list-inside">
+      <li v-for="release in acquisition.noYearMissingReleases" :key="`${release.artist}-${release.title}`">
+        {{ release.artist }} - {{ release.title }}
+      </li>
+    </ul>
   </UiBanner>
 </template>
