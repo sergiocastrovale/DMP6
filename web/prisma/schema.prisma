@@ -44,6 +44,12 @@ model Artist {
   id                  String                     @id @default(cuid())
   name                String
   slug                String                     @unique
+  // make_slug(name): rows sharing it are homonyms. While there are two or more, each carries a suffixed slug
+  // (scripts/common/src/homonyms.rs) and the bare slug is the chooser page. Never NULL in practice: a BEFORE INSERT
+  // trigger (migration 20260927000000_artist_homonyms) fills it with the slug when an insert leaves it out.
+  baseSlug            String?
+  // MusicBrainz's disambiguation comment ("Portuguese band"), shown beside the name when names collide. Display only.
+  disambiguation      String?
   image               String?
   imageUrl            String?                    @db.Text
   musicbrainzId       String?
@@ -73,14 +79,26 @@ model Artist {
   primaryArtist       Artist?                    @relation("ArtistPrimary", fields: [primaryArtistId], references: [id], onDelete: SetNull)
   connectedArtists    Artist[]                   @relation("ArtistPrimary")
   facts               ArtistFact[]
+  slugHistory         ArtistSlugHistory[]
 
   @@index([musicbrainzId])
+  @@index([baseSlug])
   @@index([completeness])
   @@index([createdAt])
   @@index([name])
   @@index([country])
   @@index([monitored])
   @@index([primaryArtistId])
+}
+
+// A slug an artist used to have; /api/artists/[slug] redirects it to the current one.
+model ArtistSlugHistory {
+  oldSlug   String   @id
+  artistId  String
+  createdAt DateTime @default(now())
+  artist    Artist   @relation(fields: [artistId], references: [id], onDelete: Cascade)
+
+  @@index([artistId])
 }
 
 // ---------------------------------------------------------------------------
@@ -529,6 +547,8 @@ model MbArtistLookup {
   normalized String
   mbid       String?
   mbName     String?
+  // More than one MusicBrainz artist answers to this name exactly: never resolve it to one id by the name alone.
+  ambiguous  Boolean  @default(false)
   checkedAt  DateTime @default(now())
 
   @@index([normalized])
