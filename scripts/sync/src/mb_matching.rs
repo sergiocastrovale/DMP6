@@ -58,7 +58,10 @@ pub use common::mb::names::{names_are_similar, normalize_name};
 /// the row stays unidentified rather than borrowing another artist's catalogue. Pure, for tests.
 ///
 /// `local` is (title, year) per owned album; `candidates` is (MB artist id, [(release-group title, year)]).
-pub fn pick_homonym(local: &[(String, Option<i32>)], candidates: &[(String, Vec<(String, Option<i32>)>)]) -> Option<String> {
+/// A dated title: (title, year).
+pub type DatedTitle = (String, Option<i32>);
+
+pub fn pick_homonym(local: &[DatedTitle], candidates: &[(String, Vec<DatedTitle>)]) -> Option<String> {
     let norm = common::homonyms::normalize_title;
     let mut scored: Vec<(usize, usize, &String)> = candidates
         .iter()
