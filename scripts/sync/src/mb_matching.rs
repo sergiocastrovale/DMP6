@@ -97,7 +97,7 @@ pub fn pick_homonym(
             (titles, years, id)
         })
         .collect();
-    scored.sort_by(|a, b| (b.0, b.1).cmp(&(a.0, a.1)));
+    scored.sort_by_key(|a| std::cmp::Reverse((a.0, a.1)));
     match scored.as_slice() {
         [best, ..] if best.0 == 0 => None,
         [best] => Some(best.2.clone()),
