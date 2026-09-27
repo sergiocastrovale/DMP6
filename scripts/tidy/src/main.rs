@@ -133,7 +133,7 @@ async fn main() {
     let running = common::app::spawn_shutdown_handlers(&pool, "tidy", "phase", 1);
 
     if args.split_homonyms {
-        let code = split_homonyms::run(&pool, &reporter, args.dry_run, args.emit_artist_ids.as_deref()).await;
+        let code = split_homonyms::run(&pool, &config, &reporter, args.dry_run, args.emit_artist_ids.as_deref()).await;
         release_lock(&pool, "tidy", std::process::id()).await;
         std::process::exit(code);
     }
@@ -538,6 +538,20 @@ async fn main() {
         } else {
             common::homonyms::bases_of(&pool, &scope_ids).await.unwrap_or_default()
         };
+        // A member of a shared name that owns nothing and is credited nowhere is only an empty card on the chooser page:
+        // the index's orphan sweep (which spares ./add's manuallyAdded artists) removes it and reconciles its name.
+        let shared_members: Vec<String> = sqlx::query_scalar(
+            r#"SELECT id FROM "Artist" WHERE "baseSlug" = ANY($1::text[]) AND "baseSlug" IN (
+                 SELECT "baseSlug" FROM "Artist" WHERE "primaryArtistId" IS NULL GROUP BY 1 HAVING count(*) > 1)"#,
+        )
+        .bind(&bases)
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default();
+        let swept = index::deletion::delete_orphan_artists(&pool, &config, Some(&shared_members)).await;
+        if swept > 0 {
+            reporter.ok(&format!("{} empty artist(s) sharing a name removed", swept));
+        }
         match common::homonyms::reconcile_bases(&pool, &bases).await {
             Ok(outcome) => {
                 for (_, old, new) in &outcome.renamed {

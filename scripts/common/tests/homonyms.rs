@@ -293,3 +293,4 @@ async fn ensure_artist_by_bare_name_lands_on_the_unidentified_member_of_a_group(
     assert_ne!(slug_of(&pool, &id).await, base);
     assert!(group_violations(&pool, &base).await.is_empty());
 }
+

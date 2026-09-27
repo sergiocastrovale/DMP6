@@ -52,7 +52,7 @@ async fn ids_by_release_count(pool: &PgPool, artist_id: &str) -> Result<Vec<(Str
 }
 
 /// Returns the process exit code.
-pub async fn run(pool: &PgPool, reporter: &Reporter, dry_run: bool, emit_ids: Option<&str>) -> i32 {
+pub async fn run(pool: &PgPool, config: &common::config::Config, reporter: &Reporter, dry_run: bool, emit_ids: Option<&str>) -> i32 {
     reporter.section("Homonym split");
     let found = match candidates(pool).await {
         Ok(c) => c,
@@ -106,6 +106,17 @@ pub async fn run(pool: &PgPool, reporter: &Reporter, dry_run: bool, emit_ids: Op
     // group left with one member goes back to its bare slug.
     if let Err(e) = common::homonyms::reconcile_bases(pool, &bases_before).await {
         reporter.warn(&format!("Homonym reconcile failed: {}", e));
+    }
+    // Artists the re-derivation left owning nothing (an unidentified member whose releases all found their artist)
+    // would only be an empty card on the chooser: the index's own orphan sweep removes them and reconciles again.
+    let members: Vec<String> = sqlx::query_scalar(r#"SELECT id FROM "Artist" WHERE "baseSlug" = ANY($1::text[])"#)
+        .bind(&bases_before)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+    let swept = index::deletion::delete_orphan_artists(pool, config, Some(&members)).await;
+    if swept > 0 {
+        reporter.nested().ok(&format!("{} emptied artist(s) removed", swept));
     }
 
     let groups: Vec<(String, String, String, Option<String>)> = sqlx::query_as(

@@ -167,6 +167,16 @@ async fn a_merged_artist_is_split_by_its_files_ids_and_a_mistagged_file_is_not()
 
     let written = std::fs::read_to_string(&ids_file).unwrap();
     assert!(written.lines().any(|l| l == merged), "the ids file lists the group for the follow-up sync");
+    let empty: i64 = sqlx::query_scalar(
+        r#"SELECT count(*) FROM "Artist" a WHERE a."baseSlug" = $1
+             AND NOT EXISTS (SELECT 1 FROM "LocalReleaseArtist" l WHERE l."artistId" = a.id)
+             AND NOT EXISTS (SELECT 1 FROM "TrackRelatedArtist" t WHERE t."artistId" = a.id)"#,
+    )
+    .bind(&base)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(empty, 0, "no artist left owning nothing under the name");
     let violations: Vec<(String, String)> = common::homonyms::violations(&pool).await.unwrap().into_iter().filter(|(b, _)| *b == base).collect();
     assert!(violations.is_empty(), "{violations:?}");
 }
